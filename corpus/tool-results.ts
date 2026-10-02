@@ -1,0 +1,32 @@
+/**
+ * What the MCP biography tools return (spec §4). Shared by the MCP server, which
+ * produces these, and the app, which renders them. Types only.
+ */
+
+export type Passage = { chunk_id: number; section_heading: string; content: string };
+
+/** A typed failure: tools return this instead of throwing (spec §9). */
+export type Unavailable = { status: "unavailable"; reason: string };
+
+export type SearchBiographyResult =
+  | { status: "ok"; passages: Passage[]; queries: string[] }
+  | { status: "empty"; queries: string[] }
+  | Unavailable;
+
+export type Verdict = "supported" | "contradicted" | "not_mentioned" | "known_elsewhere";
+
+/** Spec §19: what the helper model recalled when the biography was silent. year is negative for BC. */
+export type Recalled = { account: string; year: number };
+
+export type FactCheckResult =
+  | { status: "ok"; verdict: Verdict; passage?: Passage; explanation: string; recalled?: Recalled }
+  | Unavailable;
+
+export type WorldEvent = { label: string; date: string };
+export type Leader = { country: string; office: string; person: string };
+
+/** get_historical_context (spec §4): the world in one year of the persona's life, from Wikidata. */
+export type HistoricalContextResult =
+  | { status: "ok"; year: number; events: WorldEvent[]; leaders: Leader[] }
+  | { status: "empty"; year: number; reason: string }
+  | Unavailable;

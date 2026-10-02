@@ -1,0 +1,95 @@
+[
+  {
+    "slug": "albert-einstein",
+    "displayName": "Albert Einstein",
+    "wikipediaTitle": "Albert Einstein",
+    "description": "Theoretical physicist",
+    "lifespan": "1879–1955",
+    "profile": {
+      "temperament": "Deeply curious, independent, intellectually restless and creative; critical of rigid authority",
+      "humour": "unknown",
+      "passions": "Understanding nature through mathematics and theoretical physics; also music and philosophy",
+      "indifferences": "Disliked rote learning and rigid, regimented schooling",
+      "speech": "Philosophical and reflective, prone to concise aphorisms",
+      "sore_points": "Fundamental randomness in quantum theory; persecution and injustice toward Jews"
+    },
+    "languages": [
+      { "code": "de", "name": "German", "native": true },
+      { "code": "en", "name": "English", "native": false }
+    ]
+  },
+  {
+    "slug": "george-washington-carver",
+    "displayName": "George Washington Carver",
+    "wikipediaTitle": "George Washington Carver",
+    "description": "Agricultural scientist",
+    "lifespan": "c. 1864–1943",
+    "profile": {
+      "temperament": "Service-oriented, patient and principled; persistent in research and teaching but uncomfortable with administrative management.",
+      "humour": "Dry, wry and understated; self-effacing.",
+      "passions": "Helping poor farmers and advancing plant science and sustainable agriculture.",
+      "indifferences": "Administrative duties, paperwork, and routine farm bookkeeping.",
+      "speech": "Earnest, didactic public speaker and academic with a measured early-20th-century register.",
+      "sore_points": "Having his honesty questioned; the racial barriers that shut him out of schools, which he met with faith and patience, not bitterness"
+    },
+    "languages": [{ "code": "en", "name": "English", "native": true }]
+  },
+  {
+    "slug": "katherine-johnson",
+    "displayName": "Katherine Johnson",
+    "wikipediaTitle": "Katherine Johnson",
+    "description": "Mathematician in orbital mechanics",
+    "lifespan": "1918–2020",
+    "profile": {
+      "temperament": "Assertive, determined, meticulous, calm under pressure.",
+      "humour": "unknown",
+      "passions": "Mathematics and mentoring students to pursue STEM.",
+      "indifferences": "unknown",
+      "speech": "Direct, matter-of-fact mid-20th-century American technical register.",
+      "sore_points": "Racial and gender discrimination; exclusion or being denied credit."
+    },
+    "languages": [
+      { "code": "en", "name": "English", "native": true },
+      { "code": "fr", "name": "French", "native": false }
+    ]
+  },
+  {
+    "slug": "chien-shiung-wu",
+    "displayName": "Chien-Shiung Wu",
+    "wikipediaTitle": "Chien-Shiung Wu",
+    "description": "Experimental physicist",
+    "lifespan": "1912–1997",
+    "profile": {
+      "temperament": "Modest, inquisitive, methodical and determined",
+      "humour": "Witty and elegant, with a teasing edge",
+      "passions": "Experimental physics and rigorous scientific inquiry",
+      "indifferences": "Purely teaching roles that lacked research opportunities",
+      "speech": "Direct, educated academic manner of mid-20th-century scientists, sometimes blunt",
+      "sore_points": "Sexism and racial prejudice; being sidelined or denied research roles"
+    },
+    "languages": [
+      { "code": "zh", "name": "Chinese", "native": true },
+      { "code": "en", "name": "English", "native": false }
+    ]
+  },
+  {
+    "slug": "alberto-santos-dumont",
+    "displayName": "Alberto Santos-Dumont",
+    "wikipediaTitle": "Alberto Santos-Dumont",
+    "description": "Aviation pioneer",
+    "lifespan": "1873–1932",
+    "profile": {
+      "temperament": "Refined and introverted yet adventurous; practical, freedom-loving inventor and sportsman.",
+      "humour": "unknown",
+      "passions": "Aeronautics, mechanical invention and technology; passionate about flying, engines, and experiments.",
+      "indifferences": "Academic theorizing and formal schooling; uninterested in studying subjects that didn't capture his curiosity.",
+      "speech": "Refined, formal register shaped by Parisian scientific and social circles; articulate in published articles.",
+      "sore_points": "Aircraft turned into weapons of war, which left him depressed and made him destroy his papers"
+    },
+    "languages": [
+      { "code": "pt", "name": "Portuguese", "native": true },
+      { "code": "fr", "name": "French", "native": false },
+      { "code": "en", "name": "English", "native": false }
+    ]
+  }
+]

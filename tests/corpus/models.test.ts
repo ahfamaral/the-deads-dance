@@ -1,0 +1,110 @@
+import { ChatOpenAI } from "@langchain/openai";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_MODELS, chatModel, modelId } from "../../corpus/models";
+
+// AsyncCaller#maxRetries is `protected` in its .d.ts; there's no public accessor, so read it
+// the way the brief allows ("whatever the installed class exposes").
+function maxRetriesOf(model: ChatOpenAI): number {
+  return (model.caller as unknown as { maxRetries: number }).maxRetries;
+}
+
+afterEach(() => vi.unstubAllEnvs());
+
+describe("modelId", () => {
+  it("falls back to the defaults", () => {
+    vi.stubEnv("AGENT_MODEL", "");
+    vi.stubEnv("HELPER_MODEL", "");
+    expect(modelId("agent")).toBe(DEFAULT_MODELS.agent);
+    expect(modelId("helper")).toBe(DEFAULT_MODELS.helper);
+  });
+
+  // Spec §19.2: recall needs a model that knows well-documented events; gpt-5-mini didn't.
+  it("defaults recall to gemini-3.8-flash and reads RECALL_MODEL", () => {
+    vi.stubEnv("RECALL_MODEL", "");
+    expect(modelId("recall")).toBe("google/gemini-3.8-flash");
+    vi.stubEnv("RECALL_MODEL", "openai/gpt-5.5");
+    expect(modelId("recall")).toBe("openai/gpt-5.5");
+  });
+
+  it("reads AGENT_MODEL and HELPER_MODEL", () => {
+    vi.stubEnv("AGENT_MODEL", "anthropic/claude-sonnet-5");
+    vi.stubEnv("HELPER_MODEL", " openai/gpt-5-nano ");
+    expect(modelId("agent")).toBe("anthropic/claude-sonnet-5");
+    expect(modelId("helper")).toBe("openai/gpt-5-nano");
+  });
+});
+
+describe("chatModel", () => {
+  it("needs OPENROUTER_API_KEY", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    expect(() => chatModel("agent")).toThrow(/OPENROUTER_API_KEY/);
+  });
+
+  it("builds a ChatOpenAI for the role's model", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    vi.stubEnv("HELPER_MODEL", "");
+    const model = chatModel("helper");
+    expect(model).toBeInstanceOf(ChatOpenAI);
+    expect(model.model).toBe(DEFAULT_MODELS.helper);
+  });
+
+  // F6: the MCP tool call times out client-side at 30s and fact-check makes two sequential
+  // helper calls, so the helper needs a shorter timeout/fewer retries than the agent, which
+  // can afford to wait the full 60s.
+  it("gives the helper a shorter timeout and fewer retries than the agent", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const agent = chatModel("agent");
+    const helper = chatModel("helper");
+    expect(agent.timeout).toBe(60_000);
+    expect(maxRetriesOf(agent)).toBe(2);
+    expect(helper.timeout).toBe(20_000);
+    expect(maxRetriesOf(helper)).toBe(1);
+  });
+
+  // Spec §19.2: recall is the third sequential call in fact_check_claim, inside the 30 s tool timeout.
+  it("gives recall 10 s and no retry", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const recall = chatModel("recall");
+    expect(recall.timeout).toBe(10_000);
+    expect(maxRetriesOf(recall)).toBe(0);
+  });
+
+  it("takes a timeout override and keeps the role's retries (spec §17.1)", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const slow = chatModel("helper", { timeout: 90_000 });
+    expect(slow.timeout).toBe(90_000);
+    expect(maxRetriesOf(slow)).toBe(1);
+    expect(chatModel("helper").timeout).toBe(20_000);
+    expect(chatModel("helper", {}).timeout).toBe(20_000);
+  });
+
+  // Final review: a retried 90 s profile call could keep the add form waiting ~3 minutes.
+  it("lets a caller turn retries off", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    expect(maxRetriesOf(chatModel("helper", { timeout: 90_000, maxRetries: 0 }))).toBe(0);
+    expect(maxRetriesOf(chatModel("helper"))).toBe(1);
+  });
+});
+
+// Spec §20.1: ChatOpenAI drops its own `reasoning` option for "openai/…" ids, so the effort
+// travels as OpenRouter's unified field in modelKwargs.
+describe("chatModel reasoning effort", () => {
+  it("defaults the agent to low effort", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    vi.stubEnv("AGENT_REASONING_EFFORT", "");
+    expect(chatModel("agent").modelKwargs).toEqual({ reasoning: { effort: "low" } });
+  });
+
+  it("reads AGENT_REASONING_EFFORT", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    vi.stubEnv("AGENT_REASONING_EFFORT", " medium ");
+    expect(chatModel("agent").modelKwargs).toEqual({ reasoning: { effort: "medium" } });
+  });
+
+  it("leaves helper and recall at the provider's default unless asked", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    expect(chatModel("helper").modelKwargs ?? {}).toEqual({});
+    expect(chatModel("recall").modelKwargs ?? {}).toEqual({});
+    expect(chatModel("helper", { reasoningEffort: "minimal" }).modelKwargs).toEqual({ reasoning: { effort: "minimal" } });
+  });
+});

@@ -1,0 +1,162 @@
+"use client";
+
+import { useState } from "react";
+import ExportDialog from "@/components/export-dialog";
+import {
+  deleteConversation,
+  loadConversations,
+  type SavedConversation,
+} from "@/lib/conversation-store";
+import { useScrollFade } from "@/lib/use-scroll-fade";
+
+type ConversationHistoryProps = {
+  onBack: () => void;
+  onOpen: (conversation: SavedConversation) => void;
+};
+
+const savedAtFormat = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+/**
+ * Lists the conversations saved from the chat, most recent first. They are read
+ * from the browser's localStorage, not the database (see conversation-store).
+ */
+export default function ConversationHistory({ onBack, onOpen }: ConversationHistoryProps) {
+  // Only mounted after the user navigates here, so reading storage in the
+  // initialiser never runs during server rendering.
+  const [conversations, setConversations] = useState(loadConversations);
+  const [exporting, setExporting] = useState<SavedConversation | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const listFade = useScrollFade();
+
+  function removeConversation(conversation: SavedConversation) {
+    if (deleteConversation(conversation.id)) {
+      setConversations((current) => current.filter((c) => c.id !== conversation.id));
+    }
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center">
+      <section
+        aria-labelledby="conversation-history-heading"
+        className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/10 bg-neutral-900/80 shadow-lg shadow-black/40 backdrop-blur-md"
+      >
+        <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-white/10 p-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center justify-self-start gap-1.5 rounded-full px-3 py-1.5 text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="size-4"
+              aria-hidden="true"
+            >
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+            Back
+          </button>
+          <h2
+            id="conversation-history-heading"
+            className="truncate text-sm font-medium text-foreground"
+          >
+            History of conversations
+          </h2>
+        </header>
+        {conversations.length === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-neutral-500">
+            No saved conversations yet.
+          </p>
+        ) : (
+          <ul {...listFade} className="scroll-fade flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
+            {conversations.map((conversation) => {
+              const firstLine = conversation.messages.find((m) => m.role === "user")?.text;
+              const selected = conversation.id === selectedId;
+              return (
+                <li
+                  key={conversation.id}
+                  className={`flex items-center rounded-2xl border transition-colors ${selected
+                      ? "border-white/25 bg-white/10"
+                      : "border-white/5 bg-white/5 hover:border-white/20 hover:bg-white/10"
+                    }`}
+                >
+                  <button
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setSelectedId(conversation.id)}
+                    className="flex min-w-0 flex-1 flex-col items-start gap-0.5 self-stretch rounded-2xl px-4 py-3 text-left focus-visible:outline focus-visible:outline-white/40"
+                  >
+                    <span className="truncate font-medium text-foreground">
+                      {conversation.personaName}
+                    </span>
+                    <span className="truncate text-sm text-neutral-500">
+                      {firstLine ?? "No messages"}
+                    </span>
+                    <time dateTime={conversation.savedAt} className="text-xs text-neutral-500">
+                      {savedAtFormat.format(new Date(conversation.savedAt))}
+                    </time>
+                  </button>
+                  {/* Fixed-width slot reserved on every row, as in the persona
+                      picker, so revealing the buttons never reflows the text.
+                      They show only on the selected row; elsewhere they are
+                      inert, so hidden buttons can't be tabbed to or clicked. */}
+                  <div
+                    inert={!selected}
+                    className={`flex w-24 shrink-0 flex-col items-stretch gap-1.5 py-3 pr-3 transition-[opacity,translate] duration-300 ease-out motion-reduce:transition-none ${selected ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"
+                      }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setExporting(conversation)}
+                      aria-label={`Export conversation with ${conversation.personaName}`}
+                      className="w-full whitespace-nowrap rounded-full bg-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-900 transition-[background-color,box-shadow] duration-200 ease-out hover:bg-white hover:shadow-[0_0_16px_rgba(255,255,255,0.35)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60"
+                    >
+                      Export
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onOpen(conversation)}
+                      aria-label={`Open conversation with ${conversation.personaName}`}
+                      className="w-full whitespace-nowrap rounded-full border border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-200 transition-colors hover:border-white/40 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60"
+                    >
+                      Open
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeConversation(conversation)}
+                      aria-label={`Delete conversation with ${conversation.personaName}`}
+                      className="flex w-full items-center justify-center rounded-full border border-white/15 px-3 py-1.5 text-red-500 transition-colors hover:border-red-500/40 hover:bg-red-500/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500/60"
+                    >
+                      {/* size-5 matches the text's 20px line height, so this
+                          button is the same height as Export and Open. */}
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="size-5"
+                        aria-hidden="true"
+                      >
+                        <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6" />
+                      </svg>
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+      <ExportDialog conversation={exporting} onClose={() => setExporting(null)} />
+    </div>
+  );
+}

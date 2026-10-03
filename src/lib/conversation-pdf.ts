@@ -195,7 +195,7 @@ export function renderConversationPdf(
 
     write(message.text, STYLES.body);
 
-    if (message.ended === "farewell" || message.ended === "tired") {
+    if (message.ended) {
       gap(1);
       write("The visit has ended.", { ...STYLES.trace, indent: 0 });
     }

@@ -55,12 +55,17 @@ describe("renderConversationState", () => {
 
   it("describes patience in words", () => {
     const insult = act({ act: "insult", offense: 2, language: "und" });
+    const curt = act({ offense: 1, language: "und" });
+    const curts = (n: number) => Array.from({ length: n }, () => curt);
     const thanks = act({ act: "thanks", language: "und" });
     expect(render([thanks, thanks, thanks])).toContain("You are enjoying this visitor.");
-    expect(render([insult])).toContain("Your patience is thinning: they have been rude to you.");
-    expect(render([insult, insult])).toContain("You are close to showing them out.");
-    const leaving = render([insult, insult, insult])!;
-    expect(leaving).toContain("End the conversation now, in one or two lines, as you would. Do not insult them back.");
+    expect(render(curts(3))).toContain("Your patience is thinning: they have been rude to you.");
+    expect(render(curts(15))).toContain("You are close to showing them out.");
+    // Spec §23.5: one insult, and the only reply is the goodbye.
+    const leaving = render([insult])!;
+    expect(leaving).toContain(
+      "The visitor has been disrespectful. Do not answer what they said or asked: end the conversation now, in one or two lines, as you would. Do not insult them back.",
+    );
     expect(leaving).not.toContain("close to showing them out");
   });
 
@@ -78,12 +83,10 @@ describe("renderConversationState", () => {
     );
   });
 
-  it("flags a sore point, a farewell, staying on, tiredness and winding down", () => {
+  it("flags a sore point, a farewell, tiredness and winding down", () => {
     expect(render([act({ sorePoint: true, language: "und" })])).toContain("This touches on something painful to you.");
     expect(render([act({ act: "farewell", language: "und" })])).toContain("The visitor is leaving. Say goodbye as you would.");
-    expect(render([act({ act: "farewell", language: "und" }), act({ language: "und" })])).toContain(
-      "The visitor said goodbye but has stayed on.",
-    );
+    expect(render([act({ act: "farewell", language: "und" }), act({ language: "und" })]) ?? "").not.toContain("stayed on");
     const q = act({ language: "und" });
     expect(render(Array.from({ length: 36 }, () => q))).toContain("You are getting tired; the visit has been long.");
     expect(render(Array.from({ length: 40 }, () => q))).toContain("Bring the visit to a close now, in your own way.");

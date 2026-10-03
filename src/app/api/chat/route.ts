@@ -26,7 +26,7 @@ function unavailable(err: unknown): Response {
 /**
  * One chat turn (spec §16.2, §18). Validates first, so rejections get real HTTP statuses, then
  * streams newline-delimited JSON events, starting with the classifier's act for a turn (spec
- * §18.2). A persona that left in offense refuses any further turn with 409 (spec §18.5), before
+ * §18.2). A visit that has ended (any ending, spec §23) refuses any further turn with 409, before
  * any dependency or model call. The visitor always speaks first: there is no arrival turn
  * (spec §18.5, revised 2026-09-29). Stateless: the browser sends the
  * history. Closing the tab or pressing Stop aborts request.signal, which stops the agent and its
@@ -45,8 +45,9 @@ export async function POST(request: Request) {
   const parsed = parseChatRequest(body);
   if (!parsed.ok) return invalid(parsed.error);
   const { personaId, messages, acts, languageMode } = parsed.value;
-  // Spec §18.5: a persona that left in offense takes no more turns in this conversation.
-  if (foldVisit(acts).left) {
+  // Spec §23: every ending is final. Best effort until conversations live server side (Phase 2b):
+  // the acts come from the browser.
+  if (foldVisit(acts).closed) {
     return Response.json({ error: "The persona has ended this conversation.", code: "conversation_ended" }, { status: 409 });
   }
 

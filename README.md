@@ -1,4 +1,4 @@
-# Persona Chatbot
+# Do the deads dance
 
 A chatbot where you talk with a historical person, who answers in the first person
 from a RAG over their Wikipedia biography. Five science and engineering pioneers
@@ -58,8 +58,9 @@ Needs Node 22 and a Docker engine with `docker-compose`.
 
 ```bash
 cp .env.example .env        # then fill in OPENROUTER_API_KEY
-make db-up                  # Postgres 17 + pgvector on localhost:5432
+make db-up                  # Postgres 17 + pgvector on localhost:5433
 make db-setup               # apply db/schema.sql (safe to rerun)
+make db-seed                # optional: load seed personas + chunks instead of ingesting (replaces existing personas)
 make ingest                 # embed the curated personas; unchanged ones are skipped
 make                        # dev server on http://localhost:3000
 ```
@@ -71,7 +72,7 @@ Embeddings go through OpenRouter too (LangChain `OpenAIEmbeddings`,
 fetches the latest Wikipedia revisions. Without `--refresh`, a persona is only
 re-embedded when the model or chunk settings change, from its stored text.
 
-If port 5432 is already taken by a local Postgres, change the host port in
+If port 5433 is already taken, change the host port in
 `docker-compose.yml` and in `DATABASE_URL`.
 
 ## Make targets

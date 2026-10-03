@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { applySchema } from "../../corpus/schema";
 
 const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ?? "postgres://persona:persona@localhost:5432/persona_test";
+  process.env.TEST_DATABASE_URL ?? "postgres://persona:persona@localhost:5433/persona_test";
 
 export default async function setup() {
   const target = new URL(TEST_DATABASE_URL);

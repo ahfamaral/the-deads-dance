@@ -12,6 +12,8 @@ export const VISIT_RULES = {
   max: 5,
   leaveAt: -3,
   leaveStreak: 2,
+  /** Spec §23.5: an offense this high ends the visit at once: one exit reply, then closed. */
+  leaveOnOffense: 2,
   tiredFrom: 36,
   windDownAt: 40,
 } as const;
@@ -26,7 +28,6 @@ export type Visit = {
   /** The latest turn is the one where the persona leaves: its reply is the exit line. */
   leavingNow: boolean;
   farewell: boolean;
-  afterFarewell: boolean;
   tired: boolean;
   windDown: boolean;
   sorePoint: boolean;
@@ -37,6 +38,8 @@ export type Visit = {
   language: string | null;
   /** The ending this turn's reply carries; offended beats tired beats farewell. */
   ended: VisitEnding | null;
+  /** An earlier turn already ended the visit (spec §23.1): no further turn is allowed. */
+  closed: boolean;
 };
 
 const clamp = (n: number) => Math.min(VISIT_RULES.max, Math.max(VISIT_RULES.min, n));
@@ -67,10 +70,11 @@ export function foldVisit(acts: (VisitorAct | null)[]): Visit {
     if (a.act === "apology" && patience < 0) patience += r.apology;
     patience = clamp(patience);
     streak = patience <= r.leaveAt ? streak + 1 : 0;
-    if (!left && (a.offense === 3 || streak >= r.leaveStreak)) {
+    // Spec §23.5: insulting, mocking or abusive wording (any act, a greeting included) ends the visit at once.
+    if (!left && (a.offense >= r.leaveOnOffense || streak >= r.leaveStreak)) {
       left = true;
       leavingNow = last;
-      if (a.offense === 3) patience = r.min;
+      if (a.offense >= r.leaveOnOffense) patience = r.min;
     }
     if (a.visitorName) visitorName = a.visitorName;
     if (a.language !== "und") language = a.language;
@@ -82,6 +86,8 @@ export function foldVisit(acts: (VisitorAct | null)[]): Visit {
   const farewell = lastAct?.act === "farewell";
   const windDown = turns === r.windDownAt;
   const ended = leavingNow ? "offended" : windDown ? "tired" : farewell ? "farewell" : null;
+  // Spec §23: every ending is final. Folded over the earlier turns' acts, any of them closes the visit.
+  const closed = left || acts.some((a) => a?.act === "farewell") || turns >= r.windDownAt;
   const current = latest;
   return {
     patience,
@@ -89,7 +95,6 @@ export function foldVisit(acts: (VisitorAct | null)[]): Visit {
     left,
     leavingNow,
     farewell,
-    afterFarewell: acts.at(-2)?.act === "farewell" && !farewell,
     tired: turns >= r.tiredFrom,
     windDown,
     sorePoint: lastAct?.sorePoint ?? false,
@@ -98,10 +103,11 @@ export function foldVisit(acts: (VisitorAct | null)[]): Visit {
     wants: current?.wants ?? null,
     language,
     ended,
+    closed,
   };
 }
 
-/** A conversation the persona left in offense is closed for good (spec §18.5). */
-export function isHardEnded(messages: { ended?: VisitEnding }[]): boolean {
-  return messages.some((m) => m.ended === "offended");
+/** Spec §23: every ending is final, so a conversation with any ending is closed. */
+export function isEnded(messages: { ended?: VisitEnding }[]): boolean {
+  return messages.some((m) => m.ended !== undefined);
 }

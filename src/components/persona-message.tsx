@@ -34,7 +34,7 @@ export default function PersonaMessage({ personaName, message, streaming = false
         </p>
       )}
       {line && text && <p className="animate-pulse text-xs text-neutral-500">{line}</p>}
-      {(message.ended === "farewell" || message.ended === "tired") && (
+      {message.ended && (
         <p className="text-xs italic text-neutral-500">The visit has ended.</p>
       )}
       {sources.length > 0 && (

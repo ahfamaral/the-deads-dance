@@ -47,3 +47,6 @@ next-env.d.ts
 
 # docs
 docs/
+
+# seed dumps (large, shared outside git)
+db/seed_personas_chunks_*.sql

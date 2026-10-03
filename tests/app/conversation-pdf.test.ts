@@ -124,6 +124,18 @@ describe("renderConversationPdf", () => {
     expect(allText(pages)).not.toContain("Sources:");
   });
 
+  it("marks the end of the visit for every ending", () => {
+    for (const ended of ["farewell", "tired", "offended"] as const) {
+      const { pages } = render(
+        conversation([
+          { id: "m1", role: "user", text: "Goodbye." },
+          { id: "m2", role: "persona", text: "Farewell.", ended },
+        ]),
+      );
+      expect(allText(pages)).toContain("The visit has ended.");
+    }
+  });
+
   it("produces a PDF file", () => {
     const { doc } = render(conversation([{ id: "m", role: "user", text: "Hi" }]));
     const bytes = new Uint8Array(doc.output("arraybuffer"));

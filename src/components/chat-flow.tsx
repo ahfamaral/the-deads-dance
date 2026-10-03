@@ -135,6 +135,17 @@ export default function ChatFlow({ initialPersonas, personasUnavailable }: ChatF
       initiallySaved={step.saved}
       readOnly={step.backTo === "history"}
       onBack={() => setStep(step.backTo === "history" ? { name: "history" } : { name: "select" })}
+      onNewVisit={() =>
+        setStep({
+          name: "chat",
+          conversationId: crypto.randomUUID(),
+          personaId: step.personaId,
+          personaName: step.personaName,
+          messages: [],
+          backTo: "select",
+          saved: false,
+        })
+      }
     />
   );
 }

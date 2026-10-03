@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Persona Chatbot",
+  title: "Do the deads dance",
   description: "Ask a science or engineering pioneer, in their own voice.",
 };
 

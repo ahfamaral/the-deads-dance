@@ -15,9 +15,15 @@ import {
 import type { LanguageMode, Message } from "@/lib/chat-types";
 import { saveConversation } from "@/lib/conversation-store";
 import { loadLanguageMode, saveLanguageMode } from "@/lib/language-mode";
-import { foldVisit, isHardEnded } from "@/lib/visit";
+import { shouldWarnBeforeLeaving, showEndBar } from "@/lib/leave-guard";
+import { foldVisit, isEnded } from "@/lib/visit";
 
 type SaveStatus = "idle" | "saved" | "error";
+
+// On phones the buttons share one row: same height, same width, no wrapping, smaller text.
+const END_BAR_BUTTON = "min-h-11 flex-1 whitespace-nowrap rounded-full px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] sm:flex-none sm:px-4 sm:text-sm";
+const END_BAR_PRIMARY = `${END_BAR_BUTTON} bg-neutral-100 font-medium text-neutral-900 transition-colors hover:bg-white`;
+const END_BAR_SECONDARY = `${END_BAR_BUTTON} border border-white/15 text-neutral-200 transition-colors hover:bg-white/10`;
 
 type ChatSessionProps = {
   conversationId: string;
@@ -29,6 +35,8 @@ type ChatSessionProps = {
   /** Spec §22: reopened from history, so it is shown as saved and can't be continued. */
   readOnly?: boolean;
   onBack: () => void;
+  /** Spec §23.2: a fresh conversation with the same persona, offered once the visit has ended. */
+  onNewVisit: () => void;
 };
 
 /**
@@ -43,6 +51,7 @@ export default function ChatSession({
   initiallySaved,
   readOnly = false,
   onBack,
+  onNewVisit,
 }: ChatSessionProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [turn, setTurn] = useState<TurnState | null>(null);
@@ -53,13 +62,15 @@ export default function ChatSession({
   const [languageMode, setLanguageMode] = useState<LanguageMode>(loadLanguageMode);
   const [refused, setRefused] = useState(false);
   const [confirmingSave, setConfirmingSave] = useState(false);
+  // Where the visitor was heading when the unsaved-ended dialog opened.
+  const [leaving, setLeaving] = useState<null | (() => void)>(null);
   const abortRef = useRef<AbortController | null>(null);
-  // Spec §18.5: closed for good once the persona has left, even when the exit line never arrived
-  // (a 409 from another tab, or Stop pressed on the exit turn): the stored acts still fold to `left`.
+  // Spec §23: every ending is final, even when the exit line never arrived (a 409 from another tab,
+  // or Stop pressed on the exit turn): the stored acts still fold to `closed`.
   const ended =
     refused ||
-    isHardEnded(messages) ||
-    foldVisit(messages.filter((m) => m.role === "user").map((m) => m.act ?? null)).left;
+    isEnded(messages) ||
+    foldVisit(messages.filter((m) => m.role === "user").map((m) => m.act ?? null)).closed;
 
   // Leaving the chat (Back) cancels a reply that is still streaming.
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -139,6 +150,25 @@ export default function ChatSession({
     if (ok) onBack();
   }
 
+  /** Spec §23.2: an ended visit saves in place. There's nothing left to end, so no confirm. */
+  function saveInPlace(): boolean {
+    const ok = saveConversation({
+      id: conversationId,
+      personaId,
+      personaName,
+      savedAt: new Date().toISOString(),
+      messages,
+    });
+    setSaveStatus(ok ? "saved" : "error");
+    return ok;
+  }
+
+  /** Leaves now, or first asks about an ended visit that isn't saved. */
+  function leave(go: () => void) {
+    if (shouldWarnBeforeLeaving({ ended, saveStatus, readOnly })) setLeaving(() => go);
+    else go();
+  }
+
   // Re-send the same history, which ends with the user's message.
   const retry = () => {
     if (!readOnly) void run(messages);
@@ -153,25 +183,39 @@ export default function ChatSession({
         turnError={turnError}
         onRetry={turnError?.retryable && !turn && !readOnly ? retry : undefined}
         toolsUnavailable={toolsUnavailable}
-        onBack={onBack}
-        onSave={turn || readOnly ? undefined : () => setConfirmingSave(true)}
+        onBack={() => leave(onBack)}
+        onSave={turn || readOnly ? undefined : ended ? () => void saveInPlace() : () => setConfirmingSave(true)}
         saveStatus={saveStatus}
         languageMode={languageMode}
         onLanguageModeChange={changeLanguageMode}
       />
-      {ended ? (
+      {showEndBar({ ended, streaming: turn !== null }) ? (
         <div
           role="status"
-          className="flex w-full max-w-3xl items-center justify-between gap-3 rounded-3xl border border-white/10 bg-neutral-900/80 px-5 py-3 text-sm text-neutral-300 shadow-lg shadow-black/40 backdrop-blur-md"
+          className="flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/10 bg-neutral-900/80 px-5 py-3 text-sm text-neutral-300 shadow-lg shadow-black/40 backdrop-blur-md"
         >
-          <span>{personaName} has ended the conversation.</span>
-          <button
-            type="button"
-            onClick={onBack}
-            className="rounded-full bg-neutral-100 px-4 py-1.5 font-medium text-neutral-900 transition-colors hover:bg-white"
-          >
-            {readOnly ? "Back to history" : "Back to personas"}
-          </button>
+          <span>{personaName} has ended the visit.</span>
+          <div className="flex w-full gap-1.5 sm:w-auto sm:gap-2">
+            {readOnly ? (
+              <button type="button" onClick={onBack} className={END_BAR_PRIMARY}>
+                Back to history
+              </button>
+            ) : (
+              <>
+                <button type="button" onClick={() => leave(onNewVisit)} className={END_BAR_PRIMARY}>
+                  Start a new visit
+                </button>
+                {saveStatus !== "saved" && (
+                  <button type="button" onClick={() => void saveInPlace()} className={END_BAR_SECONDARY}>
+                    Save
+                  </button>
+                )}
+                <button type="button" onClick={() => leave(onBack)} className={END_BAR_SECONDARY}>
+                  Back to personas
+                </button>
+              </>
+            )}
+          </div>
         </div>
       ) : readOnly ? null : (
         <ChatInput onSend={send} onStop={() => abortRef.current?.abort()} streaming={turn !== null} />
@@ -182,6 +226,25 @@ export default function ChatSession({
         message={`Saving will end your conversation with ${personaName}.`}
         onConfirm={saveAndEnd}
         onCancel={() => setConfirmingSave(false)}
+      />
+      <ConfirmDialog
+        open={leaving !== null}
+        title={`Your conversation with ${personaName} isn't saved.`}
+        message="Save it to keep it in your history."
+        confirmLabel="Save and leave"
+        secondaryLabel="Leave without saving"
+        onConfirm={() => {
+          const go = leaving;
+          setLeaving(null);
+          // A failed save stays here: the header shows the error, and nothing is lost.
+          if (saveInPlace()) go?.();
+        }}
+        onSecondary={() => {
+          const go = leaving;
+          setLeaving(null);
+          go?.();
+        }}
+        onCancel={() => setLeaving(null)}
       />
     </>
   );

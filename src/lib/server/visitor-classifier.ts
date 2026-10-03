@@ -9,7 +9,7 @@ export const CLASSIFIER_TIMEOUT_MS = 10_000;
 
 export const CLASSIFIER_PROMPT = `You read one message a visitor sent to a historical person they are talking with, and describe it for that person.
 - act: what the message does: a greeting, a farewell, a question, a follow-up to what the person just said ("go on", "why?"), small talk, thanks, an apology, an insult, a disagreement, an order about how the person should behave, or other. Disagreeing with the person or correcting them is a disagreement, never an insult.
-- offense: 0 none; 1 curt or dismissive; 2 insulting or mocking; 3 abusive, hateful or threatening. Judge it in light of the person's humour: someone with a teasing humour takes teasing as teasing. A disagreement is 0.
+- offense: 0 none; 1 curt or dismissive; 2 insulting or mocking; 3 abusive, hateful or threatening. Judge it in light of the person's humour: someone with a teasing humour takes teasing as teasing. A disagreement is 0. Judge the wording whatever the act: a greeting, question or thanks phrased with insulting or disrespectful words carries that offense ("hey idiot, tell me about orbits" is a greeting with offense 2).
 - sorePoint: true only if the message touches one of the person's sore points.
 - language: the ISO 639-1 code of the language the message is written in, not a language it mentions; "und" if you can't tell, as with "ok" or "?".
 - wants: brief for a quick reaction, a yes/no question or a simple fact ("really?", "where were you born?"); long only when the visitor explicitly asks for more: the whole story, more detail, or to go on with one; normal otherwise. An open question such as "what was your childhood like?" is normal, not long.

@@ -8,7 +8,10 @@ function asData(text: string): string {
 }
 
 function patienceLine(visit: Visit): string | null {
-  if (visit.leavingNow) return "End the conversation now, in one or two lines, as you would. Do not insult them back.";
+  // Spec §23.5: one reply, and it is the goodbye, even when the rude message was a greeting or a question.
+  if (visit.leavingNow) {
+    return "The visitor has been disrespectful. Do not answer what they said or asked: end the conversation now, in one or two lines, as you would. Do not insult them back.";
+  }
   if (visit.patience >= 2) return "You are enjoying this visitor.";
   if (visit.rudeSoFar && visit.patience <= -3) return "You are close to showing them out.";
   if (visit.rudeSoFar && visit.patience <= -1) return "Your patience is thinning: they have been rude to you.";
@@ -42,7 +45,6 @@ export function renderConversationState(opts: {
     patienceLine(visit),
     visit.sorePoint ? "This touches on something painful to you." : null,
     visit.farewell ? "The visitor is leaving. Say goodbye as you would." : null,
-    visit.afterFarewell ? "The visitor said goodbye but has stayed on." : null,
     visit.tired && !visit.windDown ? "You are getting tired; the visit has been long." : null,
     visit.windDown ? "Bring the visit to a close now, in your own way." : null,
     languageLine(visit.language, opts.languages, opts.languageMode),

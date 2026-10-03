@@ -1,4 +1,4 @@
-# Persona Chatbot — common tasks.
+# Do the deads dance — common tasks.
 # `make` starts the dev server; `make help` lists everything.
 
 NPM  := npm
@@ -11,7 +11,7 @@ export NEXT_TELEMETRY_DISABLED := 1
 
 .DEFAULT_GOAL := dev
 
-.PHONY: help install dev build start lint typecheck check clean distclean db-up db-setup ingest test
+.PHONY: help install dev build start lint typecheck check clean distclean db-up db-setup db-seed ingest test
 
 help: ## List available targets
 	@awk 'BEGIN{FS=":.*?## "} /^[a-zA-Z_-]+:.*?## /{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -48,6 +48,15 @@ db-up: ## Start Postgres + pgvector in Docker
 
 db-setup: node_modules ## Apply db/schema.sql (idempotent)
 	$(NPM) run db:setup
+
+# A pg_dump with \restrict lines, so it runs through psql inside the container, not the app's Node client.
+SEED ?= db/seed_personas_chunks_v1.sql
+
+db-seed: db-setup ## Load the seed personas + chunks (REPLACES existing personas)
+	@test -f $(SEED) || { echo "No seed file at $(SEED). Ask for it, or set SEED=path."; exit 1; }
+	@echo "Loading $(SEED): this replaces every persona and chunk in the database."
+	docker-compose exec -T db psql -U persona -d persona -q -v ON_ERROR_STOP=1 < $(SEED) > /dev/null
+	@docker-compose exec -T db psql -U persona -d persona -tAc "SELECT count(*) || ' personas, ' || (SELECT count(*) FROM chunks) || ' chunks loaded.' FROM personas"
 
 ingest: node_modules ## Embed the curated personas (skips unchanged ones)
 	$(NPM) run ingest

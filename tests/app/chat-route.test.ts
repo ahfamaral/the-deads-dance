@@ -290,7 +290,8 @@ describe("POST /api/chat: behaviour (spec §18)", () => {
 
   it("marks the reply that ends the visit in offense", async () => {
     setDeps({ classifyVisitor: classifyFake(insult), model: fakeModel().respond(new AIMessage("Good day.")) });
-    const all = await events(await post({ ...ask("You're a fraud."), acts: [insult, insult] }));
+    // Spec §23.5: the first insult ends the visit.
+    const all = await events(await post({ ...ask("You're a fraud."), acts: [ACT] }));
     expect(all.at(-1)).toMatchObject({ type: "done", message: { text: "Good day.", ended: "offended" } });
   });
 
@@ -301,6 +302,27 @@ describe("POST /api/chat: behaviour (spec §18)", () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "The persona has ended this conversation.", code: "conversation_ended" });
     expect(classify).not.toHaveBeenCalled();
+  });
+
+  it("refuses a turn after a farewell, without calling the model", async () => {
+    const classify = classifyFake();
+    setDeps({ classifyVisitor: classify });
+    const farewell: VisitorAct = { ...ACT, act: "farewell" };
+    const res = await post({ ...ask("One more thing!"), acts: [ACT, farewell] });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "The persona has ended this conversation.", code: "conversation_ended" });
+    expect(classify).not.toHaveBeenCalled();
+  });
+
+  it("refuses a turn after the wind-down turn, but allows the wind-down turn itself", async () => {
+    const classify = classifyFake();
+    setDeps({ classifyVisitor: classify, model: fakeModel().respond(new AIMessage("I must rest now.")) });
+    const lastAllowed = await post({ ...ask(), acts: Array.from({ length: 39 }, () => ACT) });
+    expect(lastAllowed.status).toBe(200);
+    expect((await events(lastAllowed)).at(-1)).toMatchObject({ type: "done", message: { ended: "tired" } });
+
+    const refused = await post({ ...ask(), acts: Array.from({ length: 40 }, () => ACT) });
+    expect(refused.status).toBe(409);
   });
 
   // Spec §18.5 (revised 2026-09-29): the persona never speaks first.

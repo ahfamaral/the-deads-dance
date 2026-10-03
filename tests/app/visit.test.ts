@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { foldVisit, isHardEnded, VISIT_RULES } from "@/lib/visit";
+import { foldVisit, isEnded, VISIT_RULES } from "@/lib/visit";
 import type { VisitorAct } from "@/lib/visitor-act";
 
 const act = (over: Partial<VisitorAct> = {}): VisitorAct => ({
@@ -12,7 +12,9 @@ const act = (over: Partial<VisitorAct> = {}): VisitorAct => ({
   ...over,
 });
 const insult = act({ act: "insult", offense: 2 });
+const curt = act({ act: "question", offense: 1 });
 const questions = (n: number) => Array.from({ length: n }, () => act());
+const curts = (n: number) => Array.from({ length: n }, () => curt);
 
 describe("foldVisit", () => {
   it("starts neutral", () => {
@@ -20,16 +22,25 @@ describe("foldVisit", () => {
   });
 
   it("drifts back toward neutral", () => {
-    const v = foldVisit([insult, act()]);
-    expect(v.patience).toBeCloseTo(-2 * 0.85);
+    const v = foldVisit([curt, act()]);
+    expect(v.patience).toBeCloseTo(-0.5 * 0.85);
   });
 
-  it("leaves on the third insult in a row, and only that turn is the exit line", () => {
-    expect(foldVisit([insult, insult])).toMatchObject({ left: false });
-    const third = foldVisit([insult, insult, insult]);
-    expect(third).toMatchObject({ left: true, leavingNow: true, ended: "offended" });
-    expect(third.patience).toBe(VISIT_RULES.min);
-    expect(foldVisit([insult, insult, insult, act()])).toMatchObject({ left: true, leavingNow: false });
+  // Spec §23.5: offense 2+ ends the visit at once, whatever the act.
+  it("leaves on the first insult, and only that turn is the exit line", () => {
+    const first = foldVisit([act(), insult]);
+    expect(first).toMatchObject({ left: true, leavingNow: true, ended: "offended", closed: true });
+    expect(first.patience).toBe(VISIT_RULES.min);
+    expect(foldVisit([insult, act()])).toMatchObject({ left: true, leavingNow: false, closed: true });
+  });
+
+  it("leaves on a greeting phrased as an insult", () => {
+    expect(foldVisit([act({ act: "greeting", offense: 2 })])).toMatchObject({ left: true, leavingNow: true, ended: "offended" });
+  });
+
+  it("only charges patience for curt messages, until a long run of them", () => {
+    expect(foldVisit(curts(5))).toMatchObject({ left: false, rudeSoFar: true });
+    expect(foldVisit(curts(30)).left).toBe(true);
   });
 
   it("leaves at once on abuse", () => {
@@ -37,8 +48,9 @@ describe("foldVisit", () => {
   });
 
   it("lets an apology repair patience before the second low turn", () => {
-    const v = foldVisit([insult, insult, act({ act: "apology" }), insult]);
-    expect(v.left).toBe(false);
+    // 15 curt turns reach the leave threshold once; a 16th would make it twice in a row.
+    expect(foldVisit([...curts(15), curt]).left).toBe(true);
+    expect(foldVisit([...curts(15), act({ act: "apology" }), curt]).left).toBe(false);
   });
 
   it("only counts an apology when patience is negative", () => {
@@ -48,7 +60,7 @@ describe("foldVisit", () => {
   it("charges nothing for disagreement, and a sore point only on top of an offense", () => {
     expect(foldVisit([act({ act: "disagreement" })]).patience).toBe(0);
     expect(foldVisit([act({ act: "disagreement", sorePoint: true })])).toMatchObject({ patience: 0, sorePoint: true, rudeSoFar: false });
-    expect(foldVisit([act({ act: "insult", offense: 2, sorePoint: true })])).toMatchObject({ patience: -3, sorePoint: true, rudeSoFar: true });
+    expect(foldVisit([act({ offense: 1, sorePoint: true })])).toMatchObject({ patience: -1.5, sorePoint: true, rudeSoFar: true });
   });
 
   it("five polite sore-point questions never leave", () => {
@@ -73,15 +85,28 @@ describe("foldVisit", () => {
     expect(foldVisit(questions(41))).toMatchObject({ windDown: false, tired: true, ended: null });
   });
 
-  it("marks a farewell and a visitor who stays on", () => {
+  it("marks the farewell turn as the ending", () => {
     expect(foldVisit([act(), act({ act: "farewell" })])).toMatchObject({ farewell: true, ended: "farewell" });
-    expect(foldVisit([act({ act: "farewell" }), act()])).toMatchObject({ farewell: false, afterFarewell: true, ended: null });
   });
 
-  it("marks staying on only on the turn right after the farewell", () => {
-    expect(foldVisit([act({ act: "farewell" }), act(), act()]).afterFarewell).toBe(false);
-    expect(foldVisit([act({ act: "farewell" }), act({ act: "farewell" })]).afterFarewell).toBe(false);
-    expect(foldVisit([act({ act: "farewell" }), null]).afterFarewell).toBe(true);
+  it("is closed once an earlier act ended the visit", () => {
+    expect(foldVisit([]).closed).toBe(false);
+    expect(foldVisit([act(), act()]).closed).toBe(false);
+    // Folding the earlier acts: a farewell anywhere closes the visit, even when acts follow it.
+    expect(foldVisit([act({ act: "farewell" })]).closed).toBe(true);
+    expect(foldVisit([act({ act: "farewell" }), act(), act()]).closed).toBe(true);
+    expect(foldVisit([insult, insult, insult]).closed).toBe(true);
+    expect(foldVisit([act({ act: "insult", offense: 3 })]).closed).toBe(true);
+  });
+
+  it("closes after the wind-down turn, not before", () => {
+    expect(foldVisit(questions(VISIT_RULES.windDownAt - 1)).closed).toBe(false);
+    expect(foldVisit(questions(VISIT_RULES.windDownAt)).closed).toBe(true);
+  });
+
+  it("never closes on a null act", () => {
+    expect(foldVisit([null, null]).closed).toBe(false);
+    expect(foldVisit(Array.from({ length: 5 }, () => null)).closed).toBe(false);
   });
 
   it("lets offended beat tired, and tired beat farewell", () => {
@@ -106,9 +131,11 @@ describe("foldVisit", () => {
   });
 });
 
-describe("isHardEnded", () => {
-  it("is true only when a message carries the offended ending", () => {
-    expect(isHardEnded([{}, { ended: "farewell" }])).toBe(false);
-    expect(isHardEnded([{}, { ended: "offended" }])).toBe(true);
+describe("isEnded", () => {
+  it("is true when any message carries an ending", () => {
+    expect(isEnded([{}, {}])).toBe(false);
+    expect(isEnded([{}, { ended: "farewell" }])).toBe(true);
+    expect(isEnded([{}, { ended: "tired" }])).toBe(true);
+    expect(isEnded([{}, { ended: "offended" }])).toBe(true);
   });
 });

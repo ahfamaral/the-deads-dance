@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import ChatSession from "@/components/chat-session";
 import ConversationHistory from "@/components/conversation-history";
 import PersonaPicker from "@/components/persona-picker";
+import SignOutButton from "@/components/sign-out-button";
 import type { Message } from "@/lib/chat-types";
 import type { SavedConversation } from "@/lib/conversation-store";
 import type { Persona } from "@/lib/personas";
@@ -31,9 +33,11 @@ type Step =
 type ChatFlowProps = {
   initialPersonas: Persona[];
   personasUnavailable: boolean;
+  email: string;
+  isAdmin: boolean;
 };
 
-export default function ChatFlow({ initialPersonas, personasUnavailable }: ChatFlowProps) {
+export default function ChatFlow({ initialPersonas, personasUnavailable, email, isAdmin }: ChatFlowProps) {
   const [step, setStep] = useState<Step>({ name: "start" });
   // Held here rather than in the picker so changes survive a trip to the chat and back.
   const [personas, setPersonas] = useState<Persona[]>(initialPersonas);
@@ -78,6 +82,17 @@ export default function ChatFlow({ initialPersonas, personasUnavailable }: ChatF
           >
             History of conversations
           </button>
+          {isAdmin && (
+            <Link href="/admin" className={`${menuButton} text-center text-neutral-300`}>
+              Admin
+            </Link>
+          )}
+          {/* One line, same height: the email shrinks (truncates) and Sign out keeps its size. */}
+          <p className="mt-1 flex items-center justify-center gap-2 text-[length:clamp(10px,2.9vw,12px)] text-neutral-500">
+            <span className="min-w-0 truncate" title={email}>{email}</span>
+            <span aria-hidden="true">·</span>
+            <SignOutButton className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap px-1 underline underline-offset-2 hover:text-neutral-300" />
+          </p>
         </nav>
       </div>
     );
@@ -106,6 +121,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable }: ChatF
     return (
       <PersonaPicker
         personas={personas}
+        canManage={isAdmin}
         notice={pickerNotice}
         onConfirm={(persona) =>
           setStep({

@@ -6,7 +6,9 @@ import { readNdjson } from "@/lib/ndjson";
 import type { ChatDeps } from "@/lib/server/chat-deps";
 import type { ClassifyVisitor } from "@/lib/server/visitor-classifier";
 import type { VisitorAct } from "@/lib/visitor-act";
-import { insertPersona, resetDb } from "../helpers/db";
+import { getAuth } from "@/lib/server/auth";
+import { signInAs } from "../helpers/auth";
+import { insertPersona, resetAuth, resetDb } from "../helpers/db";
 import { fakeMcpTool } from "../helpers/fake-mcp-tool";
 
 const deps = vi.hoisted(() => ({ current: null as unknown }));
@@ -19,11 +21,13 @@ vi.mock("@/lib/server/chat-deps", () => ({
 
 const { POST } = await import("@/app/api/chat/route");
 
+let cookie = "";
+
 const post = (body: unknown) =>
   POST(
     new Request("http://localhost/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", cookie },
       body: JSON.stringify(body),
     }),
   );
@@ -65,12 +69,48 @@ function setDeps(overrides: Partial<ChatDeps> = {}) {
 
 beforeEach(async () => {
   await resetDb();
+  await resetAuth();
+  ({ cookie } = await signInAs("tester@example.com", { status: "approved" }));
   await insertPersona({ slug: "wu", displayName: "Chien-Shiung Wu" });
   setDeps();
 });
 afterAll(() => closePool());
 
 describe("POST /api/chat", () => {
+  it("refuses an anonymous visitor with 401 before reading the body", async () => {
+    const classify = classifyFake();
+    setDeps({ classifyVisitor: classify });
+    const res = await POST(new Request("http://localhost/api/chat", { method: "POST", body: "not json" }));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "unauthenticated" });
+    expect(classify).not.toHaveBeenCalled();
+  });
+
+  it("answers 503 unavailable when the session lookup fails (database down)", async () => {
+    const spy = vi.spyOn(getAuth().api, "getSession").mockRejectedValueOnce(new Error("connect ECONNREFUSED 127.0.0.1:5433"));
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await post(ask());
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ code: "unavailable" });
+    } finally {
+      spy.mockRestore();
+      quiet.mockRestore();
+    }
+  });
+
+  it("refuses a pending user with 403", async () => {
+    const pending = await signInAs("waiting@example.com", { status: "pending" });
+    const res = await POST(
+      new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", cookie: pending.cookie },
+        body: JSON.stringify(ask()),
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
   it("streams the tool call, the answer, then the message with its sources", async () => {
     const search = setDeps();
     const res = await post(ask());
@@ -176,10 +216,10 @@ describe("POST /api/chat", () => {
 
   it("rejects malformed JSON with 400 and a missing JSON content type with 415", async () => {
     const malformed = await POST(
-      new Request("http://localhost/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" }),
+      new Request("http://localhost/api/chat", { method: "POST", headers: { "Content-Type": "application/json", cookie }, body: "{" }),
     );
     expect(malformed.status).toBe(400);
-    const plain = await POST(new Request("http://localhost/api/chat", { method: "POST", body: "hi" }));
+    const plain = await POST(new Request("http://localhost/api/chat", { method: "POST", headers: { cookie }, body: "hi" }));
     expect(plain.status).toBe(415);
   });
 

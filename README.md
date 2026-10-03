@@ -75,6 +75,20 @@ re-embedded when the model or chunk settings change, from its stored text.
 If port 5433 is already taken, change the host port in
 `docker-compose.yml` and in `DATABASE_URL`.
 
+## Accounts (staging)
+
+Sign-in is by emailed code (one-time password). Only approved users can chat; sign up creates a pending account.
+
+To become the admin, run `npm run admin:grant -- you@example.com` once. Admin access is time-limited (3 days per session, sliding window); see the admin panel to approve or reject pending users, and to block approved accounts.
+
+In dev with `RESEND_API_KEY` empty, codes print to the server console instead of being mailed. Turnstile's test keys are in `.env.example` to protect `/email-otp/send-verification-otp`.
+
+Local dev needs the auth settings too: the server checks them at startup. Copy the four auth lines from `.env.example` (`BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`) into `.env` and fill in `BETTER_AUTH_SECRET` (e.g. `openssl rand -base64 32`). Resend and `AUTH_IP_HEADER` stay optional in dev.
+
+In production (`npm run start`), every auth variable is required, or the server exits at startup: the four above plus `RESEND_API_KEY`, `EMAIL_FROM` and `AUTH_IP_HEADER`.
+
+`AUTH_IP_HEADER` names the header your proxy sets to the real client IP (e.g. `cf-connecting-ip` for Cloudflare, `x-real-ip` for nginx). It is required in production: without it, clients could spoof `x-forwarded-for` to dodge the rate limits, or everyone would share one bucket.
+
 ## Make targets
 
 | Target | Does |

@@ -19,7 +19,13 @@ export default defineConfig({
     globalSetup: live ? [] : ["tests/setup/global-setup.ts"],
     // Test files share one database, so they must not run concurrently.
     fileParallelism: false,
-    env: { DATABASE_URL: TEST_DATABASE_URL },
+    env: {
+      DATABASE_URL: TEST_DATABASE_URL,
+      BETTER_AUTH_SECRET: "test-secret-test-secret-test-secret-0000",
+      BETTER_AUTH_URL: "http://localhost:3000",
+      TURNSTILE_SECRET_KEY: "test-turnstile-secret",
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "test-turnstile-site",
+    },
     testTimeout: 20_000,
   },
 });

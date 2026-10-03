@@ -7,6 +7,7 @@ import { useScrollFade } from "@/lib/use-scroll-fade";
 
 type PersonaPickerProps = {
   personas: Persona[];
+  canManage: boolean;
   notice: string | null;
   onConfirm: (persona: Persona) => void;
   onDelete: (persona: Persona) => void;
@@ -22,7 +23,7 @@ type PersonaPickerProps = {
  * persona from a Wikipedia title. Built-in personas show a disabled trash icon.
  * While a persona is being added, every other button in the panel is disabled.
  */
-export default function PersonaPicker({ personas, notice, onConfirm, onDelete, onAdd, onBack }: PersonaPickerProps) {
+export default function PersonaPicker({ personas, canManage, notice, onConfirm, onDelete, onAdd, onBack }: PersonaPickerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -70,6 +71,7 @@ export default function PersonaPicker({ personas, notice, onConfirm, onDelete, o
           >
             {configuring ? "Configure personas" : "Who would you like to talk to?"}
           </h2>
+          {canManage && (
           <button
             type="button"
             aria-label="Configure personas"
@@ -96,9 +98,11 @@ export default function PersonaPicker({ personas, notice, onConfirm, onDelete, o
               <circle cx="12" cy="12" r="3" />
             </svg>
           </button>
+          )}
         </div>
         {/* Space for the add button is always reserved, so configure mode
             never shifts the list; the button only fades in and out. */}
+        {canManage && (
         <div className="mb-2 flex h-8">
           <button
             type="button"
@@ -122,6 +126,7 @@ export default function PersonaPicker({ personas, notice, onConfirm, onDelete, o
             </svg>
           </button>
         </div>
+        )}
         {configuring && adding && (
           <AddPersonaForm
             onAdded={(persona) => {

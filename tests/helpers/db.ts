@@ -4,6 +4,11 @@ export async function resetDb(): Promise<void> {
   await getPool().query("TRUNCATE personas RESTART IDENTITY CASCADE");
 }
 
+/** Clears accounts, sessions, codes and rate-limit counters (spec §24). */
+export async function resetAuth(): Promise<void> {
+  await getPool().query(`TRUNCATE "user", "session", "account", "verification", "rateLimit", otp_send_log CASCADE`);
+}
+
 export type PersonaFixture = {
   slug: string;
   displayName?: string;

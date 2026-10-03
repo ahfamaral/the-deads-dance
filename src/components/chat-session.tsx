@@ -115,6 +115,9 @@ export default function ChatSession({
       if (controller.signal.aborted) {
         const partial = stoppedMessage(state);
         setMessages(partial ? [...withAct(history), partial] : withAct(history));
+      } else if (err instanceof ChatRequestError && (err.code === "unauthenticated" || err.code === "not_approved")) {
+        // Spec §24.5: signed out or blocked mid-chat; the page picks the right screen.
+        window.location.reload();
       } else if (err instanceof ChatRequestError && err.code === "conversation_ended") {
         setRefused(true);
       } else {

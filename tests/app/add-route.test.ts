@@ -3,7 +3,8 @@ import { closePool, getPool } from "@corpus/db";
 import type { AddPersonaEvent } from "@/lib/add-persona-events";
 import { readNdjson } from "@/lib/ndjson";
 import { FakeEmbeddings } from "../helpers/fake-embeddings";
-import { insertPersona, resetDb } from "../helpers/db";
+import { insertPersona, resetAuth, resetDb } from "../helpers/db";
+import { signInAs } from "../helpers/auth";
 import { article } from "../fixtures/articles";
 
 const deps = vi.hoisted(() => ({ current: null as unknown }));
@@ -16,11 +17,13 @@ vi.mock("@/lib/server/corpus-deps", () => ({
 
 const { POST } = await import("@/app/api/personas/route");
 
+let cookie = "";
+
 const post = (body: unknown) =>
   POST(
     new Request("http://localhost/api/personas", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", cookie },
       body: JSON.stringify(body),
     }),
   );
@@ -48,6 +51,8 @@ beforeEach(async () => {
       sore_points: "unknown",
     })),
   };
+  await resetAuth();
+  ({ cookie } = await signInAs("boss@example.com", { role: "admin" }));
 });
 afterAll(() => closePool());
 
@@ -68,6 +73,19 @@ describe("POST /api/personas", () => {
     });
   });
 
+  it("answers 404 to a non-admin, before ingesting anything", async () => {
+    const tester = await signInAs("t@example.com", { status: "approved" });
+    const res = await POST(
+      new Request("http://localhost/api/personas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", cookie: tester.cookie },
+        body: JSON.stringify({ wikipediaTitle: "Chien-Shiung Wu" }),
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect((deps.current as { fetchArticle: ReturnType<typeof vi.fn> }).fetchArticle).not.toHaveBeenCalled();
+  });
+
   it("rejects a missing title with 400 before streaming", async () => {
     const res = await post({});
     expect(res.status).toBe(400);
@@ -78,7 +96,7 @@ describe("POST /api/personas", () => {
     const res = await POST(
       new Request("http://localhost/api/personas", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", cookie },
         body: "{",
       }),
     );
@@ -89,6 +107,7 @@ describe("POST /api/personas", () => {
     const res = await POST(
       new Request("http://localhost/api/personas", {
         method: "POST",
+        headers: { cookie },
         body: JSON.stringify({ wikipediaTitle: "Chien-Shiung Wu" }),
       }),
     );

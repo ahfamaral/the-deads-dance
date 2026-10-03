@@ -1,6 +1,7 @@
 import { describeDbError } from "@corpus/db";
 import { findPersona, type PersonaRow } from "@corpus/personas";
 import type { ChatStreamEvent } from "@/lib/chat-types";
+import { requireApproved } from "@/lib/server/access";
 import { runTurn } from "@/lib/server/agent";
 import { chatDeps, type ChatDeps } from "@/lib/server/chat-deps";
 import { parseChatRequest, toAgentMessages } from "@/lib/server/chat-request";
@@ -33,6 +34,15 @@ function unavailable(err: unknown): Response {
  * model call.
  */
 export async function POST(request: Request) {
+  // Spec §24.5: approved users only, before reading the body or touching any dependency.
+  let user: Awaited<ReturnType<typeof requireApproved>>;
+  try {
+    user = await requireApproved(request);
+  } catch (err) {
+    return unavailable(err); // spec §24.9: the database is down
+  }
+  if (user instanceof Response) return user;
+
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().startsWith("application/json")) return invalid("Expected a JSON body.", 415);
 

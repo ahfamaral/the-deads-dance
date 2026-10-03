@@ -11,6 +11,7 @@ import { toSummary } from "@corpus/personas";
 import { WikipediaError } from "@corpus/wikipedia";
 import type { AddPersonaEvent } from "@/lib/add-persona-events";
 import { toPersona } from "@/lib/personas";
+import { requireAdmin } from "@/lib/server/access";
 import { corpusDeps } from "@/lib/server/corpus-deps";
 
 const STATUS: Record<AddPersonaErrorCode, number> = {
@@ -44,6 +45,15 @@ function unavailable(err: unknown): Response {
  * form, it still finishes, and the persona shows up on the next load (or ends 'failed').
  */
 export async function POST(request: Request) {
+  // Spec §24.5: adding a persona runs a costly ingest; admin only, hidden from everyone else.
+  let admin: Awaited<ReturnType<typeof requireAdmin>>;
+  try {
+    admin = await requireAdmin(request);
+  } catch (err) {
+    return unavailable(err); // spec §24.9: the database is down
+  }
+  if (admin instanceof Response) return admin;
+
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().startsWith("application/json")) {
     return Response.json({ error: "Expected a JSON body.", code: "invalid_title" }, { status: 415 });

@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import CodeInput from "@/components/code-input";
 import Turnstile from "@/components/turnstile";
 import { AUTH_CARD } from "@/lib/auth-card";
 import { authClient } from "@/lib/auth-client";
 import { signInErrorMessage } from "@/lib/sign-in-errors";
-import { SIGN_IN_STORAGE_KEY, cooldownLeft, parseSignInState, serializeSignInState } from "@/lib/sign-in-state";
+import { MAX_TRIES, SIGN_IN_STORAGE_KEY, cooldownLeft, parseSignInState, serializeSignInState } from "@/lib/sign-in-state";
 
 const RESEND_SECONDS = 60;
 const PRIMARY =
@@ -41,9 +41,11 @@ export default function SignIn({ siteKey }: { siteKey: string }) {
   const [widgetKey, setWidgetKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [triesLeft, setTriesLeft] = useState(5);
+  const [triesLeft, setTriesLeft] = useState(MAX_TRIES);
   const [sentAt, setSentAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // Set synchronously, unlike `busy`: a 7th keystroke before the re-render can't start a second check.
+  const verifying = useRef(false);
   const onToken = useCallback((t: string | null) => setToken(t), []);
   const cooldown = sentAt === null ? 0 : cooldownLeft(sentAt, now, RESEND_SECONDS);
 
@@ -55,6 +57,7 @@ export default function SignIn({ siteKey }: { siteKey: string }) {
     /* eslint-disable react-hooks/set-state-in-effect */
     setEmail(saved.email);
     setSentAt(saved.sentAt);
+    setTriesLeft(saved.triesLeft);
     setNow(Date.now());
     setStep("code");
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -80,18 +83,21 @@ export default function SignIn({ siteKey }: { siteKey: string }) {
     setWidgetKey((k) => k + 1); // a token is single-use
     if (e) return setError(signInErrorMessage(e));
     const at = Date.now();
-    writeStored(serializeSignInState(email.trim(), at));
+    writeStored(serializeSignInState(email.trim(), at, MAX_TRIES));
     setSentAt(at);
     setNow(at);
     setStep("code");
     setCode("");
-    setTriesLeft(5);
+    setTriesLeft(MAX_TRIES);
   }
 
   async function verify(otp: string) {
+    if (verifying.current) return;
+    verifying.current = true;
     setBusy(true);
     setError(null);
     const { error: e } = await authClient.signIn.emailOtp({ email: email.trim(), otp });
+    verifying.current = false;
     setBusy(false);
     if (!e) {
       writeStored(null);
@@ -102,8 +108,9 @@ export default function SignIn({ siteKey }: { siteKey: string }) {
       writeStored(null);
       return setStep("blocked");
     }
-    const left = e.code === "INVALID_OTP" ? triesLeft - 1 : triesLeft;
+    const left = e.code === "INVALID_OTP" ? Math.max(0, triesLeft - 1) : triesLeft;
     setTriesLeft(left);
+    if (sentAt !== null) writeStored(serializeSignInState(email.trim(), sentAt, left));
     setCode("");
     setError(signInErrorMessage(e, left));
   }

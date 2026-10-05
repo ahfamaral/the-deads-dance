@@ -11,6 +11,8 @@ const DAY = 86_400;
 export const USER_SESSION_SECONDS = 30 * DAY;
 export const ADMIN_SESSION_SECONDS = 3 * DAY;
 const SEND_PATH = "/email-otp/send-verification-otp";
+// Per-request auth contexts whose code email failed. Weak, so nothing outlives its request.
+const failedSends = new WeakSet<object>();
 
 /**
  * Spec §24.4. Better Auth's options in one place. The pool is the auth pool (see getAuth), so its
@@ -23,6 +25,9 @@ export function createAuth(opts: { pool: Pool; env: AuthEnv; siteVerifyURL?: str
     database: pool,
     secret: env.secret,
     baseURL: env.baseURL,
+    // Better Auth refreshes when expiresAt - expiresIn + updateAge has passed. expiresIn is the user
+    // length (30 days), so the admin's 3-day session is due on every request: one UPDATE per request,
+    // i.e. a sliding 3 days, "extended on each visit" as decided. Fine at tester scale.
     session: { expiresIn: USER_SESSION_SECONDS, updateAge: DAY, cookieCache: { enabled: false } },
     user: {
       additionalFields: {
@@ -88,6 +93,12 @@ export function createAuth(opts: { pool: Pool; env: AuthEnv; siteVerifyURL?: str
           throw new APIError("TOO_MANY_REQUESTS", { message: "Too many codes requested.", code: "EMAIL_RATE_LIMITED" });
         }
       }),
+      // Spec §24.9: Better Auth awaits sendVerificationOTP but swallows its errors and answers
+      // success, so a failed send is flagged on the request's context and turned into an error here.
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== SEND_PATH || !failedSends.has(ctx.context)) return;
+        throw new APIError("BAD_GATEWAY", { message: "Couldn't send the code.", code: "EMAIL_SEND_FAILED" });
+      }),
     },
     databaseHooks: {
       session: {
@@ -100,6 +111,9 @@ export function createAuth(opts: { pool: Pool; env: AuthEnv; siteVerifyURL?: str
         },
         update: {
           // A refresh resets expiresAt to 30 days; the admin goes back to 3. Never return false here.
+          // The role comes from ctx.context.session, which every refresh path sets today (getSession
+          // and the sign-in). An update without it would leave the admin at 30 days; the session-length
+          // tests in auth-otp.test.ts pin the current behaviour.
           before: async (data, ctx) => {
             if (data.expiresAt && ctx?.context.session?.user?.role === "admin") {
               return { data: { ...data, expiresAt: adminUntil() } };
@@ -113,12 +127,12 @@ export function createAuth(opts: { pool: Pool; env: AuthEnv; siteVerifyURL?: str
         otpLength: 6,
         expiresIn: 600,
         allowedAttempts: 5,
-        async sendVerificationOTP({ email, otp }) {
+        async sendVerificationOTP({ email, otp }, ctx) {
           try {
             await sendCode(email, otp);
           } catch (err) {
             console.error(err);
-            throw new APIError("BAD_GATEWAY", { message: "Couldn't send the code.", code: "EMAIL_SEND_FAILED" });
+            if (ctx) failedSends.add(ctx.context); // read by hooks.after
           }
         },
       }),
@@ -139,14 +153,15 @@ export type Auth = ReturnType<typeof createAuth>;
 // One auth instance and pool per process, like getPool (survives Next dev reloads).
 const holder = globalThis as unknown as { personaAuth?: Auth };
 
+/** The auth pool. rateLimit."lastRequest" is bigint; it's parsed as a number on this pool only (X-Retry-After). */
+export function createAuthPool(connectionString = process.env.DATABASE_URL): Pool {
+  return new Pool({
+    connectionString,
+    types: { getTypeParser: (oid, format) => (oid === 20 ? Number : types.getTypeParser(oid, format)) },
+  });
+}
+
 export function getAuth(): Auth {
-  if (!holder.personaAuth) {
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      // rateLimit."lastRequest" is bigint; parse it as a number on this pool only (X-Retry-After).
-      types: { getTypeParser: (oid, format) => (oid === 20 ? Number : types.getTypeParser(oid, format)) },
-    });
-    holder.personaAuth = createAuth({ pool, env: readAuthEnv() });
-  }
+  if (!holder.personaAuth) holder.personaAuth = createAuth({ pool: createAuthPool(), env: readAuthEnv() });
   return holder.personaAuth;
 }

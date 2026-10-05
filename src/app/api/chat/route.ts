@@ -1,7 +1,6 @@
-import { describeDbError } from "@corpus/db";
 import { findPersona, type PersonaRow } from "@corpus/personas";
 import type { ChatStreamEvent } from "@/lib/chat-types";
-import { requireApproved } from "@/lib/server/access";
+import { requireApproved, unavailable } from "@/lib/server/access";
 import { runTurn } from "@/lib/server/agent";
 import { chatDeps, type ChatDeps } from "@/lib/server/chat-deps";
 import { parseChatRequest, toAgentMessages } from "@/lib/server/chat-request";
@@ -14,14 +13,6 @@ import { foldVisit } from "@/lib/visit";
 
 function invalid(error: string, status = 400): Response {
   return Response.json({ error, code: "invalid_request" }, { status });
-}
-
-function unavailable(err: unknown): Response {
-  console.error(err);
-  return Response.json(
-    { error: describeDbError(err) ?? (err instanceof Error ? err.message : "Server error"), code: "unavailable" },
-    { status: 503 },
-  );
 }
 
 /**
@@ -67,7 +58,7 @@ export async function POST(request: Request) {
     deps = chatDeps();
     persona = await findPersona(deps.pool, personaId);
   } catch (err) {
-    return unavailable(err);
+    return unavailable(err, { showMessage: true });
   }
   if (!persona || persona.status !== "ready") {
     return Response.json({ error: "This persona is no longer available.", code: "unknown_persona" }, { status: 404 });

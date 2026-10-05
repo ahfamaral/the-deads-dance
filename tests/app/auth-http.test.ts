@@ -1,15 +1,19 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { Pool, types } from "pg";
+import type { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { closePool, getPool } from "@corpus/db";
-import { createAuth, type Auth } from "@/lib/server/auth";
+import { createAuth, createAuthPool, type Auth } from "@/lib/server/auth";
 import { readAuthEnv } from "@/lib/server/auth-env";
 import { resetAuth } from "../helpers/db";
 
 const sent = vi.hoisted(() => [] as string[]);
+const mail = vi.hoisted(() => ({ down: false }));
 vi.mock("@/lib/server/email", () => ({
-  sendCode: async (email: string) => void sent.push(email),
+  sendCode: async (email: string) => {
+    if (mail.down) throw new Error("resend down");
+    sent.push(email);
+  },
   sendApproval: async () => {},
 }));
 
@@ -26,11 +30,7 @@ beforeAll(async () => {
   });
   await new Promise<void>((r) => server.listen(0, r));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/siteverify`;
-  // Same int8 parser as getAuth's pool: rateLimit."lastRequest" is bigint (X-Retry-After).
-  authPool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    types: { getTypeParser: (oid, format) => (oid === 20 ? Number : types.getTypeParser(oid, format)) },
-  });
+  authPool = createAuthPool(); // the same int8 parser as getAuth's pool
   auth = createAuth({ pool: authPool, env: readAuthEnv(), siteVerifyURL: url });
 });
 afterAll(async () => {
@@ -40,6 +40,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   sent.length = 0;
+  mail.down = false;
   siteverify = { success: true, down: false };
   await resetAuth();
 });
@@ -71,6 +72,17 @@ describe("send code over HTTP", () => {
     siteverify = { success: true, down: true };
     expect((await sendCode("ana@example.com", "198.51.100.4")).status).toBe(500);
     expect(sent).toEqual([]);
+  });
+
+  it("answers 502 EMAIL_SEND_FAILED when the email fails, and the next request is unaffected", async () => {
+    mail.down = true;
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await sendCode("ana@example.com", "198.51.100.7");
+    quiet.mockRestore();
+    expect(res.status).toBe(502);
+    expect((await res.json()).code).toBe("EMAIL_SEND_FAILED");
+    mail.down = false;
+    expect((await sendCode("bo@example.com", "198.51.100.8")).status).toBe(200);
   });
 
   it("allows one code a minute per email, whatever the casing", async () => {

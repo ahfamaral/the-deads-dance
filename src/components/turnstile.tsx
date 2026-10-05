@@ -31,9 +31,10 @@ export default function Turnstile({ siteKey, onToken, resetKey }: { siteKey: str
         theme: "dark",
       });
     }
+    let script: HTMLScriptElement | null = null;
     if (window.turnstile) mount();
     else {
-      let script = document.querySelector<HTMLScriptElement>(`script[src="${SCRIPT}"]`);
+      script = document.querySelector<HTMLScriptElement>(`script[src="${SCRIPT}"]`);
       if (!script) {
         script = document.createElement("script");
         script.src = SCRIPT;
@@ -44,6 +45,7 @@ export default function Turnstile({ siteKey, onToken, resetKey }: { siteKey: str
     }
     return () => {
       cancelled = true;
+      script?.removeEventListener("load", mount);
       if (id && window.turnstile) window.turnstile.remove(id);
     };
     // resetKey re-renders the widget after a failed send, so a used token isn't reused.

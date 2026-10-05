@@ -58,17 +58,21 @@ export async function rejectUser(pool: Pool, id: string, by: string): Promise<Tr
 /** Blocked = banned (no new session) + every session deleted (getSession doesn't check banned). */
 export async function blockUser(pool: Pool, id: string, by: string): Promise<TransitionResult> {
   const client = await pool.connect();
+  let failed: unknown;
   try {
     await client.query("BEGIN");
-    const r = await transition(client as unknown as Pick<Pool, "query">, id, by, "approved", "blocked", `, banned = true, "banReason" = 'Blocked by admin'`);
+    const r = await transition(client, id, by, "approved", "blocked", `, banned = true, "banReason" = 'Blocked by admin'`);
     if (r.ok) await client.query(`DELETE FROM session WHERE "userId" = $1`, [id]);
     await client.query(r.ok ? "COMMIT" : "ROLLBACK");
     return r.ok ? { ok: true } : r;
   } catch (err) {
-    await client.query("ROLLBACK");
+    failed = err;
+    // On a dead connection ROLLBACK throws too; the original error is the one worth reporting.
+    await client.query("ROLLBACK").catch(() => {});
     throw err;
   } finally {
-    client.release();
+    // Passing the error discards the client instead of returning a possibly broken one to the pool.
+    client.release(failed instanceof Error ? failed : undefined);
   }
 }
 

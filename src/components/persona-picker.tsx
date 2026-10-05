@@ -72,60 +72,60 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
             {configuring ? "Configure personas" : "Who would you like to talk to?"}
           </h2>
           {canManage && (
-          <button
-            type="button"
-            aria-label="Configure personas"
-            aria-pressed={configuring}
-            onClick={toggleConfiguring}
-            disabled={busy}
-            className={`flex size-8 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40 ${configuring
-                ? "bg-white/10 text-foreground"
-                : "text-neutral-400 hover:bg-white/10 hover:text-foreground"
-              }`}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`size-5 transition-transform duration-300 ease-out motion-reduce:transition-none ${configuring ? "rotate-90" : ""
+            <button
+              type="button"
+              aria-label="Configure personas"
+              aria-pressed={configuring}
+              onClick={toggleConfiguring}
+              disabled={busy}
+              className={`flex size-8 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40 ${configuring
+                  ? "bg-white/10 text-foreground"
+                  : "text-neutral-400 hover:bg-white/10 hover:text-foreground"
                 }`}
-              aria-hidden="true"
             >
-              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-          </button>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`size-5 transition-transform duration-300 ease-out motion-reduce:transition-none ${configuring ? "rotate-90" : ""
+                  }`}
+                aria-hidden="true"
+              >
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
           )}
         </div>
         {/* Space for the add button is always reserved, so configure mode
             never shifts the list; the button only fades in and out. */}
         {canManage && (
-        <div className="mb-2 flex h-8">
-          <button
-            type="button"
-            inert={!configuring}
-            aria-label="Add persona"
-            onClick={() => setAdding(true)}
-            disabled={busy}
-            className={`flex h-8 w-full items-center self-stretch justify-center rounded-2xl border border-white/5 bg-white/5 text-neutral-300 transition-[background-color,border-color,color,opacity,translate] duration-300 ease-out hover:border-white/20 hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none motion-reduce:transition-none ${!configuring ? "-translate-y-1 opacity-0" : busy ? "opacity-40" : "translate-y-0 opacity-100"
-              }`}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={3}
-              strokeLinecap="round"
-              className="size-4"
-              aria-hidden="true"
+          <div className="mb-2 flex h-8">
+            <button
+              type="button"
+              inert={!configuring}
+              aria-label="Add persona"
+              onClick={() => setAdding(true)}
+              disabled={busy}
+              className={`flex h-8 w-full items-center self-stretch justify-center rounded-2xl border border-white/5 bg-white/5 text-neutral-300 transition-[background-color,border-color,color,opacity,translate] duration-300 ease-out hover:border-white/20 hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none motion-reduce:transition-none ${!configuring ? "-translate-y-1 opacity-0" : busy ? "opacity-40" : "translate-y-0 opacity-100"
+                }`}
             >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
-        </div>
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={3}
+                strokeLinecap="round"
+                className="size-4"
+                aria-hidden="true"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          </div>
         )}
         {configuring && adding && (
           <AddPersonaForm

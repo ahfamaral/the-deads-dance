@@ -7,10 +7,13 @@ export const SIGN_IN_STORAGE_KEY = "deads-dance:sign-in";
 /** A code lives 10 minutes (spec §24.4). */
 export const CODE_LIFE_MS = 600_000;
 
-export type SignInState = { step: "code"; email: string; sentAt: number };
+/** Wrong tries per code (spec §24.4; the server enforces it, this only keeps the count shown right). */
+export const MAX_TRIES = 5;
 
-export function serializeSignInState(email: string, sentAt: number): string {
-  return JSON.stringify({ step: "code", email, sentAt } satisfies SignInState);
+export type SignInState = { step: "code"; email: string; sentAt: number; triesLeft: number };
+
+export function serializeSignInState(email: string, sentAt: number, triesLeft: number): string {
+  return JSON.stringify({ step: "code", email, sentAt, triesLeft } satisfies SignInState);
 }
 
 /** The stored state, or null when missing, malformed, from the future, or past the code's life. */
@@ -23,10 +26,11 @@ export function parseSignInState(raw: string | null, now: number): SignInState |
     return null;
   }
   if (typeof v !== "object" || v === null) return null;
-  const { step, email, sentAt } = v as Record<string, unknown>;
+  const { step, email, sentAt, triesLeft } = v as Record<string, unknown>;
   if (step !== "code" || typeof email !== "string" || !email || typeof sentAt !== "number" || !Number.isFinite(sentAt)) return null;
   if (sentAt > now || now - sentAt > CODE_LIFE_MS) return null;
-  return { step: "code", email, sentAt };
+  const tries = Number.isInteger(triesLeft) && (triesLeft as number) >= 0 && (triesLeft as number) <= MAX_TRIES ? (triesLeft as number) : MAX_TRIES;
+  return { step: "code", email, sentAt, triesLeft: tries };
 }
 
 /** Whole seconds of the resend cooldown left. */

@@ -96,6 +96,17 @@ describe("status changes", () => {
     expect(await approveUser(pool(), other, admin)).toEqual({ ok: false, reason: "not_allowed" });
     expect(await blockUser(pool(), admin, admin)).toEqual({ ok: false, reason: "not_allowed" });
     expect(await unblockUser(pool(), admin, admin)).toEqual({ ok: false, reason: "not_allowed" });
+    expect(await rejectUser(pool(), other, admin)).toEqual({ ok: false, reason: "not_allowed" });
+    expect(await rejectUser(pool(), admin, admin)).toEqual({ ok: false, reason: "not_allowed" });
+    expect(await row(other)).toMatchObject({ status: "pending", statusChangedBy: null });
+  });
+
+  it("never lets the admin change their own row, even one that isn't marked admin", async () => {
+    // By id alone: a row whose role was lost still can't be changed by its owner.
+    const self = await user("self@example.com");
+    expect(await rejectUser(pool(), self, self)).toEqual({ ok: false, reason: "not_allowed" });
+    expect(await approveUser(pool(), self, self)).toEqual({ ok: false, reason: "not_allowed" });
+    expect((await row(self)).status).toBe("pending");
   });
 });
 

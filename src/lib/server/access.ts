@@ -4,6 +4,14 @@ import type { UserStatus } from "@/lib/server/users";
 
 export type CurrentUser = { id: string; email: string; role: "user" | "admin"; status: UserStatus };
 
+const STATUSES: readonly UserStatus[] = ["pending", "approved", "rejected", "blocked"];
+
+/** The database CHECK allows only the four; anything else fails closed, as "rejected". */
+export function parseStatus(value: unknown): UserStatus {
+  if (value === undefined || value === null) return "pending";
+  return STATUSES.includes(value as UserStatus) ? (value as UserStatus) : "rejected";
+}
+
 /** Spec §24.5: the only place the app asks who the user is. Reads the database on every call. */
 export async function currentUser(headers: Headers): Promise<CurrentUser | null> {
   const s = await getAuth().api.getSession({ headers });
@@ -12,7 +20,7 @@ export async function currentUser(headers: Headers): Promise<CurrentUser | null>
     id: s.user.id,
     email: s.user.email,
     role: s.user.role === "admin" ? "admin" : "user",
-    status: (s.user.status ?? "pending") as UserStatus,
+    status: parseStatus(s.user.status),
   };
 }
 
@@ -33,8 +41,12 @@ export async function requireAdmin(request: Request): Promise<CurrentUser | Resp
   return user;
 }
 
-/** Spec §24.9: a database outage is a 503, not a crash. For routes that don't have their own. */
-export function unavailable(err: unknown): Response {
+/**
+ * Spec §24.9: a database outage is a 503, not a crash. `showMessage` passes other errors' text on
+ * (a missing API key, say); use it only behind a guard, so signed-out callers never see it.
+ */
+export function unavailable(err: unknown, { showMessage = false } = {}): Response {
   console.error(err);
-  return Response.json({ error: describeDbError(err) ?? "Server error", code: "unavailable" }, { status: 503 });
+  const fallback = showMessage && err instanceof Error ? err.message : "Server error";
+  return Response.json({ error: describeDbError(err) ?? fallback, code: "unavailable" }, { status: 503 });
 }

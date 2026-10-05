@@ -61,6 +61,22 @@ CREATE TABLE IF NOT EXISTS "user" (
   "statusChangedBy" text
 );
 
+-- Added after the table shipped, so as idempotent constraints (CREATE TABLE IF NOT EXISTS won't
+-- add them to an existing table). Better Auth's schema check compares columns only.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_role_check') THEN
+    ALTER TABLE "user" ADD CONSTRAINT user_role_check CHECK ("role" IN ('user', 'admin'));
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_statusChangedBy_fkey') THEN
+    -- A changer who no longer exists would block the key; "nobody we know" is null.
+    UPDATE "user" u SET "statusChangedBy" = NULL
+    WHERE "statusChangedBy" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "user" b WHERE b.id = u."statusChangedBy");
+    ALTER TABLE "user" ADD CONSTRAINT "user_statusChangedBy_fkey"
+      FOREIGN KEY ("statusChangedBy") REFERENCES "user" ("id") ON DELETE SET NULL;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS "session" (
   "id"             text NOT NULL PRIMARY KEY,
   "expiresAt"      timestamptz NOT NULL,

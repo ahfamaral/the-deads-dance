@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closePool, getPool } from "@corpus/db";
-import { requireAdmin, requireApproved } from "@/lib/server/access";
+import { parseStatus, requireAdmin, requireApproved } from "@/lib/server/access";
 import { blockUser } from "@/lib/server/users";
 import { resetAuth } from "../helpers/db";
 import { signInAs } from "../helpers/auth";
@@ -12,9 +12,10 @@ beforeEach(() => resetAuth());
 afterAll(() => closePool());
 
 describe("guards", () => {
-  it("requireApproved: 401 anonymous, 403 for pending/rejected, the user when approved or admin", async () => {
+  it("requireApproved: 401 anonymous, 403 for pending/rejected/blocked, the user when approved or admin", async () => {
     expect(await status(await requireApproved(req()))).toBe(401);
-    for (const s of ["pending", "rejected"] as const) {
+    // "blocked" with a live session: block deletes sessions, but the status alone must still refuse.
+    for (const s of ["pending", "rejected", "blocked"] as const) {
       const { cookie } = await signInAs(`${s}@example.com`, { status: s });
       const r = await requireApproved(req(cookie));
       expect(await status(r)).toBe(403);
@@ -39,5 +40,14 @@ describe("guards", () => {
     const ana = await signInAs("ana@example.com", { status: "approved" });
     await blockUser(getPool(), ana.userId, boss.userId);
     expect(await status(await requireApproved(req(ana.cookie)))).toBe(401);
+  });
+});
+
+describe("parseStatus", () => {
+  it("keeps the four known statuses, reads a missing one as pending, and anything else as rejected", () => {
+    for (const s of ["pending", "approved", "rejected", "blocked"]) expect(parseStatus(s)).toBe(s);
+    expect(parseStatus(undefined)).toBe("pending");
+    expect(parseStatus(null)).toBe("pending");
+    for (const s of ["Approved", "admin", "", 1, {}]) expect(parseStatus(s)).toBe("rejected");
   });
 });

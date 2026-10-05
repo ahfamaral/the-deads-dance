@@ -33,6 +33,12 @@ const CONFIRM: Record<Confirmed, { label: string; message: string; done: string 
   unblock: { label: "Unblock", message: "They'll be able to sign in again, with the access they had before.", done: "Unblocked" },
 };
 
+/** The user list, or null when it couldn't be loaded. */
+async function fetchUsers(): Promise<Row[] | null> {
+  const res = await fetch("/api/admin/users");
+  return res.ok ? (await res.json()).users : null;
+}
+
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—");
 
 /** Spec §24.6: tabs per status; a table on desktop, cards on phones. */
@@ -42,20 +48,12 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
   const [note, setNote] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ row: Row; action: Confirmed } | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      const res = await fetch("/api/admin/users");
-      if (res.ok) setUsers((await res.json()).users);
-      else setNote("Couldn't load users.");
-    };
-    void load();
-  }, []);
+  const showUsers = useCallback((list: Row[] | null) => (list ? setUsers(list) : setNote("Couldn't load users.")), []);
+  const reloadUsers = async () => showUsers(await fetchUsers());
 
-  const reloadUsers = useCallback(async () => {
-    const res = await fetch("/api/admin/users");
-    if (res.ok) setUsers((await res.json()).users);
-    else setNote("Couldn't load users.");
-  }, []);
+  useEffect(() => {
+    void fetchUsers().then(showUsers);
+  }, [showUsers]);
 
   async function act(row: Row, action: "approve" | Confirmed) {
     const res = await fetch(`/api/admin/users/${encodeURIComponent(row.id)}/${action}`, { method: "POST" });

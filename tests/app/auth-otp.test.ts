@@ -7,8 +7,12 @@ import { resetAuth } from "../helpers/db";
 import { signInAs } from "../helpers/auth";
 
 const sent = vi.hoisted(() => [] as { email: string; code: string }[]);
+const mail = vi.hoisted(() => ({ down: false }));
 vi.mock("@/lib/server/email", () => ({
-  sendCode: async (email: string, code: string) => void sent.push({ email, code }),
+  sendCode: async (email: string, code: string) => {
+    if (mail.down) throw new Error("resend down");
+    sent.push({ email, code });
+  },
   sendApproval: async () => {},
 }));
 
@@ -20,6 +24,7 @@ const days = (d: Date) => (d.getTime() - Date.now()) / 86_400_000;
 
 beforeEach(async () => {
   sent.length = 0;
+  mail.down = false;
   await resetAuth();
 });
 afterAll(() => closePool());
@@ -45,6 +50,13 @@ describe("sign-in with an emailed code", () => {
     expect(await signIn("ana@example.com", sent[0].code).then(() => "ok", codeOf)).not.toBe("ok");
   });
 
+  it("answers EMAIL_SEND_FAILED when the code can't be emailed", async () => {
+    mail.down = true;
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await send("ana@example.com").then(() => "ok", codeOf)).toBe("EMAIL_SEND_FAILED");
+    quiet.mockRestore();
+  });
+
   it("refuses an expired code", async () => {
     await send("ana@example.com");
     await getPool().query(`UPDATE verification SET "expiresAt" = now() - interval '1 second'`);
@@ -57,6 +69,14 @@ describe("sign-in with an emailed code", () => {
       body: { email: "ana@example.com", otp: sent[0].code, status: "approved" } as never,
     });
     expect((res.user as { status?: string }).status).toBe("pending");
+  });
+
+  it("refuses a status change through Better Auth's own user update (input: false)", async () => {
+    // The HTTP path is disabled too; the server API skips that, so this checks the field itself.
+    const { userId, cookie } = await signInAs("ana@example.com");
+    const update = auth().api.updateUser({ body: { status: "approved" } as never, headers: new Headers({ cookie }) });
+    expect(await update.then(() => "ok", codeOf)).toBe("FIELD_NOT_ALLOWED");
+    expect((await getPool().query(`SELECT status FROM "user" WHERE id = $1`, [userId])).rows[0].status).toBe("pending");
   });
 
   it("gives a banned user no session", async () => {
@@ -120,6 +140,17 @@ describe("readAuthEnv", () => {
     };
     expect(() => readAuthEnv(base as NodeJS.ProcessEnv)).toThrow(/AUTH_IP_HEADER/);
     expect(readAuthEnv({ ...base, AUTH_IP_HEADER: "x-real-ip" } as NodeJS.ProcessEnv).ipHeader).toBe("x-real-ip");
+  });
+
+  it("refuses a BETTER_AUTH_SECRET shorter than 32 characters, in dev too", () => {
+    const base = {
+      NODE_ENV: "development",
+      BETTER_AUTH_URL: "http://localhost:3000",
+      TURNSTILE_SECRET_KEY: "t",
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: "t",
+    };
+    expect(() => readAuthEnv({ ...base, BETTER_AUTH_SECRET: "s".repeat(31) } as NodeJS.ProcessEnv)).toThrow(/at least 32/);
+    expect(readAuthEnv({ ...base, BETTER_AUTH_SECRET: "s".repeat(32) } as NodeJS.ProcessEnv).secret).toHaveLength(32);
   });
 
   it("lets dev run without Resend", () => {

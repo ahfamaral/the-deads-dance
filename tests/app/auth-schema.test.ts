@@ -1,7 +1,21 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closePool, getPool } from "@corpus/db";
+import { resetAuth } from "../helpers/db";
 
+beforeEach(() => resetAuth());
 afterAll(() => closePool());
+
+// A fresh id each time, so a row that slips in (if a constraint went missing) can't collide later.
+const insertUser = (fields: { status?: string; role?: string; statusChangedBy?: string } = {}) => {
+  const id = crypto.randomUUID();
+  return getPool()
+    .query(
+      `INSERT INTO "user" (id, name, email, "emailVerified", status, role, "statusChangedBy")
+       VALUES ($1, '', $2, true, coalesce($3, 'pending'), $4, $5)`,
+      [id, `${id}@example.com`, fields.status ?? null, fields.role ?? null, fields.statusChangedBy ?? null],
+    )
+    .then(() => id);
+};
 
 describe("auth schema", () => {
   it("has Better Auth's tables and our status column", async () => {
@@ -19,8 +33,20 @@ describe("auth schema", () => {
   });
 
   it("refuses an unknown status", async () => {
-    await expect(
-      getPool().query(`INSERT INTO "user" (id, name, email, "emailVerified", status) VALUES ('x', '', 'x@x.io', true, 'weird')`),
-    ).rejects.toThrow(/check/i);
+    await expect(insertUser({ status: "weird" })).rejects.toThrow(/check/i);
+  });
+
+  it("refuses an unknown role, and allows user, admin or none", async () => {
+    await expect(insertUser({ role: "owner" })).rejects.toThrow(/check/i);
+    for (const role of ["user", "admin", undefined]) await expect(insertUser({ role })).resolves.toBeTypeOf("string");
+  });
+
+  it("refuses a statusChangedBy that isn't a user, and clears it when that user is deleted", async () => {
+    await expect(insertUser({ statusChangedBy: "nobody" })).rejects.toThrow(/foreign key/i);
+    const boss = await insertUser({ role: "admin" });
+    const ana = await insertUser({ statusChangedBy: boss });
+    await getPool().query(`DELETE FROM "user" WHERE id = $1`, [boss]);
+    const { rows } = await getPool().query(`SELECT "statusChangedBy" FROM "user" WHERE id = $1`, [ana]);
+    expect(rows[0].statusChangedBy).toBeNull();
   });
 });

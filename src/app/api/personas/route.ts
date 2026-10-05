@@ -11,7 +11,7 @@ import { toSummary } from "@corpus/personas";
 import { WikipediaError } from "@corpus/wikipedia";
 import type { AddPersonaEvent } from "@/lib/add-persona-events";
 import { toPersona } from "@/lib/personas";
-import { requireAdmin } from "@/lib/server/access";
+import { requireAdmin, unavailable } from "@/lib/server/access";
 import { corpusDeps } from "@/lib/server/corpus-deps";
 
 const STATUS: Record<AddPersonaErrorCode, number> = {
@@ -29,14 +29,6 @@ function messageFor(err: unknown): string {
   if (err instanceof IngestError || err instanceof WikipediaError) return err.message;
   if (err instanceof EmbeddingDimensionError) return "The embedding model is misconfigured. Check the server log.";
   return describeDbError(err) ?? "Adding the persona failed. Try again in a moment.";
-}
-
-function unavailable(err: unknown): Response {
-  console.error(err);
-  return Response.json(
-    { error: describeDbError(err) ?? (err instanceof Error ? err.message : "Server error"), code: "unavailable" },
-    { status: 503 },
-  );
 }
 
 /**
@@ -72,7 +64,7 @@ export async function POST(request: Request) {
   try {
     deps = corpusDeps();
   } catch (err) {
-    return unavailable(err);
+    return unavailable(err, { showMessage: true });
   }
 
   let prepared: PreparedPersona;
@@ -85,7 +77,7 @@ export async function POST(request: Request) {
         { status: STATUS[err.code] },
       );
     }
-    return unavailable(err);
+    return unavailable(err, { showMessage: true });
   }
 
   const encoder = new TextEncoder();

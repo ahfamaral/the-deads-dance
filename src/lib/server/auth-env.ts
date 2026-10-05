@@ -10,6 +10,7 @@ export type AuthEnv = {
 const ALWAYS = ["BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "TURNSTILE_SECRET_KEY", "NEXT_PUBLIC_TURNSTILE_SITE_KEY"] as const;
 // AUTH_IP_HEADER: without it, clients can spoof x-forwarded-for to get a fresh rate-limit bucket.
 const IN_PRODUCTION = ["RESEND_API_KEY", "EMAIL_FROM", "AUTH_IP_HEADER"] as const;
+const MIN_SECRET_LENGTH = 32;
 
 /**
  * Spec §24.8. In production every key is required, so codes never fall back to the console there;
@@ -19,8 +20,13 @@ export function readAuthEnv(env: NodeJS.ProcessEnv = process.env): AuthEnv {
   const required = env.NODE_ENV === "production" ? [...ALWAYS, ...IN_PRODUCTION] : ALWAYS;
   const missing = required.filter((k) => !env[k]?.trim());
   if (missing.length) throw new Error(`Missing auth env: ${missing.join(", ")}. See .env.example.`);
+  // It signs the session cookies; `openssl rand -base64 32` gives 44 characters.
+  const secret = env.BETTER_AUTH_SECRET!.trim();
+  if (secret.length < MIN_SECRET_LENGTH) {
+    throw new Error(`BETTER_AUTH_SECRET must be at least ${MIN_SECRET_LENGTH} characters. Generate one with: openssl rand -base64 32`);
+  }
   return {
-    secret: env.BETTER_AUTH_SECRET!,
+    secret,
     baseURL: env.BETTER_AUTH_URL!,
     resendKey: env.RESEND_API_KEY?.trim() || null,
     emailFrom: env.EMAIL_FROM?.trim() || null,

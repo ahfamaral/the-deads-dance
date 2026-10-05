@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ChatSession from "@/components/chat-session";
 import ConversationHistory from "@/components/conversation-history";
 import PersonaPicker from "@/components/persona-picker";
 import SignOutButton from "@/components/sign-out-button";
 import type { Message } from "@/lib/chat-types";
 import type { SavedConversation } from "@/lib/conversation-store";
+import { ensureAccess } from "@/lib/ensure-access";
 import type { Persona } from "@/lib/personas";
 
 type Step =
@@ -45,6 +46,24 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
     personasUnavailable ? "Personas unavailable: database not reachable." : null,
   );
 
+  // A blocked or rejected tester is sent back to sign-in on their next screen change, or when they
+  // return to the tab, even without chatting. The page itself just checked, so the first screen doesn't.
+  const firstStep = useRef(true);
+  useEffect(() => {
+    if (firstStep.current) {
+      firstStep.current = false;
+      return;
+    }
+    void ensureAccess();
+  }, [step]);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void ensureAccess();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
   async function removePersona(persona: Persona) {
     setPickerNotice(null);
     try {
@@ -63,8 +82,9 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
 
   if (step.name === "start") {
     // A lighter backdrop than the other panels, so the menu reads as secondary.
-    const menuButton =
-      "w-full rounded-3xl border border-white/10 bg-neutral-900/50 px-5 py-3 text-sm font-medium shadow-lg shadow-black/30 backdrop-blur-md transition-colors hover:border-white/40 hover:bg-neutral-700/70 hover:text-foreground focus-visible:border-white/40 focus-visible:outline-none";
+    const menuSurface =
+      "w-full rounded-3xl border border-white/10 bg-neutral-900/50 px-5 shadow-lg shadow-black/30 backdrop-blur-md";
+    const menuButton = `${menuSurface} py-3 text-sm font-medium transition-colors hover:border-white/40 hover:bg-neutral-700/70 hover:text-foreground focus-visible:border-white/40 focus-visible:outline-none`;
     return (
       <div className="flex flex-1 items-center justify-center">
         <nav aria-label="Start" className="flex w-full max-w-xs flex-col gap-3">
@@ -87,12 +107,12 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
               Admin
             </Link>
           )}
-          {/* One line, same height: the email shrinks (truncates) and Sign out keeps its size. */}
-          <p className="mt-1 flex items-center justify-center gap-2 text-[length:clamp(10px,2.9vw,12px)] text-neutral-500">
+          {/* The menu's surface, not a button. One line, same height: the email shrinks (truncates) and Sign out keeps its size. */}
+          <div className={`${menuSurface} flex items-center justify-center gap-2 text-[length:clamp(10px,2.9vw,12px)] text-neutral-400`}>
             <span className="min-w-0 truncate" title={email}>{email}</span>
             <span aria-hidden="true">·</span>
-            <SignOutButton className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap px-1 underline underline-offset-2 hover:text-neutral-300" />
-          </p>
+            <SignOutButton className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap px-1 text-neutral-300 underline underline-offset-2 hover:text-foreground" />
+          </div>
         </nav>
       </div>
     );

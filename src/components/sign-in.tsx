@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import CodeInput from "@/components/code-input";
 import Turnstile from "@/components/turnstile";
+import { AUTH_CARD } from "@/lib/auth-card";
 import { authClient } from "@/lib/auth-client";
 import { signInErrorMessage } from "@/lib/sign-in-errors";
 import { SIGN_IN_STORAGE_KEY, cooldownLeft, parseSignInState, serializeSignInState } from "@/lib/sign-in-state";
@@ -109,7 +110,7 @@ export default function SignIn({ siteKey }: { siteKey: string }) {
 
   return (
     <div className="flex flex-1 items-center justify-center">
-      <section className="flex w-full max-w-[280px] flex-col items-center gap-4 text-center">
+      <section className={AUTH_CARD}>
         {step === "email" && (
           <form
             className="flex w-full flex-col items-center gap-4"
@@ -120,7 +121,7 @@ export default function SignIn({ siteKey }: { siteKey: string }) {
           >
             <h1 className="text-xl font-semibold">Do the deads dance</h1>
             <p className="text-sm leading-relaxed text-neutral-400">
-              Ask a science or engineering pioneer, in their own voice. Staging: access is by approval.
+              Staging: access is by approval.
             </p>
             <input
               type="email"

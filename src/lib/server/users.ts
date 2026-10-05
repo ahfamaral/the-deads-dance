@@ -72,6 +72,12 @@ export async function blockUser(pool: Pool, id: string, by: string): Promise<Tra
   }
 }
 
+/** Back to approved, able to sign in again. No email: they weren't emailed when blocked either. */
+export async function unblockUser(pool: Pool, id: string, by: string): Promise<TransitionResult> {
+  const r = await transition(pool, id, by, "blocked", "approved", `, banned = false, "banReason" = NULL`);
+  return r.ok ? { ok: true } : r;
+}
+
 export async function listUsers(pool: Pool): Promise<AdminUserRow[]> {
   const { rows } = await pool.query(
     `SELECT u.id, u.email, coalesce(u.role, 'user') AS role, u.status, u."createdAt", u."statusChangedAt", b.email AS "statusChangedByEmail"

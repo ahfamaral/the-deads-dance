@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { closePool, getPool } from "@corpus/db";
-import { approveUser, blockUser, listUsers, rejectUser } from "@/lib/server/users";
+import { approveUser, blockUser, listUsers, rejectUser, unblockUser } from "@/lib/server/users";
 import { resetAuth } from "../helpers/db";
 
 const approvals = vi.hoisted(() => ({ sent: [] as string[], fail: false }));
@@ -72,18 +72,30 @@ describe("status changes", () => {
     expect((await pool().query(`SELECT 1 FROM session WHERE "userId" = $1`, [id])).rowCount).toBe(0);
   });
 
+  it("unblocks a blocked user: approved again, not banned, records who, no email", async () => {
+    const id = await user("ana@example.com", "approved");
+    await blockUser(pool(), id, admin);
+    expect(await unblockUser(pool(), id, admin)).toEqual({ ok: true });
+    expect(await row(id)).toMatchObject({ status: "approved", banned: false, banReason: null, statusChangedBy: admin });
+    expect(approvals.sent).toEqual([]);
+    expect(await unblockUser(pool(), id, admin)).toEqual({ ok: false, reason: "already_changed" });
+  });
+
   it("refuses transitions the lifecycle doesn't have", async () => {
     const pending = await user("p@example.com");
     const approved = await user("a@example.com", "approved");
     expect(await blockUser(pool(), pending, admin)).toEqual({ ok: false, reason: "already_changed" });
     expect(await rejectUser(pool(), approved, admin)).toEqual({ ok: false, reason: "already_changed" });
     expect(await approveUser(pool(), "nope", admin)).toEqual({ ok: false, reason: "not_found" });
+    expect(await unblockUser(pool(), approved, admin)).toEqual({ ok: false, reason: "already_changed" });
+    expect(await unblockUser(pool(), pending, admin)).toEqual({ ok: false, reason: "already_changed" });
   });
 
   it("never changes an admin row, including the admin's own", async () => {
     const other = await user("other-admin@example.com", "pending", "admin");
     expect(await approveUser(pool(), other, admin)).toEqual({ ok: false, reason: "not_allowed" });
     expect(await blockUser(pool(), admin, admin)).toEqual({ ok: false, reason: "not_allowed" });
+    expect(await unblockUser(pool(), admin, admin)).toEqual({ ok: false, reason: "not_allowed" });
   });
 });
 

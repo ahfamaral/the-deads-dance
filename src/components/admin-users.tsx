@@ -25,6 +25,14 @@ const BTN = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-white/
 const BACK = "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full border border-white/15 px-4 text-sm text-neutral-200 hover:bg-white/10";
 const BTN_DANGER = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-red-500/50 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] text-red-300 hover:bg-red-500/15 md:flex-none md:px-4 md:text-sm";
 
+// The actions that ask first, with their dialog and the note shown after.
+type Confirmed = "reject" | "block" | "unblock";
+const CONFIRM: Record<Confirmed, { label: string; message: string; done: string }> = {
+  reject: { label: "Reject", message: "They'll see that their request wasn't approved. This can't be undone yet.", done: "Rejected" },
+  block: { label: "Block", message: "They'll be signed out everywhere and can't sign in until you unblock them.", done: "Blocked" },
+  unblock: { label: "Unblock", message: "They'll be able to sign in again, with the access they had before.", done: "Unblocked" },
+};
+
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—");
 
 /** Spec §24.6: tabs per status; a table on desktop, cards on phones. */
@@ -32,7 +40,7 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
   const [users, setUsers] = useState<Row[] | null>(null);
   const [tab, setTab] = useState<Status>("pending");
   const [note, setNote] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ row: Row; action: "reject" | "block" } | null>(null);
+  const [confirm, setConfirm] = useState<{ row: Row; action: Confirmed } | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -49,12 +57,12 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
     else setNote("Couldn't load users.");
   }, []);
 
-  async function act(row: Row, action: "approve" | "reject" | "block") {
+  async function act(row: Row, action: "approve" | Confirmed) {
     const res = await fetch(`/api/admin/users/${encodeURIComponent(row.id)}/${action}`, { method: "POST" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) setNote(data.error ?? "That didn't work.");
     else if (action === "approve") setNote(`Approved ${row.email} · ${data.emailSent ? "email sent" : "email failed"}`);
-    else setNote(`${action === "reject" ? "Rejected" : "Blocked"} ${row.email}`);
+    else setNote(`${CONFIRM[action].done} ${row.email}`);
     await reloadUsers();
   }
 
@@ -80,6 +88,12 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
           Block
         </button>
       );
+    if (row.status === "blocked")
+      return (
+        <button type="button" className={BTN} onClick={() => setConfirm({ row, action: "unblock" })}>
+          Unblock
+        </button>
+      );
     return null;
   }
   const dateOf = (r: Row) => (tab === "pending" ? when(r.createdAt) : when(r.statusChangedAt));
@@ -89,7 +103,19 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
     <section className="flex min-h-0 flex-1 flex-col gap-3">
       <header className="flex items-center gap-3">
         <Link href="/" className={BACK}>
-          ← Back
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="size-4"
+            aria-hidden="true"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          Back
         </Link>
         <h1 className="text-lg font-semibold">Testers</h1>
       </header>
@@ -101,9 +127,8 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
             role="tab"
             aria-selected={tab === t.status}
             onClick={() => setTab(t.status)}
-            className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${
-              tab === t.status ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 text-neutral-300"
-            }`}
+            className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${tab === t.status ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 text-neutral-300"
+              }`}
           >
             {t.label}{" "}
             <span className={t.status === "pending" && count("pending") > 0 ? "rounded-md bg-amber-500 px-1.5 font-bold text-neutral-900" : ""}>
@@ -124,7 +149,7 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
       ) : rows.length === 0 ? (
         <p className="text-sm text-neutral-500">Nobody here.</p>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-900/50">
           {/* Desktop: a table */}
           <table className="hidden w-full text-sm md:table">
             <thead>
@@ -153,7 +178,7 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
           {/* Phone: cards */}
           <ul className="flex flex-col gap-2 md:hidden">
             {rows.map((r) => (
-              <li key={r.id} className="rounded-2xl border border-white/10 bg-neutral-900/50 p-3">
+              <li key={r.id} className="rounded-2xl border border-white/10 bg-neutral-900/90 p-3">
                 <p className="break-all text-sm">
                   {r.email} {r.role === "admin" && <span className="text-neutral-500">(admin)</span>}
                 </p>
@@ -169,13 +194,9 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
 
       <ConfirmDialog
         open={confirm !== null}
-        title={confirm ? `${confirm.action === "block" ? "Block" : "Reject"} ${confirm.row.email}?` : ""}
-        message={
-          confirm?.action === "block"
-            ? "They'll be signed out everywhere and can't sign in again. Unblocking isn't available yet."
-            : "They'll see that their request wasn't approved. This can't be undone yet."
-        }
-        confirmLabel={confirm?.action === "block" ? "Block" : "Reject"}
+        title={confirm ? `${CONFIRM[confirm.action].label} ${confirm.row.email}?` : ""}
+        message={confirm ? CONFIRM[confirm.action].message : ""}
+        confirmLabel={confirm ? CONFIRM[confirm.action].label : undefined}
         onConfirm={() => {
           const c = confirm;
           setConfirm(null);

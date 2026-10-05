@@ -7,6 +7,7 @@ import {
   loadConversations,
   type SavedConversation,
 } from "@/lib/conversation-store";
+import { ensureAccess } from "@/lib/ensure-access";
 import { useScrollFade } from "@/lib/use-scroll-fade";
 
 type ConversationHistoryProps = {
@@ -114,7 +115,10 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                   >
                     <button
                       type="button"
-                      onClick={() => setExporting(conversation)}
+                      onClick={() => {
+                        setExporting(conversation);
+                        void ensureAccess(); // the dialog isn't a screen change, so it checks here
+                      }}
                       aria-label={`Export conversation with ${conversation.personaName}`}
                       className="w-full whitespace-nowrap rounded-full bg-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-900 transition-[background-color,box-shadow] duration-200 ease-out hover:bg-white hover:shadow-[0_0_16px_rgba(255,255,255,0.35)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60"
                     >

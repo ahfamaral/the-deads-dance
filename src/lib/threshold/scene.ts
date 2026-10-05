@@ -21,17 +21,32 @@ const SPREAD_MAX = 0.86;
 const BREATH_SPEED = 0.16;
 /** Right side lags the left so the two never pulse in lockstep. */
 const BREATH_OFFSET = 1.1;
+/** How strongly the strands wave: the left side's ripple and the right ribbon's weave. Both are zero at the seam. */
+const WAVE_AMPLITUDE = 2.5;
+/** How far from the seam (as a fraction of the right side) the ribbon's sway reaches full strength. */
+const SWAY_RAMP = 0.2;
 
 const GLYPH_CELL = 22;
 const GLYPH_CHARS = "aa?5$:-=+~<>|/\\_·";
 /** Fraction of glyph cells that re-roll their character each second. */
 const GLYPH_CHURN = 2.6;
+/** How bright the characters get at the beam's centre line; they fade linearly toward its edges. */
+const GLYPH_BRIGHTNESS = 1.6;
+/** How much of the strands' ripple the characters follow: the strands' average drift. */
+const GLYPH_RIDE = 0.085;
 
 const WARM: [number, number, number] = [255, 176, 92];
 const COOL: [number, number, number] = [104, 176, 255];
 
 const SPARKLES = 220;
 const MAX_DPR = 2;
+/** The bar sprite's width; it's stretched to the bar's width each frame. */
+const BAR_SPRITE_WIDTH = 64;
+/** Half the seam bar's width at full intensity, in px. */
+const BAR_HALF_WIDTH = 26;
+/** The shadow beside the bar: how far it reaches (in bar half-widths) and how dark it gets. */
+const SHADOW_SPREAD = 1.4;
+const SHADOW_DEPTH = 0.85;
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const smoothstep = (t: number) => t * t * (3 - 2 * t);
@@ -75,6 +90,12 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
   let glyphRows = 0;
   let glyphs = new Uint8Array(0);
   let sparkles: Sparkle[] = [];
+  // The seam's bar, faded toward the top and bottom, drawn once per size. Fading it on its own
+  // canvas keeps the fade from erasing what's under the bar (it used to leave a dark band).
+  const barSprite = document.createElement("canvas");
+  // Its shadow: the inverse fade, so none at the waist and darkest toward the top and bottom,
+  // with soft sides.
+  const shadowSprite = document.createElement("canvas");
 
   const resize = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
@@ -103,6 +124,46 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
       phase: hash(i * 11.3) * Math.PI * 2,
       size: 0.6 + hash(i * 5.2) * 1.1,
     }));
+
+    barSprite.width = BAR_SPRITE_WIDTH;
+    barSprite.height = Math.max(1, Math.round(height));
+    const bar = barSprite.getContext("2d");
+    if (bar) {
+      const across = bar.createLinearGradient(0, 0, BAR_SPRITE_WIDTH, 0);
+      across.addColorStop(0, "rgba(255, 255, 255, 0)");
+      across.addColorStop(0.5, "rgba(255, 255, 255, 0.9)");
+      across.addColorStop(1, "rgba(255, 255, 255, 0)");
+      bar.fillStyle = across;
+      bar.fillRect(0, 0, BAR_SPRITE_WIDTH, barSprite.height);
+      // Brightest at the waist, falling away toward the top and bottom edges.
+      const falloff = bar.createLinearGradient(0, 0, 0, barSprite.height);
+      falloff.addColorStop(0, "rgba(0, 0, 0, 0)");
+      falloff.addColorStop(0.5, "rgba(0, 0, 0, 1)");
+      falloff.addColorStop(1, "rgba(0, 0, 0, 0)");
+      bar.globalCompositeOperation = "destination-in";
+      bar.fillStyle = falloff;
+      bar.fillRect(0, 0, BAR_SPRITE_WIDTH, barSprite.height);
+    }
+
+    shadowSprite.width = BAR_SPRITE_WIDTH;
+    shadowSprite.height = barSprite.height;
+    const shade = shadowSprite.getContext("2d");
+    if (shade) {
+      const across = shade.createLinearGradient(0, 0, BAR_SPRITE_WIDTH, 0);
+      across.addColorStop(0, "rgba(0, 0, 0, 0)");
+      across.addColorStop(0.3, `rgba(0, 0, 0, ${SHADOW_DEPTH})`);
+      across.addColorStop(0.7, `rgba(0, 0, 0, ${SHADOW_DEPTH})`);
+      across.addColorStop(1, "rgba(0, 0, 0, 0)");
+      shade.fillStyle = across;
+      shade.fillRect(0, 0, BAR_SPRITE_WIDTH, shadowSprite.height);
+      const ends = shade.createLinearGradient(0, 0, 0, shadowSprite.height);
+      ends.addColorStop(0, "rgba(0, 0, 0, 1)");
+      ends.addColorStop(0.5, "rgba(0, 0, 0, 0)");
+      ends.addColorStop(1, "rgba(0, 0, 0, 1)");
+      shade.globalCompositeOperation = "destination-in";
+      shade.fillStyle = ends;
+      shade.fillRect(0, 0, BAR_SPRITE_WIDTH, shadowSprite.height);
+    }
   };
 
   /** Half-thickness of the bundle at normalised distance d from the seam. */
@@ -124,7 +185,7 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
         const d = j / SAMPLES;
         const x = seamX - d * seamX;
         const env = envelope(d, spread, 0.72);
-        const wave = Math.sin(d * 3.1 + phase - time * 0.5) * env * drift;
+        const wave = Math.sin(d * 3.1 + phase - time * 0.5) * env * drift * WAVE_AMPLITUDE;
         const y = midY + s * env + wave;
         if (j === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
@@ -157,15 +218,18 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
       const env = envelope(d, spread, 0.72);
       // Densest against the seam, thinning out toward the left edge.
       const reach = (1 - d) ** 1.25;
+      // The column rides the strands' ripple (the same wave, without each strand's own phase),
+      // so the characters move with the beam instead of sitting on a fixed grid.
+      const ride = Math.sin(d * 3.1 - time * 0.5) * env * GLYPH_RIDE * WAVE_AMPLITUDE;
 
       for (let row = 0; row < glyphRows; row += 1) {
-        const y = row * GLYPH_CELL + GLYPH_CELL * 0.5;
+        const y = row * GLYPH_CELL + GLYPH_CELL * 0.5 + ride;
         const inside = 1 - Math.min(1, Math.abs(y - midY) / Math.max(env, 1));
         if (inside <= 0) continue;
 
         const cell = col * glyphRows + row;
         const flicker = 0.35 + 0.65 * hash(cell + Math.floor(time * 3));
-        const alpha = inside ** 1.6 * reach * flicker * 0.85;
+        const alpha = Math.min(1, inside * reach * flicker * GLYPH_BRIGHTNESS);
         if (alpha < 0.035) continue;
 
         const s = (y - midY) / Math.max(env, 1);
@@ -191,9 +255,12 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
         const env = envelope(d, spread, 0.85);
         // Two out-of-phase families; where they cross, the weave appears.
         const weave =
-          Math.sin(d * 4.4 + s * Math.PI * 1.35 - time * 0.42) * 0.42 +
-          Math.sin(d * 2.1 - s * Math.PI * 0.6 + time * 0.23) * 0.2;
-        const y = midY + env * (s * 0.72 + weave) + Math.sin(time * 0.13) * 6;
+          (Math.sin(d * 4.4 + s * Math.PI * 1.35 - time * 0.42) * 0.42 +
+            Math.sin(d * 2.1 - s * Math.PI * 0.6 + time * 0.23) * 0.2) *
+          WAVE_AMPLITUDE;
+        // The slow sway eases in from the seam, so the ribbon's source stays pinned to the centre.
+        const sway = Math.sin(time * 0.13) * 6 * smoothstep(Math.min(1, d / SWAY_RAMP));
+        const y = midY + env * (s * 0.72 + weave) + sway;
         if (j === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
@@ -217,14 +284,19 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
     ctx.globalCompositeOperation = "source-over";
   };
 
-  /** The seam itself: broad halo, tight bar, and a dark hairline core. */
-  const drawSeam = (time: number, spread: number) => {
-    const pulse = 0.85 + 0.15 * Math.sin(time * 0.6);
-    // A tighter pinch concentrates the same energy into a brighter seam.
-    const intensity = pulse * lerp(1.15, 0.8, smoothstep(spread));
+  /** The seam's strength this frame: a slow pulse, and a tighter pinch concentrates it. */
+  const seamIntensity = (time: number, spread: number) =>
+    (0.85 + 0.15 * Math.sin(time * 0.6)) * lerp(1.15, 0.8, smoothstep(spread));
+
+  /**
+   * Under everything else: the seam's broad halo, then the shadow along the bar, so the beam
+   * reads as set into the dark. Drawn first, the shadow darkens only the background and the glow,
+   * never the strands.
+   */
+  const drawSeamGlow = (time: number, spread: number) => {
+    const intensity = seamIntensity(time, spread);
 
     ctx.globalCompositeOperation = "lighter";
-
     const halo = ctx.createRadialGradient(seamX, midY, 0, seamX, midY, height * 1.15);
     halo.addColorStop(0, `rgba(255, 255, 255, ${0.42 * intensity})`);
     halo.addColorStop(0.32, `rgba(215, 230, 255, ${0.12 * intensity})`);
@@ -232,32 +304,20 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
     ctx.fillStyle = halo;
     ctx.fillRect(0, 0, width, height);
 
-    const barWidth = 26 * intensity;
-    const bar = ctx.createLinearGradient(seamX - barWidth, 0, seamX + barWidth, 0);
-    bar.addColorStop(0, "rgba(255, 255, 255, 0)");
-    bar.addColorStop(0.5, `rgba(255, 255, 255, ${0.9 * intensity})`);
-    bar.addColorStop(1, "rgba(255, 255, 255, 0)");
-    ctx.fillStyle = bar;
-
-    // Brightest at the waist, falling away toward the top and bottom edges.
-    const falloff = ctx.createLinearGradient(0, 0, 0, height);
-    falloff.addColorStop(0, "rgba(0, 0, 0, 0)");
-    falloff.addColorStop(0.5, "rgba(0, 0, 0, 1)");
-    falloff.addColorStop(1, "rgba(0, 0, 0, 0)");
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(seamX - barWidth, 0, barWidth * 2, height);
-    ctx.clip();
-    ctx.fillRect(seamX - barWidth, 0, barWidth * 2, height);
-    ctx.globalCompositeOperation = "destination-in";
-    ctx.fillStyle = falloff;
-    ctx.fillRect(seamX - barWidth, 0, barWidth * 2, height);
-    ctx.restore();
-
+    const shadowWidth = BAR_HALF_WIDTH * intensity * SHADOW_SPREAD;
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-    ctx.fillRect(seamX - 0.75, 0, 1.5, height);
+    ctx.drawImage(shadowSprite, seamX - shadowWidth, 0, shadowWidth * 2, height);
+  };
+
+  /** On top of the strands: the seam's tight bar of light. */
+  const drawSeamBar = (time: number, spread: number) => {
+    const intensity = seamIntensity(time, spread);
+    const barWidth = BAR_HALF_WIDTH * intensity;
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = Math.min(1, intensity);
+    ctx.drawImage(barSprite, seamX - barWidth, 0, barWidth * 2, height);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
   };
 
   const drawVignette = () => {
@@ -284,11 +344,12 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
     ctx.fillStyle = BASE;
     ctx.fillRect(0, 0, width, height);
 
+    drawSeamGlow(time, spread);
     drawStreams(time, spread);
     drawGlyphs(time, spread);
     drawRibbon(time, spreadRight);
     drawSparkles(time);
-    drawSeam(time, spread);
+    drawSeamBar(time, spread);
     drawVignette();
   };
 

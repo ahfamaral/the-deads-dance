@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { closePool } from "@corpus/db";
 import { GET } from "@/app/api/admin/users/route";
 import { POST } from "@/app/api/admin/users/[id]/[action]/route";
+import { requireApproved } from "@/lib/server/access";
 import { resetAuth } from "../helpers/db";
 import { signInAs } from "../helpers/auth";
 
@@ -43,6 +44,18 @@ describe("admin API", () => {
     expect(again.status).toBe(409);
     expect(await again.json()).toMatchObject({ ok: false, reason: "already_changed", error: "Already changed." });
     expect((await act(boss.cookie, ana.userId, "promote")).status).toBe(404);
+  });
+
+  it("unblocks a blocked user, who can then sign in again", async () => {
+    const ana = await signInAs("ana@example.com", { status: "approved" });
+    expect(await (await act(boss.cookie, ana.userId, "block")).json()).toEqual({ ok: true });
+    expect(await (await act(boss.cookie, ana.userId, "unblock")).json()).toEqual({ ok: true });
+    expect((await act(boss.cookie, ana.userId, "unblock")).status).toBe(409);
+    const again = await signInAs("ana@example.com");
+    expect(await requireApproved(new Request("http://localhost/x", { headers: { cookie: again.cookie } }))).toMatchObject({
+      email: "ana@example.com",
+      status: "approved",
+    });
   });
 
   it("rejects prototype pollution attacks with 404", async () => {

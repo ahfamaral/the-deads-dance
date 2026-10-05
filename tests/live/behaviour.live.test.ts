@@ -2,9 +2,10 @@ import { afterAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { closePool } from "@corpus/db";
 import { chatModel } from "@corpus/models";
-import { applyChatEvent, startTurn, toActs, toHistory } from "@/lib/chat-client";
-import type { ChatStreamEvent, LanguageMode, Message } from "@/lib/chat-types";
+import { applyChatEvent, startTurn } from "@/lib/turn-state";
+import { HISTORY_WINDOW, type ChatStreamEvent, type LanguageMode, type Message } from "@/lib/chat-types";
 import { readNdjson } from "@/lib/ndjson";
+import { VisitorActSchema, type VisitorAct } from "@/lib/visitor-act";
 import { closeMcpClient } from "@/lib/server/mcp-client";
 import { loadDevEnv } from "./live-env";
 
@@ -15,6 +16,35 @@ afterAll(async () => {
   await closeMcpClient();
   await closePool();
 });
+
+// The pre-2b request shape (spec §25): kept here so this parked live test still type-checks. It posts the old body and needs a rewrite at the costs discussion.
+const MAX_ACTS = 500;
+type ChatRequestMessage = { role: "user" | "persona"; text: string };
+
+/**
+ * The route gets text only; tool traces and sources stay in the browser. The server only
+ * ever uses the last HISTORY_WINDOW messages (F1), so a long conversation is windowed here
+ * too rather than rejected by the server's message-count cap.
+ */
+function toHistory(messages: Message[]): ChatRequestMessage[] {
+  return messages.slice(-HISTORY_WINDOW).map(({ role, text }) => ({ role, text }));
+}
+
+/**
+ * Spec §18.7: the acts of every user message except the newest, which the server
+ * classifies itself. Messages saved before §18 have none and send null; so does a stored act
+ * that no longer parses (an edited localStorage), so one bad entry never 400s the whole turn.
+ */
+function toActs(messages: Message[]): (VisitorAct | null)[] {
+  const users = messages.filter((m) => m.role === "user");
+  return users
+    .slice(0, -1)
+    .map((m) => {
+      const parsed = VisitorActSchema.safeParse(m.act);
+      return parsed.success ? parsed.data : null;
+    })
+    .slice(-MAX_ACTS);
+}
 
 type Sent = { status: number; events: ChatStreamEvent[]; body?: unknown };
 

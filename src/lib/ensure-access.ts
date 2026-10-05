@@ -9,7 +9,7 @@ const browser: Deps = {
  * Asks the server whether the user may still use the app, and reloads the page when they're
  * signed out (401, e.g. blocked) or not approved (403), so it shows the right screen.
  * Runs alongside the action, never in front of it: an outage or a network error leaves the
- * page alone, so local history stays usable.
+ * page alone, so the screen stays usable.
  */
 export async function ensureAccess(deps: Deps = browser): Promise<void> {
   let status: number;

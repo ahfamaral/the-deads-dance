@@ -1,8 +1,7 @@
-import type { SavedConversation } from "@/lib/conversation-store";
+import type { StoredConversation } from "@/lib/conversation-types";
 
 /**
- * Turns a saved conversation into a downloadable file. Runs entirely in the
- * browser, working from the same JSON shape that conversation-store saves.
+ * Turns a conversation, as the API returns it (spec §25.4), into a downloadable file. Runs entirely in the browser.
  */
 
 export type ExportFormat = "json" | "markdown" | "pdf";
@@ -12,20 +11,20 @@ export const EXPORT_FORMATS: {
   label: string;
   description: string;
 }[] = [
-  { format: "json", label: "JSON", description: "The saved conversation as-is" },
+  { format: "json", label: "JSON", description: "The conversation as-is" },
   { format: "markdown", label: "Markdown", description: "Readable transcript" },
   { format: "pdf", label: "PDF", description: "Printable, with the tool trace" },
 ];
 
-function toJson(conversation: SavedConversation): string {
+function toJson(conversation: StoredConversation): string {
   return JSON.stringify(conversation, null, 2);
 }
 
-function toMarkdown(conversation: SavedConversation): string {
+function toMarkdown(conversation: StoredConversation): string {
   const lines = [
     `# Conversation with ${conversation.personaName}`,
     "",
-    `Saved ${new Date(conversation.savedAt).toLocaleString()}`,
+    `Last message ${new Date(conversation.updatedAt).toLocaleString()}`,
     "",
     "---",
     "",
@@ -38,12 +37,12 @@ function toMarkdown(conversation: SavedConversation): string {
 }
 
 /** e.g. "albert-einstein-2026-09-23" */
-function baseFilename(conversation: SavedConversation): string {
+function baseFilename(conversation: StoredConversation): string {
   const slug = conversation.personaName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-  return `${slug || "conversation"}-${conversation.savedAt.slice(0, 10)}`;
+  return `${slug || "conversation"}-${conversation.updatedAt.slice(0, 10)}`;
 }
 
 function download(filename: string, contents: BlobPart, type: string) {
@@ -59,7 +58,7 @@ function download(filename: string, contents: BlobPart, type: string) {
  * The PDF renderer, jsPDF and the fonts load only when PDF is chosen, so they add
  * nothing to the page load (spec §21.1).
  */
-async function toPdf(conversation: SavedConversation): Promise<ArrayBuffer> {
+async function toPdf(conversation: StoredConversation): Promise<ArrayBuffer> {
   const [{ jsPDF }, { renderConversationPdf, loadPdfFonts }] = await Promise.all([
     import("jspdf"),
     import("@/lib/conversation-pdf"),
@@ -69,7 +68,7 @@ async function toPdf(conversation: SavedConversation): Promise<ArrayBuffer> {
 }
 
 /** Downloads the conversation in the given format. Rejects if the PDF can't be made (spec §21.4). */
-export async function exportConversation(conversation: SavedConversation, format: ExportFormat) {
+export async function exportConversation(conversation: StoredConversation, format: ExportFormat) {
   const name = baseFilename(conversation);
   switch (format) {
     case "json":

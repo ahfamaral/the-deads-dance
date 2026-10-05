@@ -10,13 +10,8 @@ import type { VisitorAct } from "./visitor-act";
 export type LanguageMode = "realistic" | "visitor";
 
 export const MAX_MESSAGE_CHARS = 4000;
-/** Persona replies can be longer than a user's own message (F2: don't punish the model's own output). */
-export const MAX_PERSONA_MESSAGE_CHARS = 20_000;
-export const MAX_REQUEST_MESSAGES = 50;
 /** Only the most recent messages go to the model (spec §16.2). */
 export const HISTORY_WINDOW = 20;
-/** Spec §18.7: the cap on acts sent back with a turn. */
-export const MAX_ACTS = 500;
 
 /** "running" exists only while a turn streams; saved messages hold "ok" or "error". */
 export type ToolCallStatus = "running" | "ok" | "error";
@@ -45,15 +40,23 @@ export type Message = {
   act?: VisitorAct | null;
   /** Spec §18.5: set on the persona message that ended the visit. */
   ended?: VisitEnding;
+  /** Spec §25.3: a partial reply, stored after Stop. */
+  stopped?: boolean;
 };
 
-/** What the browser sends: text only. Earlier tool traces are not replayed to the model. */
-export type ChatRequestMessage = { role: "user" | "persona"; text: string };
+/** Text only, oldest first: what the model sees of the conversation (spec §25.3). */
+export type HistoryMessage = { role: "user" | "persona"; text: string };
+
+/** Spec §25.3: what the browser sends. The server owns the history, so there are no messages or acts. */
 export type ChatRequest = {
+  conversationId: string;
   personaId: string;
-  messages: ChatRequestMessage[];
-  /** The acts of every visitor message before the newest, in order (spec §18.7). */
-  acts: (VisitorAct | null)[];
+  /** The visitor's new message; absent on Retry. */
+  text?: string;
+  /** Answer the stored, unanswered visitor message again. */
+  retry?: true;
+  /** The conversation's first message: only then may the server create it. */
+  first?: true;
   languageMode: LanguageMode;
 };
 

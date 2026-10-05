@@ -1,6 +1,6 @@
 import type { jsPDF } from "jspdf";
 import type { Message, ToolCall } from "@/lib/chat-types";
-import type { SavedConversation } from "@/lib/conversation-store";
+import type { StoredConversation } from "@/lib/conversation-types";
 import {
   explanationOf,
   GENERAL_KNOWLEDGE_NOTE,
@@ -76,7 +76,7 @@ export function traceLine(call: ToolCall): string {
   return parts.join(" · ");
 }
 
-function savedDate(iso: string): string {
+function formatDate(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime())
     ? iso
@@ -85,7 +85,7 @@ function savedDate(iso: string): string {
 
 export function renderConversationPdf(
   JsPdf: typeof jsPDF,
-  conversation: SavedConversation,
+  conversation: StoredConversation,
   fonts: PdfFonts,
 ): RenderedPdf {
   const doc = new JsPdf({ unit: "mm", format: "a4", compress: true });
@@ -159,7 +159,7 @@ export function renderConversationPdf(
   write(`Conversation with ${conversation.personaName}`, STYLES.title);
   gap(1);
   const count = conversation.messages.length;
-  write(`Saved ${savedDate(conversation.savedAt)} · ${count} ${count === 1 ? "message" : "messages"}`, STYLES.meta);
+  write(`Last message ${formatDate(conversation.updatedAt)} · ${count} ${count === 1 ? "message" : "messages"}`, STYLES.meta);
   gap(3);
   doc.setDrawColor("#d4d4d4");
   doc.setLineWidth(0.2);

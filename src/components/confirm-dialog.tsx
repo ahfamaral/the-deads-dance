@@ -11,9 +11,6 @@ type ConfirmDialogProps = {
   onCancel: () => void;
   /** The confirm button's label; "Confirm" when absent. */
   confirmLabel?: string;
-  /** An optional middle action (spec §23.2: "Leave without saving"). */
-  secondaryLabel?: string;
-  onSecondary?: () => void;
 };
 
 /**
@@ -27,8 +24,6 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
   confirmLabel = "Confirm",
-  secondaryLabel,
-  onSecondary,
 }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   // Unique per instance: a closed <dialog> stays in the DOM, so two dialogs on a page must not share ids.
@@ -73,15 +68,6 @@ export default function ConfirmDialog({
           >
             Cancel
           </button>
-          {secondaryLabel && onSecondary && (
-            <button
-              type="button"
-              onClick={onSecondary}
-              className="min-h-11 flex-1 whitespace-nowrap rounded-full border border-white/15 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] sm:flex-none sm:px-4 sm:text-sm text-neutral-200 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-white/40"
-            >
-              {secondaryLabel}
-            </button>
-          )}
           <button
             type="button"
             onClick={onConfirm}

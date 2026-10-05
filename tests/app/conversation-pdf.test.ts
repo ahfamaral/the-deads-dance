@@ -4,7 +4,7 @@ import { jsPDF } from "jspdf";
 import { describe, expect, it } from "vitest";
 import type { Message, ToolCall } from "@/lib/chat-types";
 import { renderConversationPdf, traceLine, type PdfFonts } from "@/lib/conversation-pdf";
-import type { SavedConversation } from "@/lib/conversation-store";
+import type { StoredConversation } from "@/lib/conversation-types";
 
 const font = (name: string) =>
   readFileSync(fileURLToPath(new URL(`../../public/fonts/${name}`, import.meta.url))).toString("base64");
@@ -23,15 +23,15 @@ const search: ToolCall = {
   durationMs: 3400,
 };
 
-const conversation = (messages: Message[]): SavedConversation => ({
+const conversation = (messages: Message[]): StoredConversation => ({
   id: "c1",
   personaId: "chien-shiung-wu",
   personaName: "Chien-Shiung Wu",
-  savedAt: "2026-09-23T10:00:00.000Z",
+  updatedAt: "2026-09-23T10:00:00.000Z",
   messages,
 });
 
-const render = (c: SavedConversation) => renderConversationPdf(jsPDF, c, fonts);
+const render = (c: StoredConversation) => renderConversationPdf(jsPDF, c, fonts);
 const allText = (pages: string[][]) => pages.flat().join("\n");
 
 describe("renderConversationPdf", () => {
@@ -44,7 +44,7 @@ describe("renderConversationPdf", () => {
     );
     const text = allText(pages);
     expect(text).toContain("Conversation with Chien-Shiung Wu");
-    expect(text).toMatch(/Saved .*2026.* · 2 messages/);
+    expect(text).toMatch(/Last message .*2026.* · 2 messages/);
     expect(text).toContain("You");
     expect(text).toContain("What did you prove in 1956?");
     expect(text).toContain("That parity is not conserved.");

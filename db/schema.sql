@@ -131,3 +131,30 @@ CREATE TABLE IF NOT EXISTS otp_send_log (
   sent_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS otp_send_log_email_sent_at ON otp_send_log (email, sent_at);
+
+-- Spec §25.2: conversations and their messages, owned by the user. Hard delete: deleting a
+-- conversation deletes its messages, and deleting a user deletes their conversations.
+CREATE TABLE IF NOT EXISTS conversations (
+  id           uuid PRIMARY KEY,
+  user_id      text NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  persona_slug text NOT NULL,
+  persona_name text NOT NULL,
+  ended        text CHECK (ended IN ('farewell', 'tired', 'offended')),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS conversations_user_updated ON conversations (user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  conversation_id uuid NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
+  role            text NOT NULL CHECK (role IN ('user', 'persona')),
+  text            text NOT NULL,
+  act             jsonb,
+  tool_calls      jsonb,
+  sources         jsonb,
+  ended           text CHECK (ended IN ('farewell', 'tired', 'offended')),
+  stopped         boolean NOT NULL DEFAULT false,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS messages_conversation_id ON messages (conversation_id, id);

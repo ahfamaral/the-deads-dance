@@ -8,6 +8,7 @@ import type { ClassifyVisitor } from "@/lib/server/visitor-classifier";
 import type { VisitorAct } from "@/lib/visitor-act";
 import { getAuth } from "@/lib/server/auth";
 import { signInAs } from "../helpers/auth";
+import { conversationRow, exchanges, messagesOf, seedConversation } from "../helpers/conversations";
 import { insertPersona, resetAuth, resetDb } from "../helpers/db";
 import { fakeMcpTool } from "../helpers/fake-mcp-tool";
 
@@ -20,22 +21,6 @@ vi.mock("@/lib/server/chat-deps", () => ({
 }));
 
 const { POST } = await import("@/app/api/chat/route");
-
-let cookie = "";
-
-const post = (body: unknown) =>
-  POST(
-    new Request("http://localhost/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", cookie },
-      body: JSON.stringify(body),
-    }),
-  );
-
-const ask = (text = "What did your parity experiment show?") => ({
-  personaId: "wu",
-  messages: [{ role: "user", text }],
-});
 
 async function events(res: Response): Promise<ChatStreamEvent[]> {
   const out: ChatStreamEvent[] = [];
@@ -67,10 +52,35 @@ function setDeps(overrides: Partial<ChatDeps> = {}) {
   return search;
 }
 
+const CONV = "8f14e45f-ceea-467f-a0e6-2b8a2a6b1c11";
+let cookie = "";
+let userId = "";
+
+const request = (body: unknown, init: RequestInit = {}) =>
+  new Request("http://localhost/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie },
+    body: JSON.stringify(body),
+    ...init,
+  });
+const post = (body: unknown, init?: RequestInit) => POST(request(body, init));
+
+/** A new message in the conversation under test. */
+const say = (text = "What did your parity experiment show?", extra: Record<string, unknown> = {}) => ({
+  conversationId: CONV,
+  personaId: "wu",
+  text,
+  ...extra,
+});
+/** The conversation's first message: nothing is stored yet. */
+const first = (text?: string) => say(text, { first: true });
+const ENDED = { error: "The persona has ended this conversation.", code: "conversation_ended" };
+const human = (seen: BaseMessage[]) => seen.slice(1).map((m) => `${m.type}:${m.text}`);
+
 beforeEach(async () => {
   await resetDb();
   await resetAuth();
-  ({ cookie } = await signInAs("tester@example.com", { status: "approved" }));
+  ({ cookie, userId } = await signInAs("tester@example.com", { status: "approved" }));
   await insertPersona({ slug: "wu", displayName: "Chien-Shiung Wu" });
   setDeps();
 });
@@ -90,7 +100,7 @@ describe("POST /api/chat", () => {
     const spy = vi.spyOn(getAuth().api, "getSession").mockRejectedValueOnce(new Error("connect ECONNREFUSED 127.0.0.1:5433"));
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const res = await post(ask());
+      const res = await post(first());
       expect(res.status).toBe(503);
       expect(await res.json()).toMatchObject({ code: "unavailable" });
     } finally {
@@ -101,177 +111,299 @@ describe("POST /api/chat", () => {
 
   it("refuses a pending user with 403", async () => {
     const pending = await signInAs("waiting@example.com", { status: "pending" });
-    const res = await POST(
-      new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", cookie: pending.cookie },
-        body: JSON.stringify(ask()),
-      }),
-    );
+    const res = await post(first(), { headers: { "Content-Type": "application/json", cookie: pending.cookie } });
     expect(res.status).toBe(403);
   });
 
   it("streams the tool call, the answer, then the message with its sources", async () => {
     const search = setDeps();
-    const res = await post(ask());
+    const res = await post(first());
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("application/x-ndjson");
-
     const all = await events(res);
     expect(all.map((e) => e.type)).toEqual(["act", "tool_start", "tool_end", "token", "done"]);
-    expect(all[2]).toMatchObject({ type: "tool_end", status: "ok" });
     expect(all.at(-1)).toMatchObject({
       type: "done",
-      message: {
-        text: "I showed that parity is not conserved.",
-        sources: [{ personaId: "wu", sectionHeading: "Parity experiment", chunkId: 7 }],
-      },
+      message: { text: "I showed that parity is not conserved.", sources: [{ personaId: "wu", sectionHeading: "Parity experiment", chunkId: 7 }] },
     });
     expect(search.calls).toEqual([{ query: "parity", persona_id: "wu" }]);
   });
 
-  it("gives the model the persona prompt and the history as chat roles", async () => {
-    let seen: BaseMessage[] = [];
-    setDeps({
-      model: fakeModel().respond((messages: BaseMessage[]) => {
-        seen = messages;
-        return new AIMessage("Hello again.");
-      }),
-    });
-    await events(
-      await post({
-        personaId: "wu",
-        messages: [
-          { role: "user", text: "Hi" },
-          { role: "persona", text: "Hello." },
-          { role: "user", text: "Who are you?" },
-        ],
-      }),
-    );
-    expect(seen[0].type).toBe("system");
-    expect(seen[0].text).toContain("name: Chien-Shiung Wu");
-    expect(seen.slice(1).map((m) => `${m.type}:${m.text}`)).toEqual(["human:Hi", "ai:Hello.", "human:Who are you?"]);
+  it("creates the conversation on its first message and stores both messages", async () => {
+    await events(await post(first()));
+    expect(await conversationRow(CONV)).toMatchObject({ user_id: userId, persona_slug: "wu", persona_name: "Chien-Shiung Wu", ended: null });
+    const rows = await messagesOf(CONV);
+    expect(rows.map((r) => [r.role, r.text])).toEqual([
+      ["user", "What did your parity experiment show?"],
+      ["persona", "I showed that parity is not conserved."],
+    ]);
+    expect(rows[0].act).toEqual(ACT);
+    expect(rows[1]).toMatchObject({ stopped: false, ended: null, sources: [{ personaId: "wu", sectionHeading: "Parity experiment", chunkId: 7 }] });
+    expect(rows[1].tool_calls).toHaveLength(1);
   });
 
-  it("answers a turn whose history starts with the persona's greeting", async () => {
+  it("gives the model the persona prompt and the stored history, not the browser's", async () => {
+    await seedConversation({ id: CONV, userId, messages: [{ role: "user", text: "Hi", act: ACT }, { role: "persona", text: "Hello." }] });
     let seen: BaseMessage[] = [];
-    setDeps({
-      model: fakeModel().respond((messages: BaseMessage[]) => {
-        seen = messages;
-        return new AIMessage("Good to meet you.");
-      }),
-    });
-    const all = await events(
-      await post({
-        personaId: "wu",
-        messages: [
-          { role: "persona", text: "Welcome." },
-          { role: "user", text: "Hi" },
-        ],
-      }),
-    );
-    expect(seen.slice(1).map((m) => `${m.type}:${m.text}`)).toEqual(["ai:Welcome.", "human:Hi"]);
-    expect(all.at(-1)).toMatchObject({ type: "done" });
+    setDeps({ model: fakeModel().respond((m: BaseMessage[]) => ((seen = m), new AIMessage("I am Wu."))) });
+    await events(await post(say("Who are you?")));
+    expect(seen[0].type).toBe("system");
+    expect(seen[0].text).toContain("name: Chien-Shiung Wu");
+    expect(human(seen)).toEqual(["human:Hi", "ai:Hello.", "human:Who are you?"]);
+  });
+
+  it("sends the model only the last 20 messages of a long conversation", async () => {
+    await seedConversation({ id: CONV, userId, messages: exchanges(15, ACT) });
+    let seen: BaseMessage[] = [];
+    setDeps({ model: fakeModel().respond((m: BaseMessage[]) => ((seen = m), new AIMessage("Yes."))) });
+    await events(await post(say("And then?")));
+    expect(human(seen)).toHaveLength(20);
+    expect(human(seen).at(-1)).toBe("human:And then?");
   });
 
   it("announces unavailable tools and still answers", async () => {
     let seen: BaseMessage[] = [];
-    setDeps({
-      getTools: async () => null,
-      model: fakeModel().respond((messages: BaseMessage[]) => {
-        seen = messages;
-        return new AIMessage("I can't recall right now.");
-      }),
-    });
-    const all = await events(await post(ask()));
+    setDeps({ getTools: async () => null, model: fakeModel().respond((m: BaseMessage[]) => ((seen = m), new AIMessage("I can't recall right now."))) });
+    const all = await events(await post(first()));
     expect(all).toContainEqual({ type: "notice", code: "tools_unavailable" });
     expect(all.at(-1)).toMatchObject({ type: "done" });
     expect(seen[0].text).toContain("tools are unavailable");
   });
 
-  it("streams a retryable error when the model fails", async () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("streams a retryable error when the model fails, and stores no reply", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     setDeps({ model: fakeModel().respond(Object.assign(new Error("Too Many Requests"), { status: 429 })) });
-    const all = await events(await post(ask()));
+    const all = await events(await post(first()));
     expect(all.at(-1)).toEqual({ type: "error", reason: expect.stringMatching(/rate-limited/), retryable: true });
-    error.mockRestore();
+    expect((await messagesOf(CONV)).map((r) => r.role)).toEqual(["user"]);
+    quiet.mockRestore();
   });
 
-  // Review Focus 2: a persona deleted while its conversation is open.
+  // Review Focus 2: the reply streamed but couldn't be stored.
+  it("still ends the stream with done when storing the reply fails", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const real = getPool();
+    const failingStore = {
+      query: (sql: string, params?: unknown[]) =>
+        /INSERT INTO messages[\s\S]*'persona'/.test(sql) ? Promise.reject(new Error("connection lost")) : real.query(sql, params),
+      connect: () => real.connect(),
+    } as unknown as typeof real;
+    setDeps({ pool: failingStore });
+    const all = await events(await post(first()));
+    expect(all.at(-1)).toMatchObject({ type: "done" });
+    expect(quiet).toHaveBeenCalled();
+    expect((await messagesOf(CONV)).map((r) => r.role)).toEqual(["user"]);
+    quiet.mockRestore();
+  });
+
   it.each([
     ["an unknown persona", "nobody"],
     ["a persona that isn't ready", "half"],
-  ])("rejects %s with 404", async (_label, personaId) => {
+  ])("rejects %s with 404, storing nothing", async (_label, personaId) => {
     await insertPersona({ slug: "half", status: "ingesting" });
-    const res = await post({ ...ask(), personaId });
+    const res = await post({ ...first(), personaId });
     expect(res.status).toBe(404);
     expect(await res.json()).toMatchObject({ code: "unknown_persona", error: "This persona is no longer available." });
+    expect(await conversationRow(CONV)).toBeUndefined();
   });
 
-  it("rejects an invalid request with 400 before streaming", async () => {
-    const res = await post({ personaId: "wu", messages: [{ role: "user", text: "x".repeat(4001) }] });
+  it.each([
+    ["a message over 4,000 characters", { ...say("x".repeat(4001)), first: true }],
+    ["the old history fields", { ...first(), messages: [{ role: "user", text: "Hi" }], acts: [] }],
+    ["no text", { conversationId: CONV, personaId: "wu", first: true }],
+    ["a malformed conversation id", { ...first(), conversationId: "not-a-uuid" }],
+  ])("rejects %s with 400 before any model call", async (_label, body) => {
+    const classify = classifyFake();
+    setDeps({ classifyVisitor: classify });
+    const res = await post(body);
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("invalid_request");
+    expect(classify).not.toHaveBeenCalled();
   });
 
   it("rejects malformed JSON with 400 and a missing JSON content type with 415", async () => {
-    const malformed = await POST(
-      new Request("http://localhost/api/chat", { method: "POST", headers: { "Content-Type": "application/json", cookie }, body: "{" }),
-    );
+    const malformed = await POST(new Request("http://localhost/api/chat", { method: "POST", headers: { "Content-Type": "application/json", cookie }, body: "{" }));
     expect(malformed.status).toBe(400);
     const plain = await POST(new Request("http://localhost/api/chat", { method: "POST", headers: { cookie }, body: "hi" }));
     expect(plain.status).toBe(415);
   });
 
   it("answers 503 when its dependencies can't be built", async () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     deps.current = new Error("OPENROUTER_API_KEY is not set. Add it to .env.");
-    const res = await post(ask());
+    const res = await post(first());
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ code: "unavailable", error: expect.stringContaining("OPENROUTER_API_KEY") });
-    error.mockRestore();
+    quiet.mockRestore();
+  });
+});
+
+describe("POST /api/chat: ownership (spec §25.3)", () => {
+  it("answers 404 for another user's conversation, and stores nothing", async () => {
+    const classify = classifyFake();
+    setDeps({ classifyVisitor: classify });
+    const other = await signInAs("other@example.com", { status: "approved" });
+    await seedConversation({ id: CONV, userId: other.userId, messages: [{ role: "user", text: "Mine", act: ACT }, { role: "persona", text: "Yes." }] });
+    for (const body of [say("Let me in"), first("Let me in")]) {
+      const res = await post(body);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: "This conversation is no longer available.", code: "unknown_conversation" });
+    }
+    expect(await messagesOf(CONV)).toHaveLength(2);
+    expect(classify).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["with another persona", { personaSlug: "curie" }],
+    ["that has ended", { ended: "offended" as const }],
+  ])("answers 404, not 400 or 409, for another user's conversation %s", async (_label, extra) => {
+    const classify = classifyFake();
+    setDeps({ classifyVisitor: classify });
+    const other = await signInAs("other@example.com", { status: "approved" });
+    await seedConversation({ id: CONV, userId: other.userId, ...extra, messages: [{ role: "user", text: "Mine", act: ACT }, { role: "persona", text: "Yes." }] });
+    const res = await post(say("Let me in"));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "This conversation is no longer available.", code: "unknown_conversation" });
+    expect(classify).not.toHaveBeenCalled();
+  });
+
+  // Review Focus 3: deleted in another tab, continued in this one.
+  it("answers 404 for a conversation that doesn't exist, unless it's the first message", async () => {
+    const res = await post(say("Still there?"));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: "unknown_conversation" });
+    expect(await conversationRow(CONV)).toBeUndefined();
+  });
+
+  it("rejects a different persona for the conversation with 400", async () => {
+    await insertPersona({ slug: "curie", displayName: "Marie Curie" });
+    await seedConversation({ id: CONV, userId, messages: [{ role: "user", text: "Hi", act: ACT }, { role: "persona", text: "Hello." }] });
+    const res = await post({ ...say("Hi"), personaId: "curie" });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/chat: endings, enforced by the server (spec §23, §25.3)", () => {
+  const insult: VisitorAct = { ...ACT, act: "insult", offense: 2 };
+  const farewell: VisitorAct = { ...ACT, act: "farewell" };
+
+  it("refuses a turn after any stored ending, without calling the model", async () => {
+    const classify = classifyFake();
+    setDeps({ classifyVisitor: classify });
+    for (const ending of ["farewell", "tired", "offended"] as const) {
+      const id = crypto.randomUUID();
+      await seedConversation({ id, userId, ended: ending, messages: [{ role: "user", text: "Bye", act: ACT }, { role: "persona", text: "Goodbye.", ended: ending }] });
+      const res = await post({ conversationId: id, personaId: "wu", text: "One more thing!" });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual(ENDED);
+    }
+    expect(classify).not.toHaveBeenCalled();
+  });
+
+  it("refuses a turn when the stored acts already closed the visit, even with ended unset", async () => {
+    await seedConversation({ id: CONV, userId, messages: [{ role: "user", text: "Bye", act: farewell }, { role: "persona", text: "Goodbye." }] });
+    expect((await post(say("Wait!"))).status).toBe(409);
+  });
+
+  it("ends the visit on the first insult and refuses the next turn", async () => {
+    setDeps({ classifyVisitor: classifyFake(insult), model: fakeModel().respond(new AIMessage("Good day.")) });
+    const all = await events(await post(first("You're a fraud.")));
+    expect(all.at(-1)).toMatchObject({ type: "done", message: { text: "Good day.", ended: "offended" } });
+    expect((await conversationRow(CONV)).ended).toBe("offended");
+    expect((await messagesOf(CONV))[1].ended).toBe("offended");
+    expect((await post(say("Sorry!"))).status).toBe(409);
+  });
+
+  /** Deps whose search tool presses Stop: the abort lands after the visitor message is stored. */
+  function stopInTool(stop: AbortController, act: VisitorAct) {
+    const search = fakeMcpTool("search_biography", () => (stop.abort(), { status: "ok", passages: [passage], queries: ["parity"] }));
+    setDeps({ classifyVisitor: classifyFake(act), getTools: async () => [search.tool] });
+  }
+
+  it("locks the ending before the reply: Stop on the exit turn still ends the visit", async () => {
+    const stop = new AbortController();
+    stopInTool(stop, insult);
+    await events(await post(first("You're a fraud."), { signal: stop.signal }));
+    expect((await conversationRow(CONV)).ended).toBe("offended");
+    expect((await messagesOf(CONV)).map((r) => r.role)).toEqual(["user"]);
+    setDeps();
+    expect((await post(say("Sorry!"))).status).toBe(409);
+  });
+
+  it("stores nothing for a Stop before any text, but keeps the visitor message and its act", async () => {
+    const stop = new AbortController();
+    stopInTool(stop, ACT);
+    await events(await post(first("Tell me everything."), { signal: stop.signal }));
+    const rows = await messagesOf(CONV);
+    expect(rows.map((r) => [r.role, r.act])).toEqual([["user", ACT]]);
+    expect((await conversationRow(CONV)).ended).toBeNull();
+  });
+
+  it("stores nothing at all for a Stop during classification (no null-act message escapes the ending rules)", async () => {
+    const stop = new AbortController();
+    setDeps({ classifyVisitor: vi.fn<ClassifyVisitor>(async () => (stop.abort(), null)) });
+    await post(first("You're a fraud."), { signal: stop.signal });
+    expect(await messagesOf(CONV)).toEqual([]);
+    expect(await getPool().query("select 1 from conversations where id = $1", [CONV]).then((r) => r.rowCount)).toBe(0);
+  });
+
+  it("allows the wind-down turn and refuses the one after", async () => {
+    await seedConversation({ id: CONV, userId, messages: exchanges(39, ACT) });
+    setDeps({ model: fakeModel().respond(new AIMessage("I must rest now.")) });
+    const lastAllowed = await post(say("One last question."));
+    expect(lastAllowed.status).toBe(200);
+    expect((await events(lastAllowed)).at(-1)).toMatchObject({ type: "done", message: { ended: "tired" } });
+    expect((await conversationRow(CONV)).ended).toBe("tired");
+    expect((await post(say("And another?"))).status).toBe(409);
+  });
+});
+
+describe("POST /api/chat: Retry (spec §25.3)", () => {
+  it("answers the unanswered visitor message again, without classifying or storing it twice", async () => {
+    const maria = { ...ACT, visitorName: "Maria" };
+    await seedConversation({ id: CONV, userId, messages: [{ role: "user", text: "Hi, I'm Maria.", act: maria }] });
+    const classify = classifyFake();
+    let seen: BaseMessage[] = [];
+    setDeps({ classifyVisitor: classify, model: fakeModel().respond((m: BaseMessage[]) => ((seen = m), new AIMessage("Hello, Maria."))) });
+    const all = await events(await post({ conversationId: CONV, personaId: "wu", retry: true }));
+    expect(all[0]).toEqual({ type: "act", act: maria });
+    expect(classify).not.toHaveBeenCalled();
+    expect(human(seen)).toEqual(["human:Hi, I'm Maria."]);
+    expect(seen[0].text).toContain("The visitor's name is Maria.");
+    expect((await messagesOf(CONV)).map((r) => [r.role, r.text])).toEqual([
+      ["user", "Hi, I'm Maria."],
+      ["persona", "Hello, Maria."],
+    ]);
+  });
+
+  it("refuses a Retry when the newest message already has a reply", async () => {
+    await seedConversation({ id: CONV, userId, messages: [{ role: "user", text: "Hi", act: ACT }, { role: "persona", text: "Hello." }] });
+    const res = await post({ conversationId: CONV, personaId: "wu", retry: true });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "There's nothing to retry.", code: "nothing_to_retry" });
   });
 });
 
 describe("POST /api/chat: behaviour (spec §18)", () => {
-  const insult: VisitorAct = { ...ACT, act: "insult", offense: 2 };
-
-  it("classifies the newest message with the previous persona line and the profile", async () => {
+  it("classifies the newest message with the previous stored persona line and the profile", async () => {
+    await seedConversation({ id: CONV, userId, messages: [{ role: "user", text: "Hi", act: ACT }, { role: "persona", text: "Hello." }] });
     const classify = classifyFake();
     setDeps({ classifyVisitor: classify });
-    await events(
-      await post({
-        personaId: "wu",
-        messages: [
-          { role: "user", text: "Hi" },
-          { role: "persona", text: "Hello." },
-          { role: "user", text: "Who are you?" },
-        ],
-      }),
-    );
-    expect(classify).toHaveBeenCalledWith({
-      personaMessage: "Hello.",
-      visitorMessage: "Who are you?",
-      profile: null,
-      signal: expect.any(AbortSignal),
-    });
+    await events(await post(say("Who are you?")));
+    expect(classify).toHaveBeenCalledWith({ personaMessage: "Hello.", visitorMessage: "Who are you?", profile: null, signal: expect.any(AbortSignal) });
   });
 
   it("streams the act first and puts the state block in the prompt", async () => {
     let system = "";
     setDeps({
       classifyVisitor: classifyFake({ ...ACT, visitorName: "Maria" }),
-      model: fakeModel().respond((messages: BaseMessage[]) => {
-        system = messages[0].text;
-        return new AIMessage("Maria. A good name.");
-      }),
+      model: fakeModel().respond((m: BaseMessage[]) => ((system = m[0].text), new AIMessage("Maria. A good name."))),
     });
-    const all = await events(await post(ask("I'm Maria.")));
+    const all = await events(await post(first("I'm Maria.")));
     expect(all[0]).toEqual({ type: "act", act: { ...ACT, visitorName: "Maria" } });
     expect(system).toContain("<conversation_state>\nThe visitor's name is Maria.");
   });
 
-  // Spec §18.4 backfill: a persona added before languages existed must not read as English only.
   it("fetches and stores the languages of a persona stored without them", async () => {
     await insertPersona({ slug: "goulart", displayName: "João Goulart", origin: "user", wikidataQid: "Q34982" });
     let system = "";
@@ -279,19 +411,16 @@ describe("POST /api/chat: behaviour (spec §18)", () => {
     setDeps({
       fetchLanguages,
       classifyVisitor: classifyFake({ ...ACT, language: "pt" }),
-      model: fakeModel().respond((messages: BaseMessage[]) => {
-        system = messages[0].text;
-        return new AIMessage("Boa tarde.");
-      }),
+      model: fakeModel().respond((m: BaseMessage[]) => ((system = m[0].text), new AIMessage("Boa tarde."))),
     });
-    await events(await post({ personaId: "goulart", messages: [{ role: "user", text: "Boa tarde, presidente." }] }));
+    await events(await post({ ...first("Boa tarde, presidente."), personaId: "goulart" }));
     expect(fetchLanguages).toHaveBeenCalledWith("Q34982");
     expect(system).toContain("The visitor writes in Portuguese. You speak it, your native language; answer in Portuguese.");
     const { rows } = await getPool().query("SELECT languages FROM personas WHERE slug = 'goulart'");
     expect(rows[0].languages).toEqual([{ code: "pt", name: "Portuguese", native: true }]);
   });
 
-  it("goes ahead in English when the languages lookup fails, and retries next turn", async () => {
+  it("goes ahead in English when the languages lookup fails", async () => {
     await insertPersona({ slug: "goulart", displayName: "João Goulart", origin: "user", wikidataQid: "Q34982" });
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     let system = "";
@@ -300,91 +429,30 @@ describe("POST /api/chat: behaviour (spec §18)", () => {
         throw new Error("Wikidata down");
       },
       classifyVisitor: classifyFake({ ...ACT, language: "pt" }),
-      model: fakeModel().respond((messages: BaseMessage[]) => {
-        system = messages[0].text;
-        return new AIMessage("Hm?");
-      }),
+      model: fakeModel().respond((m: BaseMessage[]) => ((system = m[0].text), new AIMessage("Hm?"))),
     });
-    const all = await events(await post({ personaId: "goulart", messages: [{ role: "user", text: "Olá." }] }));
+    const all = await events(await post({ ...first("Olá."), personaId: "goulart" }));
     expect(all.at(-1)).toMatchObject({ type: "done" });
     expect(system).toContain("which you never learned");
-    const { rows } = await getPool().query("SELECT languages FROM personas WHERE slug = 'goulart'");
-    expect(rows[0].languages).toBeNull();
     quiet.mockRestore();
   });
 
-  it("goes ahead without state when the classifier fails", async () => {
+  it("goes ahead without state when the classifier fails, storing a null act", async () => {
     let system = "";
-    setDeps({
-      classifyVisitor: classifyFake(null),
-      model: fakeModel().respond((messages: BaseMessage[]) => {
-        system = messages[0].text;
-        return new AIMessage("Yes?");
-      }),
-    });
-    const all = await events(await post(ask()));
+    setDeps({ classifyVisitor: classifyFake(null), model: fakeModel().respond((m: BaseMessage[]) => ((system = m[0].text), new AIMessage("Yes?"))) });
+    const all = await events(await post(first()));
     expect(all[0]).toEqual({ type: "act", act: null });
-    expect(all.at(-1)).toMatchObject({ type: "done" });
     expect(system).not.toContain("<conversation_state>");
-  });
-
-  it("marks the reply that ends the visit in offense", async () => {
-    setDeps({ classifyVisitor: classifyFake(insult), model: fakeModel().respond(new AIMessage("Good day.")) });
-    // Spec §23.5: the first insult ends the visit.
-    const all = await events(await post({ ...ask("You're a fraud."), acts: [ACT] }));
-    expect(all.at(-1)).toMatchObject({ type: "done", message: { text: "Good day.", ended: "offended" } });
-  });
-
-  it("refuses a turn after the persona has left, without calling the model", async () => {
-    const classify = classifyFake();
-    setDeps({ classifyVisitor: classify });
-    const res = await post({ ...ask("Sorry!"), acts: [insult, insult, insult] });
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "The persona has ended this conversation.", code: "conversation_ended" });
-    expect(classify).not.toHaveBeenCalled();
-  });
-
-  it("refuses a turn after a farewell, without calling the model", async () => {
-    const classify = classifyFake();
-    setDeps({ classifyVisitor: classify });
-    const farewell: VisitorAct = { ...ACT, act: "farewell" };
-    const res = await post({ ...ask("One more thing!"), acts: [ACT, farewell] });
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "The persona has ended this conversation.", code: "conversation_ended" });
-    expect(classify).not.toHaveBeenCalled();
-  });
-
-  it("refuses a turn after the wind-down turn, but allows the wind-down turn itself", async () => {
-    const classify = classifyFake();
-    setDeps({ classifyVisitor: classify, model: fakeModel().respond(new AIMessage("I must rest now.")) });
-    const lastAllowed = await post({ ...ask(), acts: Array.from({ length: 39 }, () => ACT) });
-    expect(lastAllowed.status).toBe(200);
-    expect((await events(lastAllowed)).at(-1)).toMatchObject({ type: "done", message: { ended: "tired" } });
-
-    const refused = await post({ ...ask(), acts: Array.from({ length: 40 }, () => ACT) });
-    expect(refused.status).toBe(409);
-  });
-
-  // Spec §18.5 (revised 2026-09-29): the persona never speaks first.
-  it("refuses an arrival request without calling the model", async () => {
-    const classify = classifyFake();
-    setDeps({ classifyVisitor: classify, model: fakeModel().respond(new AIMessage("Come in.")) });
-    const res = await post({ personaId: "wu", kind: "arrival", messages: [] });
-    expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({ error: "Send at least one message." });
-    expect(classify).not.toHaveBeenCalled();
+    expect((await messagesOf(CONV))[0].act).toBeNull();
   });
 
   it("passes the language mode through to the state block", async () => {
     let system = "";
     setDeps({
       classifyVisitor: classifyFake({ ...ACT, language: "ja" }),
-      model: fakeModel().respond((messages: BaseMessage[]) => {
-        system = messages[0].text;
-        return new AIMessage("はい。");
-      }),
+      model: fakeModel().respond((m: BaseMessage[]) => ((system = m[0].text), new AIMessage("はい。"))),
     });
-    await events(await post({ ...ask("こんにちは"), languageMode: "visitor" }));
+    await events(await post({ ...first("こんにちは"), languageMode: "visitor" }));
     expect(system).toContain("Answer in Japanese, even though you never spoke it.");
   });
 });

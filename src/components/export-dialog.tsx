@@ -2,16 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { EXPORT_FORMATS, exportConversation, type ExportFormat } from "@/lib/conversation-export";
-import type { SavedConversation } from "@/lib/conversation-store";
+import type { StoredConversation } from "@/lib/conversation-types";
 
 type ExportDialogProps = {
   /** The conversation to export; the dialog is open while this is set. */
-  conversation: SavedConversation | null;
+  conversation: StoredConversation | null;
   onClose: () => void;
 };
 
 /**
- * Modal asking which format to export a saved conversation in. Built on the
+ * Modal asking which format to export a conversation in. Built on the
  * native <dialog>, which provides the focus trap and closing on Escape.
  */
 export default function ExportDialog({ conversation, onClose }: ExportDialogProps) {
@@ -42,7 +42,7 @@ export default function ExportDialog({ conversation, onClose }: ExportDialogProp
 }
 
 /** Spec §21.4: the PDF can fail to load; the dialog then stays open and says so. */
-function ExportOptions({ conversation, onClose }: { conversation: SavedConversation; onClose: () => void }) {
+function ExportOptions({ conversation, onClose }: { conversation: StoredConversation; onClose: () => void }) {
   const [busy, setBusy] = useState<ExportFormat | null>(null);
   const [failed, setFailed] = useState(false);
 

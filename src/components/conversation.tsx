@@ -6,10 +6,6 @@ type ConversationProps = {
   personaName: string;
   messages: Message[];
   onBack: () => void;
-  /** When omitted, the Save button renders disabled. */
-  onSave?: () => void;
-  /** Result of the last save, shown on the Save button. */
-  saveStatus?: "idle" | "saved" | "error";
   /** The persona reply that is still streaming. */
   pending?: Message;
   /** Why the last turn failed; shown inline under the conversation. */
@@ -23,15 +19,11 @@ type ConversationProps = {
   onLanguageModeChange: (mode: LanguageMode) => void;
 };
 
-const SAVE_LABELS = { idle: "Save", saved: "Saved", error: "Couldn't save" } as const;
-
 /** Transcript of the exchange between the user and the persona, including the reply that is still streaming. */
 export default function Conversation({
   personaName,
   messages,
   onBack,
-  onSave,
-  saveStatus = "idle",
   pending,
   turnError,
   onRetry,
@@ -71,27 +63,8 @@ export default function Conversation({
           Back
         </button>
         <h2 className="truncate text-sm font-medium text-foreground">{personaName}</h2>
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={!onSave}
-          className="flex items-center gap-1.5 justify-self-end rounded-full px-3 py-1.5 text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-neutral-400"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="size-4"
-            aria-hidden="true"
-          >
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-            <path d="M17 21v-8H7v8M7 3v5h8" />
-          </svg>
-          {SAVE_LABELS[saveStatus]}
-        </button>
+        {/* Keeps the name centred now that Save is gone (spec §25.5). */}
+        <span aria-hidden="true" />
       </header>
       <div className="flex justify-end border-b border-white/10 px-4 py-1.5">
         <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">

@@ -146,6 +146,9 @@ export default function SignIn({ siteKey }: { siteKey: string }) {
               Send code
             </button>
             <p className="text-xs text-neutral-500">New here? The same form signs you up.</p>
+            <p className="text-xs text-neutral-500">
+              Your conversations are stored on our server, so you can see them on any device. Delete one from History at any time.
+            </p>
           </form>
         )}
 

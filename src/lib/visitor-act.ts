@@ -20,7 +20,7 @@ export const VISITOR_ACTS = [
 export const WANTS = ["brief", "normal", "long"] as const;
 export const MAX_VISITOR_NAME = 40;
 
-/** Strict, so a tampered act in localStorage is a 400, not a surprise (spec §18.7). */
+/** Strict: validates the classifier's output and the acts read back from storage (parseAct reads a bad stored one as null) (spec §18.7). */
 export const VisitorActSchema = z.strictObject({
   act: z.enum(VISITOR_ACTS),
   offense: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),

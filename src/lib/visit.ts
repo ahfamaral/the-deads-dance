@@ -44,7 +44,7 @@ export type Visit = {
 
 const clamp = (n: number) => Math.min(VISIT_RULES.max, Math.max(VISIT_RULES.min, n));
 
-/** Pure and deterministic: the server folds the acts the browser sends back (spec §18.1, approach A). */
+/** Pure and deterministic: the server folds the acts it has stored (spec §25.3). */
 export function foldVisit(acts: (VisitorAct | null)[]): Visit {
   const r = VISIT_RULES;
   let patience = 0;

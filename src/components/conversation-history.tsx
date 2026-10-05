@@ -1,41 +1,59 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import ConfirmDialog from "@/components/confirm-dialog";
 import ExportDialog from "@/components/export-dialog";
-import {
-  deleteConversation,
-  loadConversations,
-  type SavedConversation,
-} from "@/lib/conversation-store";
+import type { ConversationSummary, StoredConversation } from "@/lib/conversation-types";
+import { fetchConversation, fetchConversationList, removeConversation } from "@/lib/conversations-api";
 import { ensureAccess } from "@/lib/ensure-access";
 import { useScrollFade } from "@/lib/use-scroll-fade";
 
 type ConversationHistoryProps = {
   onBack: () => void;
-  onOpen: (conversation: SavedConversation) => void;
+  onOpen: (conversation: StoredConversation) => void;
 };
 
-const savedAtFormat = new Intl.DateTimeFormat(undefined, {
+const updatedAtFormat = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
 
 /**
- * Lists the conversations saved from the chat, most recent first. They are read
- * from the browser's localStorage, not the database (see conversation-store).
+ * Spec §25.4: your conversations, newest first, from the server. Open and Export load the full
+ * conversation first; Delete asks, then removes it on the server for good.
  */
 export default function ConversationHistory({ onBack, onOpen }: ConversationHistoryProps) {
-  // Only mounted after the user navigates here, so reading storage in the
-  // initialiser never runs during server rendering.
-  const [conversations, setConversations] = useState(loadConversations);
-  const [exporting, setExporting] = useState<SavedConversation | null>(null);
+  const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<StoredConversation | null>(null);
+  const [deleting, setDeleting] = useState<ConversationSummary | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const listFade = useScrollFade();
 
-  function removeConversation(conversation: SavedConversation) {
-    if (deleteConversation(conversation.id)) {
-      setConversations((current) => current.filter((c) => c.id !== conversation.id));
-    }
+  useEffect(() => {
+    void fetchConversationList().then((list) => (list ? setConversations(list) : setLoadFailed(true)));
+  }, []);
+
+  /** Loads the full conversation for Open or Export; a failure leaves a note and the row. */
+  async function withFull(summary: ConversationSummary, onLoaded: (c: StoredConversation) => void) {
+    setNote(null);
+    const result = await fetchConversation(summary.id);
+    if (result.kind === "found") onLoaded(result.conversation);
+    else if (result.kind === "missing") {
+      setConversations((current) => current?.filter((c) => c.id !== summary.id) ?? null);
+      setNote("That conversation is no longer available.");
+    } else setNote("Couldn't open the conversation. Try again in a minute.");
+  }
+
+  async function confirmDelete() {
+    const target = deleting;
+    setDeleting(null);
+    if (!target) return;
+    setNote(null);
+    if (await removeConversation(target.id)) {
+      setConversations((current) => current?.filter((c) => c.id !== target.id) ?? null);
+    } else setNote("Couldn't delete the conversation. Try again in a minute.");
   }
 
   return (
@@ -71,14 +89,21 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
             History of conversations
           </h2>
         </header>
-        {conversations.length === 0 ? (
-          <p className="px-5 py-10 text-center text-sm text-neutral-500">
-            No saved conversations yet.
+        {note && (
+          <p role="status" className="border-b border-white/10 px-5 py-2 text-sm text-neutral-400">
+            {note}
           </p>
+        )}
+        {conversations === null ? (
+          <p className="px-5 py-10 text-center text-sm text-neutral-500">
+            {loadFailed ? "Couldn't load your conversations." : "Loading…"}
+          </p>
+        ) : conversations.length === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-neutral-500">No conversations yet.</p>
         ) : (
           <ul {...listFade} className="scroll-fade flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
             {conversations.map((conversation) => {
-              const firstLine = conversation.messages.find((m) => m.role === "user")?.text;
+              const firstLine = conversation.preview;
               const selected = conversation.id === selectedId;
               return (
                 <li
@@ -100,8 +125,8 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                     <span className="truncate text-sm text-neutral-500">
                       {firstLine ?? "No messages"}
                     </span>
-                    <time dateTime={conversation.savedAt} className="text-xs text-neutral-500">
-                      {savedAtFormat.format(new Date(conversation.savedAt))}
+                    <time dateTime={conversation.updatedAt} className="text-xs text-neutral-500">
+                      {updatedAtFormat.format(new Date(conversation.updatedAt))}
                     </time>
                   </button>
                   {/* Fixed-width slot reserved on every row, as in the persona
@@ -116,7 +141,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                     <button
                       type="button"
                       onClick={() => {
-                        setExporting(conversation);
+                        void withFull(conversation, setExporting);
                         void ensureAccess(); // the dialog isn't a screen change, so it checks here
                       }}
                       aria-label={`Export conversation with ${conversation.personaName}`}
@@ -126,7 +151,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                     </button>
                     <button
                       type="button"
-                      onClick={() => onOpen(conversation)}
+                      onClick={() => void withFull(conversation, onOpen)}
                       aria-label={`Open conversation with ${conversation.personaName}`}
                       className="w-full whitespace-nowrap rounded-full border border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-200 transition-colors hover:border-white/40 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60"
                     >
@@ -134,7 +159,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                     </button>
                     <button
                       type="button"
-                      onClick={() => removeConversation(conversation)}
+                      onClick={() => setDeleting(conversation)}
                       aria-label={`Delete conversation with ${conversation.personaName}`}
                       className="flex w-full items-center justify-center rounded-full border border-white/15 px-3 py-1.5 text-red-500 transition-colors hover:border-red-500/40 hover:bg-red-500/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500/60"
                     >
@@ -161,6 +186,14 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
         )}
       </section>
       <ExportDialog conversation={exporting} onClose={() => setExporting(null)} />
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete this conversation?"
+        message="This can't be undone."
+        confirmLabel="Delete"
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setDeleting(null)}
+      />
     </div>
   );
 }

@@ -109,7 +109,8 @@ export default function SignIn({ siteKey }: { siteKey: string }) {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center">
+    // On phones the card sits at the top, so the keyboard never covers its button; centred from sm up.
+    <div className="flex flex-1 items-start justify-center sm:items-center">
       <section className={AUTH_CARD}>
         {step === "email" && (
           <form
@@ -149,9 +150,10 @@ export default function SignIn({ siteKey }: { siteKey: string }) {
               10 minutes.
             </p>
             <CodeInput value={code} onChange={setCode} onComplete={(v) => void verify(v)} disabled={busy} />
-            <button type="button" disabled={busy || code.length !== 6} onClick={() => void verify(code)} className={PRIMARY}>
-              Sign in
-            </button>
+            {/* No button: the 6th digit, typed or pasted, submits. A fixed-height line says when it's checking. */}
+            <p aria-live="polite" className="min-h-5 text-sm text-neutral-400">
+              {busy ? "Checking your code…" : ""}
+            </p>
             <div className="flex w-full">
               <button
                 type="button"

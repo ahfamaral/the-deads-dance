@@ -9,6 +9,7 @@ import SignOutButton from "@/components/sign-out-button";
 import type { Message } from "@/lib/chat-types";
 import type { SavedConversation } from "@/lib/conversation-store";
 import { ensureAccess } from "@/lib/ensure-access";
+import { newId } from "@/lib/new-id";
 import type { Persona } from "@/lib/personas";
 
 type Step =
@@ -146,7 +147,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
         onConfirm={(persona) =>
           setStep({
             name: "chat",
-            conversationId: crypto.randomUUID(),
+            conversationId: newId(),
             personaId: persona.id,
             personaName: persona.name,
             messages: [],
@@ -174,7 +175,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
       onNewVisit={() =>
         setStep({
           name: "chat",
-          conversationId: crypto.randomUUID(),
+          conversationId: newId(),
           personaId: step.personaId,
           personaName: step.personaName,
           messages: [],

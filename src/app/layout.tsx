@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import BackgroundCanvas from "@/components/background-canvas";
 import "./globals.css";
@@ -12,6 +12,11 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+// On Android Chrome the page shrinks above the keyboard instead of being covered by it. iOS ignores this.
+export const viewport: Viewport = {
+  interactiveWidget: "resizes-content",
+};
 
 export const metadata: Metadata = {
   title: "Do the deads dance",

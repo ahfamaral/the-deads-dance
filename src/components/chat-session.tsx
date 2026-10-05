@@ -16,6 +16,7 @@ import type { LanguageMode, Message } from "@/lib/chat-types";
 import { saveConversation } from "@/lib/conversation-store";
 import { loadLanguageMode, saveLanguageMode } from "@/lib/language-mode";
 import { shouldWarnBeforeLeaving, showEndBar } from "@/lib/leave-guard";
+import { newId } from "@/lib/new-id";
 import { foldVisit, isEnded } from "@/lib/visit";
 
 type SaveStatus = "idle" | "saved" | "error";
@@ -84,7 +85,7 @@ export default function ChatSession({
   async function run(history: Message[]) {
     const controller = new AbortController();
     abortRef.current = controller;
-    let state = startTurn(crypto.randomUUID());
+    let state = startTurn(newId());
     setMessages(history);
     setTurn(state);
     setTurnError(null);
@@ -135,7 +136,7 @@ export default function ChatSession({
 
   function send(text: string) {
     if (turn || ended || readOnly) return; // one turn at a time; none after the persona left or in a record
-    void run([...messages, { id: crypto.randomUUID(), role: "user", text }]);
+    void run([...messages, { id: newId(), role: "user", text }]);
   }
 
   // Saved to localStorage as JSON, never to the database — see conversation-store.

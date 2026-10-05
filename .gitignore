@@ -50,3 +50,6 @@ docs/
 
 # seed dumps (large, shared outside git)
 db/seed_personas_chunks_*.sql
+
+# local planning notes (next-steps.md, next-steps-*.md, ...)
+next-steps*

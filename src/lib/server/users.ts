@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 import { sendApproval } from "@/lib/server/email";
+import { grantEnergy, readStartingEnergy } from "@/lib/server/energy";
 
 export type UserStatus = "pending" | "approved" | "rejected" | "blocked";
 export type AdminUserRow = {
@@ -10,6 +11,9 @@ export type AdminUserRow = {
   createdAt: string;
   statusChangedAt: string | null;
   statusChangedByEmail: string | null;
+  energyBalance: number;
+  energyFull: number;
+  spent: number;
 };
 export type TransitionResult = { ok: true; emailSent?: boolean } | { ok: false; reason: "not_found" | "already_changed" | "not_allowed" };
 
@@ -39,10 +43,29 @@ async function transition(
 }
 
 export async function approveUser(pool: Pool, id: string, by: string): Promise<TransitionResult> {
-  const r = await transition(pool, id, by, "pending", "approved");
-  if (!r.ok) return r;
+  const client = await pool.connect();
+  let failed: unknown;
+  let email: string;
   try {
-    await sendApproval(r.email);
+    await client.query("BEGIN");
+    const r = await transition(client, id, by, "pending", "approved");
+    if (!r.ok) {
+      await client.query("ROLLBACK");
+      return r;
+    }
+    // Spec §26.6: approving grants the starting energy, in the same transaction.
+    await grantEnergy(client, id, await readStartingEnergy(client), by);
+    await client.query("COMMIT");
+    email = r.email;
+  } catch (err) {
+    failed = err;
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release(failed instanceof Error ? failed : undefined);
+  }
+  try {
+    await sendApproval(email);
     return { ok: true, emailSent: true };
   } catch (err) {
     console.error(err);
@@ -84,12 +107,17 @@ export async function unblockUser(pool: Pool, id: string, by: string): Promise<T
 
 export async function listUsers(pool: Pool): Promise<AdminUserRow[]> {
   const { rows } = await pool.query(
-    `SELECT u.id, u.email, coalesce(u.role, 'user') AS role, u.status, u."createdAt", u."statusChangedAt", b.email AS "statusChangedByEmail"
+    `SELECT u.id, u.email, coalesce(u.role, 'user') AS role, u.status, u."createdAt", u."statusChangedAt", b.email AS "statusChangedByEmail",
+            u."energyBalance", u."energyFull", coalesce(s.spent, 0) AS spent
      FROM "user" u LEFT JOIN "user" b ON b.id = u."statusChangedBy"
+     LEFT JOIN (SELECT user_id, sum(cost) AS spent FROM model_calls GROUP BY user_id) s ON s.user_id = u.id
      ORDER BY u."createdAt" DESC`,
   );
   return rows.map((r) => ({
     ...r,
+    energyBalance: Number(r.energyBalance),
+    energyFull: Number(r.energyFull),
+    spent: Number(r.spent),
     createdAt: new Date(r.createdAt).toISOString(),
     statusChangedAt: r.statusChangedAt ? new Date(r.statusChangedAt).toISOString() : null,
   }));

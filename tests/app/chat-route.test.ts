@@ -10,6 +10,7 @@ import { getAuth } from "@/lib/server/auth";
 import { signInAs } from "../helpers/auth";
 import { conversationRow, exchanges, messagesOf, seedConversation } from "../helpers/conversations";
 import { insertPersona, resetAuth, resetDb } from "../helpers/db";
+import { giveEnergy } from "../helpers/energy";
 import { fakeMcpTool } from "../helpers/fake-mcp-tool";
 
 const deps = vi.hoisted(() => ({ current: null as unknown }));
@@ -47,6 +48,8 @@ function setDeps(overrides: Partial<ChatDeps> = {}) {
     fetchLanguages: async () => {
       throw new Error("fetchLanguages should not be called");
     },
+    resolveCosts: async (calls) =>
+      calls.map((c) => ({ ...c, cost: c.cost ?? 0, costSource: c.cost === null ? ("estimated" as const) : ("reported" as const) })),
     ...overrides,
   } satisfies ChatDeps;
   return search;
@@ -82,6 +85,7 @@ beforeEach(async () => {
   await resetAuth();
   ({ cookie, userId } = await signInAs("tester@example.com", { status: "approved" }));
   await insertPersona({ slug: "wu", displayName: "Chien-Shiung Wu" });
+  await giveEnergy(userId, 1_000_000);
   setDeps();
 });
 afterAll(() => closePool());
@@ -121,8 +125,8 @@ describe("POST /api/chat", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("application/x-ndjson");
     const all = await events(res);
-    expect(all.map((e) => e.type)).toEqual(["act", "tool_start", "tool_end", "token", "done"]);
-    expect(all.at(-1)).toMatchObject({
+    expect(all.map((e) => e.type)).toEqual(["act", "tool_start", "tool_end", "token", "done", "energy"]);
+    expect(all.at(-2)).toMatchObject({
       type: "done",
       message: { text: "I showed that parity is not conserved.", sources: [{ personaId: "wu", sectionHeading: "Parity experiment", chunkId: 7 }] },
     });
@@ -166,7 +170,7 @@ describe("POST /api/chat", () => {
     setDeps({ getTools: async () => null, model: fakeModel().respond((m: BaseMessage[]) => ((seen = m), new AIMessage("I can't recall right now."))) });
     const all = await events(await post(first()));
     expect(all).toContainEqual({ type: "notice", code: "tools_unavailable" });
-    expect(all.at(-1)).toMatchObject({ type: "done" });
+    expect(all.at(-2)).toMatchObject({ type: "done" });
     expect(seen[0].text).toContain("tools are unavailable");
   });
 
@@ -174,7 +178,7 @@ describe("POST /api/chat", () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     setDeps({ model: fakeModel().respond(Object.assign(new Error("Too Many Requests"), { status: 429 })) });
     const all = await events(await post(first()));
-    expect(all.at(-1)).toEqual({ type: "error", reason: expect.stringMatching(/rate-limited/), retryable: true });
+    expect(all.at(-2)).toEqual({ type: "error", reason: expect.stringMatching(/rate-limited/), retryable: true });
     expect((await messagesOf(CONV)).map((r) => r.role)).toEqual(["user"]);
     quiet.mockRestore();
   });
@@ -308,43 +312,10 @@ describe("POST /api/chat: endings, enforced by the server (spec §23, §25.3)", 
   it("ends the visit on the first insult and refuses the next turn", async () => {
     setDeps({ classifyVisitor: classifyFake(insult), model: fakeModel().respond(new AIMessage("Good day.")) });
     const all = await events(await post(first("You're a fraud.")));
-    expect(all.at(-1)).toMatchObject({ type: "done", message: { text: "Good day.", ended: "offended" } });
+    expect(all.at(-2)).toMatchObject({ type: "done", message: { text: "Good day.", ended: "offended" } });
     expect((await conversationRow(CONV)).ended).toBe("offended");
     expect((await messagesOf(CONV))[1].ended).toBe("offended");
     expect((await post(say("Sorry!"))).status).toBe(409);
-  });
-
-  /** Deps whose search tool presses Stop: the abort lands after the visitor message is stored. */
-  function stopInTool(stop: AbortController, act: VisitorAct) {
-    const search = fakeMcpTool("search_biography", () => (stop.abort(), { status: "ok", passages: [passage], queries: ["parity"] }));
-    setDeps({ classifyVisitor: classifyFake(act), getTools: async () => [search.tool] });
-  }
-
-  it("locks the ending before the reply: Stop on the exit turn still ends the visit", async () => {
-    const stop = new AbortController();
-    stopInTool(stop, insult);
-    await events(await post(first("You're a fraud."), { signal: stop.signal }));
-    expect((await conversationRow(CONV)).ended).toBe("offended");
-    expect((await messagesOf(CONV)).map((r) => r.role)).toEqual(["user"]);
-    setDeps();
-    expect((await post(say("Sorry!"))).status).toBe(409);
-  });
-
-  it("stores nothing for a Stop before any text, but keeps the visitor message and its act", async () => {
-    const stop = new AbortController();
-    stopInTool(stop, ACT);
-    await events(await post(first("Tell me everything."), { signal: stop.signal }));
-    const rows = await messagesOf(CONV);
-    expect(rows.map((r) => [r.role, r.act])).toEqual([["user", ACT]]);
-    expect((await conversationRow(CONV)).ended).toBeNull();
-  });
-
-  it("stores nothing at all for a Stop during classification (no null-act message escapes the ending rules)", async () => {
-    const stop = new AbortController();
-    setDeps({ classifyVisitor: vi.fn<ClassifyVisitor>(async () => (stop.abort(), null)) });
-    await post(first("You're a fraud."), { signal: stop.signal });
-    expect(await messagesOf(CONV)).toEqual([]);
-    expect(await getPool().query("select 1 from conversations where id = $1", [CONV]).then((r) => r.rowCount)).toBe(0);
   });
 
   it("allows the wind-down turn and refuses the one after", async () => {
@@ -352,7 +323,7 @@ describe("POST /api/chat: endings, enforced by the server (spec §23, §25.3)", 
     setDeps({ model: fakeModel().respond(new AIMessage("I must rest now.")) });
     const lastAllowed = await post(say("One last question."));
     expect(lastAllowed.status).toBe(200);
-    expect((await events(lastAllowed)).at(-1)).toMatchObject({ type: "done", message: { ended: "tired" } });
+    expect((await events(lastAllowed)).at(-2)).toMatchObject({ type: "done", message: { ended: "tired" } });
     expect((await conversationRow(CONV)).ended).toBe("tired");
     expect((await post(say("And another?"))).status).toBe(409);
   });
@@ -390,7 +361,7 @@ describe("POST /api/chat: behaviour (spec §18)", () => {
     const classify = classifyFake();
     setDeps({ classifyVisitor: classify });
     await events(await post(say("Who are you?")));
-    expect(classify).toHaveBeenCalledWith({ personaMessage: "Hello.", visitorMessage: "Who are you?", profile: null, signal: expect.any(AbortSignal) });
+    expect(classify).toHaveBeenCalledWith({ personaMessage: "Hello.", visitorMessage: "Who are you?", profile: null, callbacks: [expect.anything()] });
   });
 
   it("streams the act first and puts the state block in the prompt", async () => {
@@ -432,7 +403,7 @@ describe("POST /api/chat: behaviour (spec §18)", () => {
       model: fakeModel().respond((m: BaseMessage[]) => ((system = m[0].text), new AIMessage("Hm?"))),
     });
     const all = await events(await post({ ...first("Olá."), personaId: "goulart" }));
-    expect(all.at(-1)).toMatchObject({ type: "done" });
+    expect(all.at(-2)).toMatchObject({ type: "done" });
     expect(system).toContain("which you never learned");
     quiet.mockRestore();
   });
@@ -454,5 +425,125 @@ describe("POST /api/chat: behaviour (spec §18)", () => {
     });
     await events(await post({ ...first("こんにちは"), languageMode: "visitor" }));
     expect(system).toContain("Answer in Japanese, even though you never spoke it.");
+  });
+});
+
+const billedReply = (text: string, cost: number) =>
+  new AIMessage({ content: text, id: "gen-9", response_metadata: { usage: { cost } }, usage_metadata: { input_tokens: 900, output_tokens: 100, total_tokens: 1000 } });
+
+describe("energy (spec §26.4)", () => {
+  it("refuses a tester with no energy with 402, before any model call (Review Focus 1)", async () => {
+    await giveEnergy(userId, 0, 0);
+    const classify = classifyFake();
+    setDeps({ classifyVisitor: classify });
+    const res = await post(first());
+    expect(res.status).toBe(402);
+    expect(await res.json()).toMatchObject({ code: "out_of_energy" });
+    expect(classify).not.toHaveBeenCalled();
+  });
+
+  it("refuses an overdrawn tester too", async () => {
+    await giveEnergy(userId, -20_000, 1_000_000);
+    expect((await post(first())).status).toBe(402);
+  });
+
+  it("charges the turn's real cost and sends the tester only a fraction, never money", async () => {
+    setDeps({ model: fakeModel().respond(billedReply("Parity is violated.", 0.03)) });
+    const out = await events(await post(first()));
+    expect(out.at(-1)).toEqual({ type: "energy", left: 0.97 });
+    expect(JSON.stringify(out)).not.toMatch(/"cost"|"tokens"|\$/);
+    const { rows } = await getPool().query(`SELECT "energyBalance" FROM "user" WHERE id = $1`, [userId]);
+    expect(Number(rows[0].energyBalance)).toBe(970_000);
+    const stored = await getPool().query(`SELECT cost FROM messages WHERE role = 'persona' AND conversation_id = $1`, [CONV]);
+    expect(Number(stored.rows[0].cost)).toBe(30_000);
+  });
+
+  it("never charges the admin, and sends the admin the turn's and the conversation's spend", async () => {
+    ({ cookie, userId } = await signInAs("boss@example.com", { role: "admin" }));
+    setDeps({ model: fakeModel().respond(billedReply("Hello.", 0.03)) });
+    const out = await events(await post(first()));
+    expect(out.at(-1)).toEqual({
+      type: "cost",
+      turn: { tokens: 1_000, cost: 30_000, inputTokens: 900, outputTokens: 100 },
+      conversation: { tokens: 1_000, cost: 30_000 },
+    });
+  });
+
+  it("refuses a second turn while one runs with 409 turn_in_progress (Review Focus 3)", async () => {
+    await seedConversation({ id: CONV, userId, messages: [{ role: "user", text: "hi", act: ACT }] });
+    await getPool().query(`UPDATE conversations SET turn_running_since = now() WHERE id = $1`, [CONV]);
+    const res = await post(say());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "turn_in_progress" });
+  });
+
+  it("finishes, stores and charges a turn after the browser disconnects (Review Focus 3)", async () => {
+    setDeps({ model: fakeModel().respond(billedReply("Still here.", 0.01)) });
+    const res = await post(first());
+    const reader = res.body!.getReader();
+    await reader.read(); // the act
+    await reader.cancel(); // the tab closed
+    for (let i = 0; i < 40; i++) {
+      const { rows } = await getPool().query(`SELECT count(*)::int AS n FROM messages WHERE role = 'persona' AND conversation_id = $1`, [CONV]);
+      if (rows[0].n === 1) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    const { rows } = await getPool().query(
+      `SELECT (SELECT text FROM messages WHERE role = 'persona' AND conversation_id = $2) AS text,
+              (SELECT "energyBalance" FROM "user" WHERE id = $1) AS balance,
+              (SELECT turn_running_since FROM conversations WHERE id = $2) AS running`,
+      [userId, CONV],
+    );
+    expect(rows[0]).toEqual({ text: "Still here.", balance: "990000", running: null });
+  });
+
+  it("charges the classifier even when the turn then fails", async () => {
+    const classify = vi.fn<ClassifyVisitor>(async (input) => {
+      // Stands in for the real classifier recording its call through the handler it was given.
+      const handler = input.callbacks?.[0] as unknown as { handleChatModelStart: (...a: unknown[]) => Promise<void>; handleLLMEnd: (...a: unknown[]) => Promise<void> };
+      await handler.handleChatModelStart({}, [], "run-1", undefined, {}, [], { ls_model_name: "openai/gpt-5-mini" });
+      await handler.handleLLMEnd({ generations: [[{ text: "", message: billedReply("", 0.0005) }]] }, "run-1");
+      return ACT;
+    });
+    const failing = { invoke: () => { throw Object.assign(new Error("boom"), { status: 500 }); } };
+    setDeps({ classifyVisitor: classify, model: failing as never });
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await events(await post(first()));
+    } finally {
+      quiet.mockRestore();
+    }
+    const { rows } = await getPool().query(`SELECT "energyBalance" FROM "user" WHERE id = $1`, [userId]);
+    expect(Number(rows[0].energyBalance)).toBe(999_500);
+  });
+
+  it("still charges and logs a turn whose conversation was deleted mid-turn", async () => {
+    // Deterministic: the search tool deletes the conversation (awaited) between the agent's two model calls.
+    const deleting = fakeMcpTool("search_biography", () => ({ status: "ok", passages: [passage], queries: ["parity"] }));
+    const inner = deleting.tool;
+    const tool = Object.assign(Object.create(Object.getPrototypeOf(inner)), inner, {
+      invoke: async (...a: Parameters<typeof inner.invoke>) => {
+        await getPool().query(`DELETE FROM conversations WHERE id = $1`, [CONV]);
+        return inner.invoke(...a);
+      },
+    }) as typeof inner;
+    const billedSearch = new AIMessage({
+      content: "",
+      id: "gen-8",
+      tool_calls: [{ id: "t1", name: "search_biography", args: { query: "parity" }, type: "tool_call" }],
+      response_metadata: { usage: { cost: 0.02 } },
+      usage_metadata: { input_tokens: 90, output_tokens: 10, total_tokens: 100 },
+    });
+    setDeps({ getTools: async () => [tool], model: fakeModel().respond(billedSearch).respond(billedReply("Done.", 0.03)) });
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await events(await post(first()));
+    } finally {
+      quiet.mockRestore();
+    }
+    const { rows } = await getPool().query(`SELECT "energyBalance" FROM "user" WHERE id = $1`, [userId]);
+    expect(Number(rows[0].energyBalance)).toBe(950_000);
+    const logged = await getPool().query(`SELECT count(*)::int AS n FROM model_calls WHERE user_id = $1 AND conversation_id IS NULL`, [userId]);
+    expect(logged.rows[0].n).toBeGreaterThan(0);
   });
 });

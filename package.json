@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "db:setup": "tsx --env-file=.env scripts/db-setup.ts",
-    "ingest": "tsx --env-file=.env scripts/ingest.ts",
+    "ingest": "echo 'npm run ingest is disabled for now (2026-10-07). To bring it back, set this script to: tsx --env-file=.env scripts/ingest.ts' && exit 1",
     "profiles:draft": "tsx --env-file=.env scripts/draft-profiles.ts",
     "mcp": "tsx --env-file=.env mcp-server/index.ts",
     "admin:grant": "tsx --env-file=.env scripts/admin-grant.ts",

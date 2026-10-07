@@ -1,3 +1,5 @@
+import type { StoredConversation } from "@/lib/conversation-types";
+
 /**
  * Spec §25.5: the chat open in this tab, so a reload (a phone switching apps) brings it back.
  * sessionStorage lasts for the tab only: another tab or device opens the conversation from
@@ -42,4 +44,12 @@ export function writeOpenChat(c: OpenChat | null): void {
   } catch {
     // Not remembered; the chat still works, it just won't survive a reload.
   }
+}
+
+/**
+ * Spec §27: the admin's reads carry the owner's email, so a tab that switched accounts could get
+ * someone else's conversation back. Only your own reopens live; anyone else's opens from History.
+ */
+export function canRestoreLive(conversation: StoredConversation, email: string): boolean {
+  return !conversation.userEmail || conversation.userEmail === email;
 }

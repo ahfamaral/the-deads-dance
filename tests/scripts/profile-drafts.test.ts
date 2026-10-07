@@ -44,8 +44,8 @@ describe("draftProfiles", () => {
 
     expect(Object.keys(result.profiles)).toEqual(["fine"]);
     expect(result.failures).toEqual([
-      "missing: not in the database — run npm run ingest first",
-      "no-text: not in the database — run npm run ingest first",
+      "missing: not in the database — load the personas first (make db-seed)",
+      "no-text: not in the database — load the personas first (make db-seed)",
       "broken: helper model down",
     ]);
   });

@@ -22,4 +22,14 @@ describe("PersonaMessage", () => {
     expect(out.indexOf(STOPPED_NOTE)).toBeGreaterThan(-1);
     expect(out.indexOf(STOPPED_NOTE)).toBeLessThan(out.indexOf(ENDED_NOTE));
   });
+
+  it("shows the admin the reply's cost line, after the notes", () => {
+    const out = renderToStaticMarkup(createElement(PersonaMessage, { personaName: "Wu", message: reply({ ended: "farewell", cost: 9_000, tokens: 1_800 }), showCost: true }));
+    expect(out).toContain("1.8k tok · $0.009");
+    expect(out.indexOf(ENDED_NOTE)).toBeLessThan(out.indexOf("1.8k tok"));
+  });
+
+  it("never shows a cost line without showCost", () => {
+    expect(html(reply({ cost: 9_000, tokens: 1_800 }))).not.toContain("tok");
+  });
 });

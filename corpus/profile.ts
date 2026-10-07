@@ -1,3 +1,4 @@
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { z } from "zod";
 import { biographyText } from "./chunking";
@@ -171,6 +172,6 @@ export function generateProfileWith(model: BaseChatModel, options: ProfileOption
 }
 
 /** The real generator: the helper model with the longer timeout (spec §17.1). */
-export function profileGenerator(options: ProfileOptions = {}): GenerateProfile {
-  return generateProfileWith(chatModel("helper", PROFILE_MODEL_OPTIONS), options);
+export function profileGenerator(options: ProfileOptions & { callbacks?: BaseCallbackHandler[] } = {}): GenerateProfile {
+  return generateProfileWith(chatModel("helper", { ...PROFILE_MODEL_OPTIONS, callbacks: options.callbacks }), options);
 }

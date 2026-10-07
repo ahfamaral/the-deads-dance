@@ -29,6 +29,10 @@ export type ToolCall = {
 /** A cited passage: "Chien-Shiung Wu — Parity experiment", not a chunk id. */
 export type Source = { personaId: string; sectionHeading: string; chunkId: number };
 
+/** Spec §26: what model calls used, in tokens and micro-dollars. Admin-only; testers never get it. */
+export type Spend = { tokens: number; cost: number };
+export type TurnSpend = Spend & { inputTokens: number; outputTokens: number };
+
 export type Message = {
   id: string;
   role: "user" | "persona";
@@ -42,6 +46,9 @@ export type Message = {
   ended?: VisitEnding;
   /** Spec §25.3: a partial reply, stored after Stop. */
   stopped?: boolean;
+  /** Spec §26.6, admin only: the whole turn's cost and tokens. */
+  cost?: number;
+  tokens?: number;
 };
 
 /** Text only, oldest first: what the model sees of the conversation (spec §25.3). */
@@ -68,4 +75,6 @@ export type ChatStreamEvent =
   | { type: "tool_start"; id: string; toolName: string; arguments: Record<string, unknown> }
   | { type: "tool_end"; id: string; status: "ok" | "error"; result: unknown; durationMs: number }
   | { type: "done"; message: { text: string; toolCalls: ToolCall[]; sources: Source[]; ended?: VisitEnding } }
-  | { type: "error"; reason: string; retryable: boolean };
+  | { type: "error"; reason: string; retryable: boolean }
+  | { type: "energy"; left: number }
+  | { type: "cost"; turn: TurnSpend; conversation: Spend };

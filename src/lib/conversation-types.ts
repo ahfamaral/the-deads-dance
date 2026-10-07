@@ -1,4 +1,4 @@
-import type { Message } from "@/lib/chat-types";
+import type { Message, Spend } from "@/lib/chat-types";
 import type { VisitEnding } from "@/lib/visit";
 
 /**
@@ -14,6 +14,12 @@ export type StoredConversation = {
   /** ISO timestamp of the latest message. */
   updatedAt: string;
   messages: Message[];
+  /** Spec §27, admin only: the owner's email. */
+  userEmail?: string;
+  /** Spec §26.4: a turn is still being written on the server. */
+  turnRunning?: boolean;
+  /** Spec §26.6, admin only. */
+  spend?: Spend;
 };
 
 /** One History row: no message bodies. */
@@ -25,6 +31,10 @@ export type ConversationSummary = {
   preview: string | null;
   updatedAt: string;
   ended: VisitEnding | null;
+  /** Spec §27, admin only: whose conversation it is. */
+  userEmail?: string;
+  /** Spec §27, admin only: the admin's own. */
+  mine?: boolean;
 };
 
 export const PREVIEW_CHARS = 120;
@@ -34,3 +44,12 @@ export function cutPreview(text: string | null): string | null {
   const line = text.replace(/\s+/g, " ").trim();
   return line.length > PREVIEW_CHARS ? `${line.slice(0, PREVIEW_CHARS).trimEnd()}…` : line;
 }
+
+/** Spec §27: whose conversation a History row is, for the admin; null in a tester's own list. */
+export function ownerLine(s: ConversationSummary): string | null {
+  if (s.mine === true) return "you";
+  return s.userEmail ?? null;
+}
+
+/** Spec §27: the admin can't delete another user's conversation. */
+export const canDelete = (s: ConversationSummary) => s.mine !== false;

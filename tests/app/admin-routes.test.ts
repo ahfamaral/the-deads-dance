@@ -4,9 +4,11 @@ import { GET } from "@/app/api/admin/users/route";
 import { POST } from "@/app/api/admin/users/[id]/[action]/route";
 import { requireApproved } from "@/lib/server/access";
 import { resetAuth } from "../helpers/db";
-import { signInAs } from "../helpers/auth";
+import { signInAs, withCookie } from "../helpers/auth";
+import { GET as SPEND } from "@/app/api/admin/spend/route";
 
 vi.mock("@/lib/server/email", () => ({ sendCode: async () => {}, sendApproval: async () => {} }));
+vi.mock("@/lib/server/openrouter-credit", () => ({ keyCredit: async () => null }));
 
 let boss: { userId: string; cookie: string };
 beforeEach(async () => {
@@ -63,5 +65,23 @@ describe("admin API", () => {
     expect((await act(boss.cookie, ana.userId, "constructor")).status).toBe(404);
     expect((await act(boss.cookie, ana.userId, "__proto__")).status).toBe(404);
     expect((await act(boss.cookie, ana.userId, "toString")).status).toBe(404);
+  });
+});
+
+describe("GET /api/admin/spend (spec §26.6)", () => {
+  it("answers the credit, the logged spend and the energy testers hold", async () => {
+    const { cookie } = await signInAs("boss@example.com", { role: "admin" });
+    const res = await SPEND(new Request("http://localhost/api/admin/spend", withCookie(cookie)));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      credit: null,
+      logged: { today: { tokens: 0, cost: 0 }, week: { tokens: 0, cost: 0 }, month: { tokens: 0, cost: 0 } },
+      held: 0,
+    });
+  });
+
+  it("is a 404 for a tester", async () => {
+    const { cookie } = await signInAs("ana@example.com", { status: "approved" });
+    expect((await SPEND(new Request("http://localhost/api/admin/spend", withCookie(cookie)))).status).toBe(404);
   });
 });

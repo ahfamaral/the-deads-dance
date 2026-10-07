@@ -14,6 +14,12 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Spec §26.5: the energy bar's pulse under 20% (slow) and 10% (fast). */
+@keyframes energy-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

@@ -1,3 +1,4 @@
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { z } from "zod";
 import { chatModel } from "@corpus/models";
@@ -31,6 +32,8 @@ export type ClassifyInput = {
   profile: CharacterProfile | null;
   /** The request's signal: Stop or a closed tab cancels the classifier too. */
   signal?: AbortSignal;
+  /** Spec §26.3: the turn's ledger handler. */
+  callbacks?: BaseCallbackHandler[];
 };
 export type ClassifyVisitor = (input: ClassifyInput) => Promise<VisitorAct | null>;
 
@@ -66,7 +69,7 @@ function trait(profile: CharacterProfile | null, field: "humour" | "sore_points"
 export function classifyVisitorWith(model: BaseChatModel, options: { timeoutMs?: number } = {}): ClassifyVisitor {
   const structured = model.withStructuredOutput(DraftSchema, { name: "visitor_act" });
   const timeoutMs = options.timeoutMs ?? CLASSIFIER_TIMEOUT_MS;
-  return async ({ personaMessage, visitorMessage, profile, signal }) => {
+  return async ({ personaMessage, visitorMessage, profile, signal, callbacks }) => {
     const content = [
       `<persona_traits>\nhumour: ${trait(profile, "humour")}\nsore_points: ${trait(profile, "sore_points")}\n</persona_traits>`,
       `<person_said>\n${personaMessage ? asData(personaMessage) : "(nothing yet)"}\n</person_said>`,
@@ -95,7 +98,7 @@ export function classifyVisitorWith(model: BaseChatModel, options: { timeoutMs?:
           { role: "system", content: CLASSIFIER_PROMPT },
           { role: "user", content },
         ],
-        { signal: controller.signal },
+        { signal: controller.signal, callbacks },
       );
       return cleanVisitorAct(await Promise.race([call, stopped]));
     } catch (err) {

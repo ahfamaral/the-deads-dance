@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import CodeInput from "@/components/code-input";
 import Turnstile from "@/components/turnstile";
-import { AUTH_CARD } from "@/lib/auth-card";
+import { AUTH_CARD, PRIVACY_NOTE } from "@/lib/auth-card";
 import { authClient } from "@/lib/auth-client";
 import { signInErrorMessage } from "@/lib/sign-in-errors";
 import { MAX_TRIES, SIGN_IN_STORAGE_KEY, cooldownLeft, parseSignInState, serializeSignInState } from "@/lib/sign-in-state";
@@ -147,7 +147,7 @@ export default function SignIn({ siteKey }: { siteKey: string }) {
             </button>
             <p className="text-xs text-neutral-500">New here? The same form signs you up.</p>
             <p className="text-xs text-neutral-500">
-              Your conversations are stored on our server, so you can see them on any device. Delete one from History at any time.
+              {PRIVACY_NOTE}
             </p>
           </form>
         )}

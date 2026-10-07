@@ -1,3 +1,4 @@
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { createAgent, modelCallLimitMiddleware, type AIMessage, type BaseMessage, type ToolMessage } from "langchain";
 import type { ToolEnvelope } from "./persona-tools";
 
@@ -27,6 +28,7 @@ export async function* runTurn(opts: {
   systemPrompt: string;
   messages: { role: "user" | "assistant"; content: string }[];
   signal?: AbortSignal;
+  callbacks?: BaseCallbackHandler[];
 }): AsyncGenerator<TurnEvent> {
   const agent = createAgent({
     model: opts.model,
@@ -37,7 +39,7 @@ export async function* runTurn(opts: {
   });
   const stream = await agent.stream(
     { messages: opts.messages },
-    { streamMode: ["messages", "updates"], signal: opts.signal },
+    { streamMode: ["messages", "updates"], signal: opts.signal, callbacks: opts.callbacks },
   );
 
   for await (const [mode, chunk] of stream as AsyncIterable<[string, unknown]>) {

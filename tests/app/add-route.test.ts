@@ -1,23 +1,33 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CostLedger } from "@corpus/cost-ledger";
 import { closePool, getPool } from "@corpus/db";
 import type { AddPersonaEvent } from "@/lib/add-persona-events";
 import { readNdjson } from "@/lib/ndjson";
 import { FakeEmbeddings } from "../helpers/fake-embeddings";
 import { insertPersona, resetAuth, resetDb } from "../helpers/db";
+import { giveEnergy } from "../helpers/energy";
 import { signInAs } from "../helpers/auth";
 import { article } from "../fixtures/articles";
 
 const deps = vi.hoisted(() => ({ current: null as unknown }));
 vi.mock("@/lib/server/corpus-deps", () => ({
-  corpusDeps: () => {
+  corpusDeps: (ledger?: CostLedger) => {
     if (deps.current instanceof Error) throw deps.current;
-    return deps.current;
+    const fakes = deps.current as { generateProfile: (text: string) => Promise<unknown> };
+    return {
+      ...fakes,
+      generateProfile: async (text: string) => {
+        ledger?.record({ role: "ingest", model: "m", inputTokens: 10, outputTokens: 5, cost: 400, generationId: null, latencyMs: 1 });
+        return fakes.generateProfile(text);
+      },
+    };
   },
 }));
 
 const { POST } = await import("@/app/api/personas/route");
 
 let cookie = "";
+let adminId = "";
 
 const post = (body: unknown) =>
   POST(
@@ -52,7 +62,7 @@ beforeEach(async () => {
     })),
   };
   await resetAuth();
-  ({ cookie } = await signInAs("boss@example.com", { role: "admin" }));
+  ({ cookie, userId: adminId } = await signInAs("boss@example.com", { role: "admin" }));
 });
 afterAll(() => closePool());
 
@@ -67,10 +77,21 @@ describe("POST /api/personas", () => {
     expect(progress.slice(0, 4)).toEqual(["chunking:started", "chunking:finished", "embedding:started", "profiling:started"]);
     expect(progress.slice(4, 6).sort()).toEqual(["embedding:finished", "profiling:finished"]);
     expect(progress.slice(6)).toEqual(["saving:started", "saving:finished"]);
+    expect(all.at(-2)).toEqual({ type: "cost", report: expect.objectContaining({ total: { tokens: 15, cost: 400 } }) });
     expect(all.at(-1)).toEqual({
       type: "done",
       persona: { id: "chien-shiung-wu", name: "Chien-Shiung Wu", description: "Physicist", lifespan: "1912–1997", origin: "user" },
     });
+  });
+
+  it("logs the ingest's calls against the admin without charging", async () => {
+    await giveEnergy(adminId, 500_000);
+    await events(await post({ wikipediaTitle: "Chien-Shiung Wu" }));
+    const { rows } = await getPool().query(`SELECT role, persona_slug, user_id, cost FROM model_calls`);
+    expect(rows).toEqual([expect.objectContaining({ role: "ingest", persona_slug: "chien-shiung-wu", user_id: adminId })]);
+    expect(Number(rows[0].cost)).toBe(400);
+    const { rows: u } = await getPool().query(`SELECT "energyBalance" FROM "user" WHERE id = $1`, [adminId]);
+    expect(Number(u[0].energyBalance)).toBe(500_000);
   });
 
   it("answers 404 to a non-admin, before ingesting anything", async () => {
@@ -150,6 +171,7 @@ describe("POST /api/personas", () => {
     const all = await events(await post({ wikipediaTitle: "Chien-Shiung Wu" }));
     quiet.mockRestore();
     expect(all.at(-1)).toEqual({ type: "error", message: "Adding the persona failed. Try again in a moment." });
+    expect(all.at(-2)?.type).toBe("cost");
   });
 
   it("returns 503 when the dependencies can't be built", async () => {

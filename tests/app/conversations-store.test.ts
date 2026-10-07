@@ -1,9 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closePool, getPool } from "@corpus/db";
 import { HISTORY_WINDOW } from "@/lib/chat-types";
-import { beginTurn, deleteConversation, findConversation, listConversations, loadTurnContext, readConversation, storeReply, type BeginTurn } from "@/lib/server/conversations";
+import { beginTurn, deleteConversation, findConversation, listConversations, loadTurnContext, readConversation, settleTurn, type BeginTurn } from "@/lib/server/conversations";
+import type { ResolvedCall } from "@/lib/server/pricing";
 import type { VisitorAct } from "@/lib/visitor-act";
 import { resetAuth } from "../helpers/db";
+import { giveEnergy } from "../helpers/energy";
 import { conversationRow, exchanges, insertUser, messagesOf, seedConversation } from "../helpers/conversations";
 
 const ACT: VisitorAct = { act: "question", offense: 0, sorePoint: false, language: "en", wants: "normal", visitorName: null };
@@ -28,6 +30,9 @@ const turn = (over: Partial<BeginTurn> = {}): BeginTurn => ({
   ...over,
 });
 
+/** A turn that has finished: the flag beginTurn set is cleared, as settleTurn would. */
+const finishTurn = () => pool().query(`UPDATE conversations SET turn_running_since = NULL WHERE id = $1`, [CONV]);
+
 describe("beginTurn", () => {
   it("creates the conversation on its first turn and stores the visitor message with its act", async () => {
     expect(await beginTurn(pool(), turn())).toEqual({ ok: true });
@@ -39,6 +44,7 @@ describe("beginTurn", () => {
 
   it("adds to an existing conversation and stores a null act as null", async () => {
     await beginTurn(pool(), turn());
+    await finishTurn();
     await beginTurn(pool(), turn({ visitor: { text: "Again", act: null } }));
     expect((await messagesOf(CONV)).map((m) => [m.text, m.act])).toEqual([
       ["Hi", ACT],
@@ -66,6 +72,7 @@ describe("beginTurn", () => {
 
   it("lets only one of two racing turns through when the first ends the visit", async () => {
     await beginTurn(pool(), turn());
+    await finishTurn();
     const results = await Promise.all([
       beginTurn(pool(), turn({ visitor: { text: "Bye", act: { ...ACT, act: "farewell" } }, ending: "farewell" })),
       beginTurn(pool(), turn({ visitor: { text: "Bye too", act: { ...ACT, act: "farewell" } }, ending: "farewell" })),
@@ -76,26 +83,86 @@ describe("beginTurn", () => {
 
   it("inserts nothing on Retry (no visitor message)", async () => {
     await beginTurn(pool(), turn());
+    await finishTurn();
     expect(await beginTurn(pool(), turn({ visitor: null }))).toEqual({ ok: true });
     expect(await messagesOf(CONV)).toHaveLength(1);
   });
 });
 
-describe("storeReply", () => {
-  it("stores a finished reply with its trace and sources, and bumps updated_at", async () => {
+const resolved = (extra: Partial<ResolvedCall> = {}): ResolvedCall => ({
+  role: "agent", model: "openai/gpt-5.5", inputTokens: 900, outputTokens: 100, cost: 30_000, costSource: "reported", generationId: "gen-1", latencyMs: 800, ...extra,
+});
+const reply = { id: "r", role: "persona" as const, text: "Parity is violated.", toolCalls: [], sources: [] };
+
+describe("settleTurn (spec §26.4)", () => {
+  it("stores the reply with its trace, sources and ending, and bumps updated_at", async () => {
     await beginTurn(pool(), turn());
     const before = (await conversationRow(CONV)).updated_at as Date;
     const toolCalls = [{ id: "t1", toolName: "search_biography", arguments: { query: "parity" }, status: "ok" as const, result: {}, durationMs: 5 }];
     const sources = [{ personaId: "wu", sectionHeading: "Parity", chunkId: 7 }];
-    await storeReply(pool(), CONV, { message: { id: "x", role: "persona", text: "Parity fails.", toolCalls, sources, ended: "farewell" }, stopped: false });
-    expect((await messagesOf(CONV))[1]).toEqual({ role: "persona", text: "Parity fails.", act: null, tool_calls: toolCalls, sources, ended: "farewell", stopped: false });
+    await settleTurn(pool(), { conversationId: CONV, userId: ana, charge: false, reply: { ...reply, text: "Parity fails.", toolCalls, sources, ended: "farewell" }, calls: [] });
+    expect((await messagesOf(CONV))[1]).toMatchObject({ role: "persona", text: "Parity fails.", tool_calls: toolCalls, sources, ended: "farewell", stopped: false });
     expect(((await conversationRow(CONV)).updated_at as Date).getTime()).toBeGreaterThanOrEqual(before.getTime());
   });
 
-  it("marks a partial reply as stopped", async () => {
-    await beginTurn(pool(), turn());
-    await storeReply(pool(), CONV, { message: { id: "x", role: "persona", text: "I was about to", toolCalls: [], sources: [] }, stopped: true });
-    expect((await messagesOf(CONV))[1]).toMatchObject({ text: "I was about to", stopped: true, ended: null });
+  it("stores the reply with its cost, logs the calls, charges the tester and adds to the totals, at once", async () => {
+    const userId = ana;
+    await giveEnergy(userId, 1_000_000);
+    const id = await seedConversation({ userId, messages: [{ role: "user", text: "hi" }] });
+    await getPool().query(`UPDATE conversations SET turn_running_since = now() WHERE id = $1`, [id]);
+    const settled = await settleTurn(getPool(), {
+      conversationId: id, userId, charge: true, reply,
+      calls: [resolved(), resolved({ role: "classifier", inputTokens: 200, outputTokens: 20, cost: 500, costSource: "estimated" })],
+    });
+    expect(settled).toEqual({
+      balance: 969_500, full: 1_000_000,
+      turn: { tokens: 1_220, cost: 30_500, inputTokens: 1_100, outputTokens: 120 },
+      conversation: { tokens: 1_220, cost: 30_500 },
+    });
+    const { rows } = await getPool().query(
+      `SELECT m.cost, m.tokens, (SELECT count(*)::int FROM model_calls mc WHERE mc.message_id = m.id) AS calls, c.turn_running_since
+       FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE m.role = 'persona' AND c.id = $1`,
+      [id],
+    );
+    expect(rows[0]).toEqual({ cost: "30500", tokens: 1_220, calls: 2, turn_running_since: null });
+  });
+
+  it("charges a turn that failed without a reply", async () => {
+    const userId = ana;
+    await giveEnergy(userId, 1_000_000);
+    const id = await seedConversation({ userId });
+    const settled = await settleTurn(getPool(), { conversationId: id, userId, charge: true, reply: null, calls: [resolved({ cost: 500 })] });
+    expect(settled.balance).toBe(999_500);
+    const { rows } = await getPool().query(`SELECT count(*)::int AS n FROM messages WHERE conversation_id = $1`, [id]);
+    expect(rows[0].n).toBe(0);
+  });
+
+  it("lets the balance go below zero (spec §26.1)", async () => {
+    const userId = ana;
+    await giveEnergy(userId, 10_000, 1_000_000);
+    const id = await seedConversation({ userId });
+    expect((await settleTurn(getPool(), { conversationId: id, userId, charge: true, reply, calls: [resolved()] })).balance).toBe(-20_000);
+  });
+
+  it("doesn't charge the admin, but still logs and totals", async () => {
+    const userId = await insertUser("boss@example.com");
+    const id = await seedConversation({ userId });
+    const settled = await settleTurn(getPool(), { conversationId: id, userId, charge: false, reply, calls: [resolved()] });
+    expect(settled.balance).toBeNull();
+    expect(settled.conversation.cost).toBe(30_000);
+  });
+});
+
+describe("the turn flag (spec §26.4)", () => {
+  it("refuses a second turn while one runs, and lets it through after 2 minutes", async () => {
+    const id = await seedConversation({ userId: ana });
+    const t = { conversationId: id, userId: ana, personaSlug: "wu", personaName: "Wu", visitor: { text: "hi", act: null }, ending: null, create: false };
+    expect(await beginTurn(getPool(), t)).toEqual({ ok: true });
+    expect((await findConversation(getPool(), id))?.turnRunning).toBe(true);
+    expect(await beginTurn(getPool(), t)).toEqual({ ok: false, reason: "busy" });
+    await getPool().query(`UPDATE conversations SET turn_running_since = now() - interval '3 minutes' WHERE id = $1`, [id]);
+    expect((await findConversation(getPool(), id))?.turnRunning).toBe(false);
+    expect(await beginTurn(getPool(), t)).toEqual({ ok: true });
   });
 });
 
@@ -118,7 +185,7 @@ describe("loadTurnContext and findConversation", () => {
 
   it("finds a conversation with its owner, persona and ending, or null", async () => {
     await seedConversation({ id: CONV, userId: ana, ended: "tired" });
-    expect(await findConversation(pool(), CONV)).toEqual({ id: CONV, userId: ana, personaSlug: "wu", personaName: "Chien-Shiung Wu", ended: "tired" });
+    expect(await findConversation(pool(), CONV)).toEqual({ id: CONV, userId: ana, personaSlug: "wu", personaName: "Chien-Shiung Wu", ended: "tired", turnRunning: false });
     expect(await findConversation(pool(), crypto.randomUUID())).toBeNull();
   });
 });
@@ -140,8 +207,8 @@ describe("listConversations", () => {
 describe("readConversation", () => {
   it("returns the messages in the Message shape, act and stopped included", async () => {
     await seedConversation({ id: CONV, userId: ana, messages: [{ role: "user", text: "Hi", act: ACT }] });
-    await storeReply(pool(), CONV, { message: { id: "x", role: "persona", text: "Half", toolCalls: [], sources: [] }, stopped: true });
-    const c = await readConversation(pool(), ana, CONV);
+    await pool().query(`INSERT INTO messages (conversation_id, role, text, tool_calls, sources, stopped) VALUES ($1, 'persona', 'Half', '[]', '[]', true)`, [CONV]);
+    const c = await readConversation(pool(), ana, CONV, { costs: false });
     expect(c).toMatchObject({ id: CONV, personaId: "wu", personaName: "Chien-Shiung Wu", updatedAt: expect.any(String) });
     expect(c!.messages).toEqual([
       { id: expect.any(String), role: "user", text: "Hi", act: ACT },
@@ -151,12 +218,26 @@ describe("readConversation", () => {
 
   it("is null for another user's conversation", async () => {
     await seedConversation({ id: CONV, userId: await insertUser("bo@example.com") });
-    expect(await readConversation(pool(), ana, CONV)).toBeNull();
+    expect(await readConversation(pool(), ana, CONV, { costs: false })).toBeNull();
   });
 
   it("still reads after the persona is gone (no foreign key to personas)", async () => {
     await seedConversation({ id: CONV, userId: ana, personaSlug: "removed", personaName: "Someone Removed" });
-    expect((await readConversation(pool(), ana, CONV))?.personaName).toBe("Someone Removed");
+    expect((await readConversation(pool(), ana, CONV, { costs: false }))?.personaName).toBe("Someone Removed");
+  });
+});
+
+describe("readConversation and costs", () => {
+  it("carries costs only when asked, and always the turn flag", async () => {
+    const userId = ana;
+    const id = await seedConversation({ userId, messages: [{ role: "user", text: "hi" }] });
+    await settleTurn(getPool(), { conversationId: id, userId, charge: false, reply, calls: [resolved()] });
+    const plain = await readConversation(getPool(), userId, id, { costs: false });
+    expect(JSON.stringify(plain)).not.toMatch(/"cost"|"tokens"|"spend"/);
+    expect(plain?.turnRunning).toBe(false);
+    const admin = await readConversation(getPool(), userId, id, { costs: true });
+    expect(admin?.spend).toEqual({ tokens: 1_000, cost: 30_000 });
+    expect(admin?.messages.at(-1)).toMatchObject({ cost: 30_000, tokens: 1_000 });
   });
 });
 
@@ -177,5 +258,33 @@ describe("deleteConversation", () => {
     await pool().query(`DELETE FROM "user" WHERE id = $1`, [ana]);
     expect(await conversationRow(CONV)).toBeUndefined();
     expect(await messagesOf(CONV)).toEqual([]);
+  });
+});
+
+describe("the admin's view (spec §27)", () => {
+  it("lists every user's conversations with the owner's email and mine; a tester's list is unchanged", async () => {
+    const boss = await insertUser("owner-boss@example.com");
+    const ana = await insertUser("owner-ana@example.com");
+    const mineId = await seedConversation({ userId: boss, messages: [{ role: "user", text: "mine" }] });
+    const hersId = await seedConversation({ userId: ana, messages: [{ role: "user", text: "hers" }] });
+    const all = await listConversations(getPool(), boss, { all: true });
+    expect(all.map((c) => ({ id: c.id, userEmail: c.userEmail, mine: c.mine })).sort((a, b) => a.id.localeCompare(b.id))).toEqual(
+      [
+        { id: mineId, userEmail: "owner-boss@example.com", mine: true },
+        { id: hersId, userEmail: "owner-ana@example.com", mine: false },
+      ].sort((a, b) => a.id.localeCompare(b.id)),
+    );
+    const own = await listConversations(getPool(), ana);
+    expect(own.map((c) => c.id)).toEqual([hersId]);
+    expect(JSON.stringify(own)).not.toMatch(/userEmail|"mine"/);
+  });
+
+  it("reads another user's conversation with the owner's email only when anyOwner is set", async () => {
+    const boss = await insertUser("owner-boss@example.com");
+    const ana = await insertUser("owner-ana@example.com");
+    const id = await seedConversation({ userId: ana, messages: [{ role: "user", text: "hi" }] });
+    expect(await readConversation(getPool(), boss, id, { costs: true })).toBeNull();
+    expect(await readConversation(getPool(), boss, id, { costs: true, anyOwner: true })).toMatchObject({ id, userEmail: "owner-ana@example.com" });
+    expect(JSON.stringify(await readConversation(getPool(), ana, id, { costs: false }))).not.toContain("userEmail");
   });
 });

@@ -3,7 +3,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { Pool } from "pg";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closePool, getPool } from "../../corpus/db";
-import { createServer, type ServerDeps } from "../../mcp-server/server";
+import { createServer, type DepsFor, type ServerDeps } from "../../mcp-server/server";
 import { insertChunks, insertPersona, resetDb } from "../helpers/db";
 import { FakeEmbeddings, vectorFor } from "../helpers/fake-embeddings";
 
@@ -23,9 +23,9 @@ function serverDeps(overrides: Partial<ServerDeps> = {}): ServerDeps {
 }
 
 /** A real MCP client talking to the real server, in memory: no child process. */
-async function connect(deps: ServerDeps): Promise<Client> {
+async function connect(deps: ServerDeps | DepsFor): Promise<Client> {
   const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
-  await createServer(deps).connect(serverSide);
+  await createServer(typeof deps === "function" ? deps : () => deps).connect(serverSide);
   client = new Client({ name: "test", version: "0.0.0" });
   await client.connect(clientSide);
   return client;
@@ -58,6 +58,7 @@ describe("MCP server", () => {
       year: 1905,
       events: [{ label: "Battle of Tsushima", date: "1905-05-28" }],
       leaders: [],
+      calls: [],
     });
   });
 
@@ -80,7 +81,8 @@ describe("MCP server", () => {
     const c = await connect(serverDeps());
     const result = await c.callTool({ name: "search_biography", arguments: { query: "parity", persona_id: "wu" } });
     expect(result.isError).toBeFalsy();
-    const structured = result.structuredContent as { status: string; passages: unknown[] };
+    const { calls, ...structured } = result.structuredContent as { status: string; passages: unknown[]; calls: unknown[] };
+    expect(calls).toEqual([]); // the text is the same JSON minus the costs
     expect(structured.status).toBe("ok");
     expect(structured.passages).toHaveLength(3); // default top_k
     expect(JSON.parse((result.content as { text: string }[])[0].text)).toEqual(structured);
@@ -123,10 +125,35 @@ describe("MCP server", () => {
       expect(result.structuredContent).toEqual({
         status: "unavailable",
         reason: expect.stringContaining("docker-compose"),
+        calls: [],
       });
     } finally {
       error.mockRestore();
       await deadPool.end();
     }
+  });
+
+  it("returns the tool's model calls in structuredContent, not in the text", async () => {
+    await seedWu(3);
+    const call = { role: "helper", model: "openai/gpt-5-mini", inputTokens: 10, outputTokens: 2, cost: 40, generationId: "gen-1", latencyMs: 5 } as const;
+    const c = await connect((ledger) =>
+      serverDeps({
+        expandQuery: async () => {
+          ledger.record(call);
+          return [];
+        },
+      }),
+    );
+    const result = await c.callTool({ name: "search_biography", arguments: { query: "parity", persona_id: "wu" } });
+    expect((result.structuredContent as { calls: unknown }).calls).toEqual([call]);
+    expect(JSON.stringify(result.content)).not.toContain("gen-1");
+  });
+
+  it("gives each tool call its own ledger", async () => {
+    await seedWu(3);
+    const c = await connect((ledger) => serverDeps({ expandQuery: async () => (ledger.record({ role: "helper", model: "m", inputTokens: 1, outputTokens: 1, cost: 1, generationId: null, latencyMs: 1 }), []) }));
+    await c.callTool({ name: "search_biography", arguments: { query: "a", persona_id: "wu" } });
+    const second = await c.callTool({ name: "search_biography", arguments: { query: "b", persona_id: "wu" } });
+    expect((second.structuredContent as { calls: unknown[] }).calls).toHaveLength(1);
   });
 });

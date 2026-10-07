@@ -1,14 +1,17 @@
+import { CostLedger } from "@corpus/cost-ledger";
 import { findPersona, type PersonaRow } from "@corpus/personas";
-import type { ChatStreamEvent, HistoryMessage } from "@/lib/chat-types";
+import { energyLeft } from "@/lib/energy";
+import type { ChatStreamEvent, HistoryMessage, Message } from "@/lib/chat-types";
 import { requireApproved, unavailable } from "@/lib/server/access";
 import { runTurn } from "@/lib/server/agent";
 import { chatDeps, type ChatDeps } from "@/lib/server/chat-deps";
 import { parseChatRequest, toAgentMessages } from "@/lib/server/chat-request";
 import { chatEvents } from "@/lib/server/chat-stream";
 import { renderConversationState } from "@/lib/server/conversation-state";
-import { beginTurn, findConversation, loadTurnContext, storeReply, type TurnContext } from "@/lib/server/conversations";
+import { beginTurn, findConversation, loadTurnContext, settleTurn, type TurnContext } from "@/lib/server/conversations";
 import { languagesFor } from "@/lib/server/persona-languages";
 import { buildPersonaPrompt } from "@/lib/server/persona-prompt";
+import { recordCalls } from "@/lib/server/spend";
 import { lockPersona } from "@/lib/server/persona-tools";
 import { applyChatEvent, replyToStore, startTurn } from "@/lib/turn-state";
 import { foldVisit } from "@/lib/visit";
@@ -20,15 +23,19 @@ const conversationEnded = () =>
   Response.json({ error: "The persona has ended this conversation.", code: "conversation_ended" }, { status: 409 });
 const unknownConversation = () =>
   Response.json({ error: "This conversation is no longer available.", code: "unknown_conversation" }, { status: 404 });
+const outOfEnergy = () =>
+  Response.json({ error: "You're out of energy. Ask the admin for more.", code: "out_of_energy" }, { status: 402 });
+const turnInProgress = () =>
+  Response.json({ error: "Still replying…", code: "turn_in_progress" }, { status: 409 });
 const NOTHING_STORED: TurnContext = { history: [], acts: [], unanswered: false };
 
 /**
  * One chat turn (spec §16.2, §18, §25.3). The server owns the history: it reads the last
  * messages and every act from the database, stores the visitor message (locking an ending)
- * before streaming, and stores the reply when the stream ends, a partial one after Stop.
- * Validates first, so rejections get real HTTP statuses, then streams newline-delimited JSON,
- * starting with the classifier's act. Closing the tab or pressing Stop aborts request.signal,
- * which stops the agent and its model call.
+ * before streaming, and stores the reply when the stream ends. Validates first, so rejections
+ * get real HTTP statuses, then streams newline-delimited JSON, starting with the classifier's act.
+ * The browser may leave mid-stream; the turn still runs to the end, so the reply is stored whole
+ * and billed exactly (spec §26.4). There is no Stop.
  */
 export async function POST(request: Request) {
   // Spec §24.5: approved users only, before reading the body or touching any dependency.
@@ -39,6 +46,9 @@ export async function POST(request: Request) {
     return unavailable(err); // spec §24.9: the database is down
   }
   if (user instanceof Response) return user;
+  // Spec §26.4: a tester with no energy left is refused before any model call. The admin has no limit.
+  const charge = user.role !== "admin";
+  if (charge && user.energy.balance <= 0) return outOfEnergy();
 
   const contentType = request.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().startsWith("application/json")) return invalid("Expected a JSON body.", 415);
@@ -64,6 +74,7 @@ export async function POST(request: Request) {
     if (existing && existing.personaSlug !== personaId) return invalid("This conversation is with another persona.");
     context = existing ? await loadTurnContext(deps.pool, conversationId) : NOTHING_STORED;
     // Spec §23: every ending is final, read from the server's own record, before any model call.
+    if (existing?.turnRunning) return turnInProgress();
     if (existing?.ended || foldVisit(context.acts).closed) return conversationEnded();
     if (retry && !context.unanswered) {
       return Response.json({ error: "There's nothing to retry.", code: "nothing_to_retry" }, { status: 409 });
@@ -82,6 +93,7 @@ export async function POST(request: Request) {
   const previous = before.at(-1);
   // Spec §18.2: the classifier needs the profile, so it runs after findPersona, alongside getTools
   // and the languages backfill for personas stored without languages (spec §18.4).
+  const ledger = new CostLedger();
   const [mcpTools, act, languages] = await Promise.all([
     deps.getTools(),
     retry
@@ -90,16 +102,18 @@ export async function POST(request: Request) {
           personaMessage: previous?.role === "persona" ? previous.text : null,
           visitorMessage: visitorText,
           profile: persona.profile,
-          signal: request.signal,
+          callbacks: [ledger.handler("classifier")],
         }),
     languagesFor(persona, deps),
   ]);
-  // Stop during classification: the classifier returns null on abort, and a message stored with a null
-  // act would escape the ending rules (foldVisit ignores it). The client has gone; store nothing.
-  if (request.signal.aborted) return new Response(null, { status: 499 });
   const visit = foldVisit(retry ? context.acts : [...context.acts, act]);
   const history: HistoryMessage[] = [...before, { role: "user", text: visitorText }];
 
+  const settleClassifier = () =>
+    deps
+      .resolveCosts(ledger.calls)
+      .then((calls) => recordCalls(deps.pool, { userId: user.id, calls, charge }))
+      .catch((err) => console.error(err));
   let begun: Awaited<ReturnType<typeof beginTurn>>;
   try {
     begun = await beginTurn(deps.pool, {
@@ -112,11 +126,17 @@ export async function POST(request: Request) {
       create: first === true && !retry,
     });
   } catch (err) {
+    await settleClassifier();
     return unavailable(err, { showMessage: true });
   }
-  if (!begun.ok) return begun.reason === "ended" ? conversationEnded() : unknownConversation();
+  if (!begun.ok) {
+    // Spec §26.4: the classifier already ran; its cost is logged and charged even though the turn won't run.
+    await settleClassifier();
+    if (begun.reason === "busy") return turnInProgress();
+    return begun.reason === "ended" ? conversationEnded() : unknownConversation();
+  }
 
-  const tools = mcpTools ? lockPersona(mcpTools, persona.slug) : [];
+  const tools = mcpTools ? lockPersona(mcpTools, persona.slug, ledger) : [];
   const toolsAvailable = tools.length > 0;
   // languagesFor applies the English fallback (spec §18.4).
   const state = renderConversationState({ visit, languages, languageMode });
@@ -128,17 +148,27 @@ export async function POST(request: Request) {
       tools,
       systemPrompt: buildPersonaPrompt(persona, { toolsAvailable, state }),
       messages: toAgentMessages(history),
-      signal: request.signal,
+      callbacks: [ledger.handler("agent")],
     }),
   });
 
   const pool = deps.pool;
+  const resolveCosts = deps.resolveCosts;
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       // Built from the same events the browser gets, so what's stored is what the visitor saw.
       let turn = startTurn("reply");
-      const send = (event: ChatStreamEvent) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      let open = true;
+      // Spec §26.4: a closed tab stops the sending, never the turn: the agent runs on, so the reply is stored and billed whole.
+      const send = (event: ChatStreamEvent) => {
+        if (!open) return;
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        } catch {
+          open = false;
+        }
+      };
       try {
         send({ type: "act", act });
         if (!toolsAvailable) send({ type: "notice", code: "tools_unavailable" });
@@ -146,12 +176,24 @@ export async function POST(request: Request) {
           turn = applyChatEvent(turn, event);
           send(event);
         }
-      } catch {
-        // The client went away mid-stream; the aborted signal has already stopped the agent.
+      } catch (err) {
+        console.error(err); // chatEvents turns model errors into an error event; this is unexpected
       } finally {
-        const reply = replyToStore(turn, { aborted: request.signal.aborted, ended: visit.ended });
-        // Spec §25.3: a failed store is logged; the visitor still has the reply on screen.
-        if (reply) await storeReply(pool, conversationId, reply).catch((err) => console.error(err));
+        let calls: Awaited<ReturnType<typeof resolveCosts>> = [];
+        try {
+          const reply: Message | null = replyToStore(turn);
+          calls = await resolveCosts(ledger.calls);
+          const settled = await settleTurn(pool, { conversationId, userId: user.id, charge, reply, calls });
+          // Spec §26.4: a tester learns only how much energy is left; the admin sees the spend.
+          if (charge) send({ type: "energy", left: energyLeft(settled.balance ?? 0, settled.full ?? 0) });
+          else send({ type: "cost", turn: settled.turn, conversation: settled.conversation });
+        } catch (err) {
+          console.error(err); // spec §26.7
+          // The conversation may have been deleted mid-turn: the money was still spent, so log and charge without it.
+          if (calls.length > 0) await recordCalls(pool, { userId: user.id, calls, charge }).catch((e) => console.error(e));
+          // Don't leave the turn flag set for its 2-minute expiry; a deleted conversation updates 0 rows.
+          await pool.query(`UPDATE conversations SET turn_running_since = NULL WHERE id = $1`, [conversationId]).catch((e) => console.error(e));
+        }
         try {
           controller.close();
         } catch {

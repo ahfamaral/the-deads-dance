@@ -76,7 +76,7 @@ export async function prepareUserPersona(rawTitle: string, deps: PrepareDeps): P
   const existing = await findPersona(deps.pool, slug);
   if (existing?.origin === "curated" && existing.status !== "ready") {
     // A ready curated row is handled by the check below, which keeps the "already in the list" message.
-    throw new AddPersonaError("conflict", `${existing.displayName} is built in — run \`npm run ingest\` to restore it.`);
+    throw new AddPersonaError("conflict", `${existing.displayName} is built in and can't be added here.`);
   }
   if (existing?.status === "ready") {
     throw new AddPersonaError("conflict", `${existing.displayName} is already in the list.`, toSummary(existing));

@@ -6,13 +6,16 @@ import ChatSession from "@/components/chat-session";
 import ConversationHistory from "@/components/conversation-history";
 import PersonaPicker from "@/components/persona-picker";
 import SignOutButton from "@/components/sign-out-button";
-import type { Message } from "@/lib/chat-types";
+import type { ChatStreamEvent, Message, Spend } from "@/lib/chat-types";
 import type { StoredConversation } from "@/lib/conversation-types";
 import { fetchConversation } from "@/lib/conversations-api";
-import { readOpenChat, writeOpenChat } from "@/lib/open-chat";
+import { canRestoreLive, readOpenChat, writeOpenChat } from "@/lib/open-chat";
+import type { BannerThreshold } from "@/lib/energy";
+import { applyMeterEvent, markBannerRead, parseMeter, type Meter } from "@/lib/meter";
 import { ensureAccess } from "@/lib/ensure-access";
 import { newId } from "@/lib/new-id";
 import type { Persona } from "@/lib/personas";
+import type { AccessBody } from "@/lib/server/access-info";
 
 type ChatStep = {
   name: "chat";
@@ -22,6 +25,12 @@ type ChatStep = {
   messages: Message[];
   /** Where "Back" returns to: the picker for a live chat, History for a record (read-only, spec §22). */
   backTo: "select" | "history";
+  /** Spec §27: the owner's email when the admin opens someone else's conversation. */
+  ownerEmail?: string;
+  /** Admin only: the conversation's totals so far. */
+  spend?: Spend;
+  /** Spec §26.4: the server is still writing the last reply. */
+  turnRunning?: boolean;
 };
 type Step = { name: "start" } | { name: "history" } | { name: "select" } | { name: "restoring" } | ChatStep;
 
@@ -34,15 +43,26 @@ type ChatFlowProps = {
   personasUnavailable: boolean;
   email: string;
   isAdmin: boolean;
+  initialAccess: AccessBody | null;
 };
 
-export default function ChatFlow({ initialPersonas, personasUnavailable, email, isAdmin }: ChatFlowProps) {
+export default function ChatFlow({ initialPersonas, personasUnavailable, email, isAdmin, initialAccess }: ChatFlowProps) {
   const [step, setStep] = useState<Step>({ name: "start" });
   // Held here rather than in the picker so changes survive a trip to the chat and back.
   const [personas, setPersonas] = useState<Persona[]>(initialPersonas);
   const [pickerNotice, setPickerNotice] = useState<string | null>(
     personasUnavailable ? "Personas unavailable: database not reachable." : null,
   );
+
+  // Spec §26.5: the tester's energy, or the admin's spend; refreshed by every access check.
+  const [meter, setMeter] = useState<Meter | null>(() => parseMeter(initialAccess));
+  const onMeterEvent = (event: ChatStreamEvent) => setMeter((m) => (m ? applyMeterEvent(m, event) : m));
+  // Spec §26.5: remembered on the server; the screen moves on at once.
+  const dismissBanner = (threshold: BannerThreshold) => {
+    setMeter((m) => (m?.kind === "energy" ? { ...m, warningRead: threshold } : m));
+    void markBannerRead(threshold);
+  };
+  const outOfEnergyNow = () => setMeter((m) => (m?.kind === "energy" ? { ...m, left: 0 } : m));
 
   const [startNotice, setStartNotice] = useState<string | null>(null);
 
@@ -62,9 +82,13 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
     // eslint-disable-next-line react-hooks/set-state-in-effect -- flips to the loading screen before the async fetch
     setStep({ name: "restoring" });
     void fetchConversation(saved.conversationId).then((result) => {
-      if (result.kind === "found") {
+      if (result.kind === "found" && !canRestoreLive(result.conversation, email)) {
+        // Another account's chat, left in this tab before a sign-in switch: never reopen it live.
+        writeOpenChat(null);
+        setStep({ name: "start" });
+      } else if (result.kind === "found") {
         const c = result.conversation;
-        openLive({ conversationId: c.id, personaId: c.personaId, personaName: c.personaName, messages: c.messages });
+        openLive({ conversationId: c.id, personaId: c.personaId, personaName: c.personaName, messages: c.messages, spend: c.spend, turnRunning: c.turnRunning });
       } else if (result.kind === "missing") {
         // Nothing was sent yet, or it was deleted elsewhere: a fresh chat with the same persona.
         const persona = initialPersonas.find((p) => p.id === saved.personaId);
@@ -90,11 +114,17 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
       firstStep.current = false;
       return;
     }
-    void ensureAccess();
+    void ensureAccess().then((m) => {
+      if (m) setMeter(m);
+    });
   }, [step]);
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === "visible") void ensureAccess();
+      if (document.visibilityState === "visible") {
+        void ensureAccess().then((m) => {
+          if (m) setMeter(m);
+        });
+      }
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
@@ -168,7 +198,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
       <ConversationHistory
         onBack={() => setStep({ name: "start" })}
         onOpen={(c: StoredConversation) =>
-          setStep({ name: "chat", conversationId: c.id, personaId: c.personaId, personaName: c.personaName, messages: c.messages, backTo: "history" })
+          setStep({ name: "chat", conversationId: c.id, personaId: c.personaId, personaName: c.personaName, messages: c.messages, backTo: "history", spend: c.spend, turnRunning: c.turnRunning, ownerEmail: c.userEmail && c.userEmail !== email ? c.userEmail : undefined })
         }
       />
     );
@@ -184,6 +214,8 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
         onBack={() => setStep({ name: "start" })}
         onDelete={removePersona}
         onAdd={(persona) => setPersonas((current) => [...current, persona])}
+        meter={meter}
+        onDismissBanner={dismissBanner}
       />
     );
   }
@@ -194,6 +226,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
       conversationId={step.conversationId}
       personaId={step.personaId}
       personaName={step.personaName}
+      ownerEmail={step.ownerEmail}
       initialMessages={step.messages}
       readOnly={step.backTo === "history"}
       onBack={() => {
@@ -202,6 +235,12 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
         setStep(step.backTo === "history" ? { name: "history" } : { name: "select" });
       }}
       onNewVisit={() => startChat({ id: step.personaId, name: step.personaName })}
+      meter={meter}
+      onMeterEvent={onMeterEvent}
+      onDismissBanner={dismissBanner}
+      onOutOfEnergy={outOfEnergyNow}
+      initialSpend={step.spend}
+      initialTurnRunning={step.turnRunning}
     />
   );
 }

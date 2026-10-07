@@ -23,6 +23,7 @@ export async function* streamChat(opts: {
   /** The conversation's first message: only then may the server create it. */
   first?: boolean;
   languageMode?: LanguageMode;
+  /** Aborted when the chat closes; the server finishes the turn anyway (spec §26.4). */
   signal?: AbortSignal;
 }): AsyncGenerator<ChatStreamEvent> {
   let res: Response;
@@ -52,6 +53,6 @@ export async function* streamChat(opts: {
     yield* readNdjson<ChatStreamEvent>(res.body);
   } catch (err) {
     if (opts.signal?.aborted) throw err;
-    throw new ChatRequestError("The reply was interrupted.", true);
+    throw new ChatRequestError("The reply was interrupted.", true, "stream_interrupted");
   }
 }

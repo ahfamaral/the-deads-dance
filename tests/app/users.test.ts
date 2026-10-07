@@ -119,3 +119,30 @@ describe("listUsers", () => {
     expect(list.map((u) => u.email)).toContain("boss@example.com");
   });
 });
+
+describe("energy on approval (spec §26.6)", () => {
+  it("grants the starting energy in the same step", async () => {
+    await pool().query(`UPDATE settings SET value = '500000' WHERE key = 'default_starting_energy'`);
+    const ana = await user("ana@example.com");
+    expect(await approveUser(pool(), ana, admin)).toMatchObject({ ok: true });
+    expect(await row(ana)).toMatchObject({ energyBalance: "500000", energyFull: "500000", energyWarningRead: 100 });
+    const { rows } = await pool().query(`SELECT amount, granted_by FROM energy_grants WHERE user_id = $1`, [ana]);
+    expect(rows).toEqual([{ amount: "500000", granted_by: admin }]);
+    await pool().query(`UPDATE settings SET value = '1000000' WHERE key = 'default_starting_energy'`);
+  });
+
+  it("grants nothing when the approval doesn't apply", async () => {
+    const ana = await user("ana@example.com", "approved");
+    expect(await approveUser(pool(), ana, admin)).toEqual({ ok: false, reason: "already_changed" });
+    const { rows } = await pool().query(`SELECT count(*)::int AS n FROM energy_grants WHERE user_id = $1`, [ana]);
+    expect(rows[0].n).toBe(0);
+  });
+
+  it("lists each user's energy and lifetime spend as numbers", async () => {
+    const ana = await user("ana@example.com", "approved");
+    await pool().query(`UPDATE "user" SET "energyBalance" = 140000, "energyFull" = 1000000 WHERE id = $1`, [ana]);
+    await pool().query(`INSERT INTO model_calls (user_id, role, model, cost, cost_source) VALUES ($1, 'agent', 'm', 1860000, 'reported')`, [ana]);
+    const listed = (await listUsers(pool())).find((u) => u.id === ana);
+    expect(listed).toMatchObject({ energyBalance: 140_000, energyFull: 1_000_000, spent: 1_860_000 });
+  });
+});

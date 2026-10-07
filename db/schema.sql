@@ -158,3 +158,58 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS messages_conversation_id ON messages (conversation_id, id);
+
+-- Spec §26.2: energy in micro-dollars ($1 = 1,000,000). Better Auth extra fields, camelCase like "status".
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "energyBalance" bigint NOT NULL DEFAULT 0;
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "energyFull" bigint NOT NULL DEFAULT 0;
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "energyWarningRead" smallint NOT NULL DEFAULT 100;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_energyWarningRead_check') THEN
+    ALTER TABLE "user" ADD CONSTRAINT "user_energyWarningRead_check" CHECK ("energyWarningRead" IN (100, 50, 20, 10, 0));
+  END IF;
+END $$;
+
+-- Spec §26.2: running totals for the admin, and the one-turn-at-a-time flag (§26.4).
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS cost bigint NOT NULL DEFAULT 0;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS tokens integer NOT NULL DEFAULT 0;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS turn_running_since timestamptz;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS cost bigint;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS tokens integer;
+
+-- Spec §26.2: one row per model call. A deleted conversation keeps its calls (the money was spent).
+CREATE TABLE IF NOT EXISTS model_calls (
+  id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id         text NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  conversation_id uuid REFERENCES conversations (id) ON DELETE SET NULL,
+  message_id      bigint REFERENCES messages (id) ON DELETE SET NULL,
+  persona_slug    text,
+  role            text NOT NULL CHECK (role IN ('agent', 'classifier', 'helper', 'recall', 'embedding', 'ingest')),
+  model           text NOT NULL,
+  input_tokens    integer NOT NULL DEFAULT 0,
+  output_tokens   integer NOT NULL DEFAULT 0,
+  cost            bigint NOT NULL,
+  cost_source     text NOT NULL CHECK (cost_source IN ('reported', 'estimated')),
+  generation_id   text,
+  latency_ms      integer,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS model_calls_created_at ON model_calls (created_at);
+CREATE INDEX IF NOT EXISTS model_calls_user_created_at ON model_calls (user_id, created_at);
+CREATE INDEX IF NOT EXISTS model_calls_conversation_id ON model_calls (conversation_id);
+CREATE INDEX IF NOT EXISTS model_calls_message_id ON model_calls (message_id);
+
+-- Spec §26.2: where energy came from, one row per approval grant or top-up.
+CREATE TABLE IF NOT EXISTS energy_grants (
+  id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id    text NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  amount     bigint NOT NULL CHECK (amount > 0),
+  granted_by text REFERENCES "user" ("id") ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key   text PRIMARY KEY,
+  value jsonb NOT NULL
+);
+INSERT INTO settings (key, value) VALUES ('default_starting_energy', '1000000') ON CONFLICT (key) DO NOTHING;

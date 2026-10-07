@@ -8,14 +8,15 @@ const gone = () =>
 // A malformed id can't be anyone's conversation. Checked here, so Postgres' uuid cast never turns it into a 503.
 const isId = (id: string) => z.uuid().safeParse(id).success;
 
-/** Spec §25.4: one of your conversations, with its messages. Anyone else's is a 404. */
+/** Spec §25.4, §27: one of your conversations, with its messages; the admin may read anyone's. Otherwise anyone else's is a 404. */
 export async function GET(request: Request, ctx: RouteContext<"/api/conversations/[id]">) {
   try {
     const user = await requireApproved(request);
     if (user instanceof Response) return user;
     const { id } = await ctx.params;
     if (!isId(id)) return gone();
-    const conversation = await readConversation(getPool(), user.id, id);
+    const admin = user.role === "admin";
+    const conversation = await readConversation(getPool(), user.id, id, { costs: admin, anyOwner: admin });
     return conversation ? Response.json({ conversation }) : gone();
   } catch (err) {
     return unavailable(err);

@@ -53,6 +53,25 @@ describe("streamChat", () => {
       message: "The reply was interrupted.",
     });
   });
+
+  it("marks a stream that breaks mid-reply as stream_interrupted, retryable", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`${JSON.stringify({ type: "token", text: "Hi" })}\n`));
+        controller.error(new TypeError("network lost"));
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body)));
+    const err = await collect(streamChat({ conversationId: "c1", personaId: "wu", text: "Hi" })).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ChatRequestError);
+    expect(err).toMatchObject({ code: "stream_interrupted", retryable: true });
+  });
+
+  it("passes out_of_energy on from a 402", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: "You're out of energy. Ask the admin for more.", code: "out_of_energy" }, { status: 402 })));
+    const err = await collect(streamChat({ conversationId: "c1", personaId: "wu", text: "Hi" })).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "out_of_energy", retryable: false });
+  });
 });
 
 describe("streamChat: behaviour fields", () => {

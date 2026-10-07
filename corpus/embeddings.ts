@@ -45,3 +45,6 @@ export function assertDimensions(vectors: number[][]): void {
     }
   });
 }
+
+/** Spec §26.3: $0.02 per million tokens for text-embedding-3-small, in micro-dollars per token. Embeddings are always estimated. */
+export const EMBEDDING_MICROS_PER_TOKEN = 0.02;

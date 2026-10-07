@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import ConfirmDialog from "@/components/confirm-dialog";
 import ExportDialog from "@/components/export-dialog";
-import type { ConversationSummary, StoredConversation } from "@/lib/conversation-types";
+import { canDelete, ownerLine, type ConversationSummary, type StoredConversation } from "@/lib/conversation-types";
 import { fetchConversation, fetchConversationList, removeConversation } from "@/lib/conversations-api";
 import { ensureAccess } from "@/lib/ensure-access";
 import { useScrollFade } from "@/lib/use-scroll-fade";
@@ -19,7 +19,8 @@ const updatedAtFormat = new Intl.DateTimeFormat(undefined, {
 });
 
 /**
- * Spec §25.4: your conversations, newest first, from the server. Open and Export load the full
+ * Spec §25.4: your conversations, newest first, from the server. Spec §27: the admin sees everyone's, with the
+ * owner under the persona; Delete only on their own. Open and Export load the full
  * conversation first; Delete asks, then removes it on the server for good.
  */
 export default function ConversationHistory({ onBack, onOpen }: ConversationHistoryProps) {
@@ -122,6 +123,9 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                     <span className="truncate font-medium text-foreground">
                       {conversation.personaName}
                     </span>
+                    {ownerLine(conversation) && (
+                      <span className="max-w-full truncate text-xs text-neutral-400">{ownerLine(conversation)}</span>
+                    )}
                     <span className="truncate text-sm text-neutral-500">
                       {firstLine ?? "No messages"}
                     </span>
@@ -157,6 +161,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                     >
                       Open
                     </button>
+                    {canDelete(conversation) && (
                     <button
                       type="button"
                       onClick={() => setDeleting(conversation)}
@@ -178,6 +183,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                         <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6" />
                       </svg>
                     </button>
+                    )}
                   </div>
                 </li>
               );

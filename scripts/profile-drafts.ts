@@ -13,7 +13,7 @@ export async function draftProfiles(
   for (const slug of slugs) {
     const persona = await findPersona(deps.pool, slug);
     if (!persona?.sourceText) {
-      result.failures.push(`${slug}: not in the database — run npm run ingest first`);
+      result.failures.push(`${slug}: not in the database — load the personas first (make db-seed)`);
       continue;
     }
     try {

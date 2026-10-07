@@ -193,3 +193,10 @@ describe("chatEvents: endings (spec §18.5)", () => {
     expect(done?.type === "done" && "ended" in done.message).toBe(false);
   });
 });
+
+it("tells the visitor the dead are resting when OpenRouter is out of credit (HTTP 402)", () => {
+  expect(describeTurnError(Object.assign(new Error("Payment required"), { status: 402 }))).toEqual({
+    reason: "The dead are resting right now. Try again later.",
+    retryable: false,
+  });
+});

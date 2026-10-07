@@ -1,8 +1,15 @@
 import { describeDbError } from "@corpus/db";
+import { isThreshold, type Threshold } from "@/lib/energy";
 import { getAuth } from "@/lib/server/auth";
 import type { UserStatus } from "@/lib/server/users";
 
-export type CurrentUser = { id: string; email: string; role: "user" | "admin"; status: UserStatus };
+export type Energy = { balance: number; full: number; warningRead: Threshold };
+export type CurrentUser = { id: string; email: string; role: "user" | "admin"; status: UserStatus; energy: Energy };
+
+const num = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
 
 const STATUSES: readonly UserStatus[] = ["pending", "approved", "rejected", "blocked"];
 
@@ -21,6 +28,11 @@ export async function currentUser(headers: Headers): Promise<CurrentUser | null>
     email: s.user.email,
     role: s.user.role === "admin" ? "admin" : "user",
     status: parseStatus(s.user.status),
+    energy: {
+      balance: num(s.user.energyBalance),
+      full: num(s.user.energyFull),
+      warningRead: isThreshold(Number(s.user.energyWarningRead)) ? (Number(s.user.energyWarningRead) as Threshold) : 100,
+    },
   };
 }
 

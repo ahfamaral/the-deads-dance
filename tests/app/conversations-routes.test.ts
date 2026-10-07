@@ -1,10 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { closePool } from "@corpus/db";
+import { closePool, getPool } from "@corpus/db";
 import { GET as list } from "@/app/api/conversations/route";
 import { DELETE as remove, GET as read } from "@/app/api/conversations/[id]/route";
+import { settleTurn } from "@/lib/server/conversations";
 import { getAuth } from "@/lib/server/auth";
 import type { VisitorAct } from "@/lib/visitor-act";
-import { signInAs } from "../helpers/auth";
+import { signInAs, withCookie } from "../helpers/auth";
 import { conversationRow, seedConversation } from "../helpers/conversations";
 import { resetAuth } from "../helpers/db";
 
@@ -81,5 +82,63 @@ describe("GET and DELETE /api/conversations/:id", () => {
     const id = await seedConversation({ userId: ana.userId });
     expect((await read(req(""), params(id))).status).toBe(401);
     expect((await remove(req("", "DELETE"), params(id))).status).toBe(401);
+  });
+});
+
+describe("costs in a conversation read (spec §26.5–6)", () => {
+  const settled = async (userId: string) => {
+    const id = await seedConversation({ userId, messages: [{ role: "user", text: "hi" }] });
+    await settleTurn(getPool(), {
+      conversationId: id, userId, charge: false,
+      reply: { id: "r", role: "persona", text: "Hello.", toolCalls: [], sources: [] },
+      calls: [{ role: "agent", model: "m", inputTokens: 900, outputTokens: 100, cost: 30_000, costSource: "reported", generationId: null, latencyMs: 1 }],
+    });
+    return id;
+  };
+  const get = (cookie: string, id: string) =>
+    read(new Request(`http://localhost/api/conversations/${id}`, withCookie(cookie)), { params: Promise.resolve({ id }) } as never);
+
+  it("never sends a tester costs", async () => {
+    const { cookie, userId } = await signInAs("tess@example.com", { status: "approved" });
+    const body = JSON.stringify(await (await get(cookie, await settled(userId))).json());
+    expect(body).not.toMatch(/"cost"|"tokens"|"spend"/);
+    expect(body).toContain('"turnRunning":false');
+  });
+
+  it("sends the admin the totals and each reply's cost", async () => {
+    const { cookie, userId } = await signInAs("boss@example.com", { role: "admin" });
+    const { conversation } = await (await get(cookie, await settled(userId))).json();
+    expect(conversation.spend).toEqual({ tokens: 1_000, cost: 30_000 });
+    expect(conversation.messages.at(-1)).toMatchObject({ cost: 30_000, tokens: 1_000 });
+  });
+});
+
+describe("the admin reads every conversation (spec §27)", () => {
+  it("lists everyone's conversations for the admin, with email and mine", async () => {
+    const boss = await signInAs("boss@example.com", { role: "admin" });
+    const hers = await seedConversation({ userId: ana.userId, messages: [{ role: "user", text: "hi" }] });
+    const { conversations } = await (await list(req(boss.cookie))).json();
+    expect(conversations).toEqual([expect.objectContaining({ id: hers, userEmail: "ana@example.com", mine: false })]);
+  });
+
+  it("lets the admin read another user's conversation, with its email, but not delete it", async () => {
+    const boss = await signInAs("boss@example.com", { role: "admin" });
+    const hers = await seedConversation({ userId: ana.userId, messages: [{ role: "user", text: "hi" }] });
+    const res = await read(req(boss.cookie), params(hers));
+    expect(res.status).toBe(200);
+    expect((await res.json()).conversation).toMatchObject({ id: hers, userEmail: "ana@example.com" });
+    const del = await remove(req(boss.cookie, "DELETE"), params(hers));
+    expect(del.status).toBe(404);
+    expect(await del.json()).toEqual(GONE);
+    expect((await read(req(ana.cookie), params(hers))).status).toBe(200); // still there
+  });
+
+  it("never sends a tester userEmail or mine, and still hides others' conversations", async () => {
+    const boss = await signInAs("boss@example.com", { role: "admin" });
+    const bossConv = await seedConversation({ userId: boss.userId });
+    await seedConversation({ userId: ana.userId, messages: [{ role: "user", text: "hi" }] });
+    const body = JSON.stringify(await (await list(req(ana.cookie))).json());
+    expect(body).not.toMatch(/userEmail|"mine"/);
+    expect((await read(req(ana.cookie), params(bossConv))).status).toBe(404);
   });
 });

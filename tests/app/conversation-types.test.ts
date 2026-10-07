@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PREVIEW_CHARS, cutPreview } from "@/lib/conversation-types";
+import { PREVIEW_CHARS, canDelete, cutPreview, ownerLine, type ConversationSummary } from "@/lib/conversation-types";
 
 describe("cutPreview (spec §25.4)", () => {
   it("keeps a short first message as it is", () => {
@@ -19,5 +19,21 @@ describe("cutPreview (spec §25.4)", () => {
 
   it("is null when there is no visitor message", () => {
     expect(cutPreview(null)).toBeNull();
+  });
+});
+
+describe("History's owner line and Delete (spec §27)", () => {
+  const row = (extra: Partial<ConversationSummary> = {}): ConversationSummary => ({
+    id: "c", personaId: "wu", personaName: "Wu", preview: null, updatedAt: "2026-10-07T00:00:00.000Z", ended: null, ...extra,
+  });
+  it("shows the owner's email, 'you' for the admin's own, and nothing in a tester's list", () => {
+    expect(ownerLine(row({ userEmail: "ana@example.com", mine: false }))).toBe("ana@example.com");
+    expect(ownerLine(row({ userEmail: "boss@example.com", mine: true }))).toBe("you");
+    expect(ownerLine(row())).toBeNull();
+  });
+  it("offers Delete on your own conversations only", () => {
+    expect(canDelete(row())).toBe(true);
+    expect(canDelete(row({ mine: true }))).toBe(true);
+    expect(canDelete(row({ mine: false }))).toBe(false);
   });
 });

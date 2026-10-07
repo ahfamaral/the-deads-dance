@@ -1,4 +1,5 @@
 import type { DynamicStructuredTool } from "@langchain/core/tools";
+import { parseCalls, type CostLedger } from "@corpus/cost-ledger";
 import { tool } from "langchain";
 import { z } from "zod";
 
@@ -25,7 +26,7 @@ type LockedToolName = keyof typeof LOCKED_SCHEMAS;
 export const LOCKED_TOOL_NAMES = Object.keys(LOCKED_SCHEMAS) as LockedToolName[];
 
 // Typed z.ZodObject, not z.ZodTypeAny: otherwise tool() returns DynamicTool | DynamicStructuredTool.
-function lock(inner: DynamicStructuredTool, schema: z.ZodObject, personaId: string) {
+function lock(inner: DynamicStructuredTool, schema: z.ZodObject, personaId: string, ledger?: CostLedger) {
   return tool(
     async (args: Record<string, unknown>, config) => {
       // MCP validates with JSON Schema and rejects keys set to undefined. The injected persona_id always wins.
@@ -33,8 +34,8 @@ function lock(inner: DynamicStructuredTool, schema: z.ZodObject, personaId: stri
       let envelope: ToolEnvelope;
       try {
         // Invoked with a ToolCall so the ToolMessage keeps its artifact (plain args return content only).
-        // Forward the abort signal explicitly (F5) so Stop cancels an in-flight MCP call: this
-        // doesn't rely on LangChain's ambient (AsyncLocalStorage) config propagation, which is
+        // Forward the signal explicitly (F5) so an aborted call is cancelled; the route no longer
+        // aborts turns (spec §26.4). This doesn't rely on LangChain's ambient (AsyncLocalStorage) config propagation, which is
         // internal behaviour, not a documented contract.
         const msg = await inner.invoke(
           {
@@ -47,7 +48,14 @@ function lock(inner: DynamicStructuredTool, schema: z.ZodObject, personaId: stri
         );
         const artifacts = (msg.artifact ?? []) as { type: string; data?: unknown }[];
         const structured = artifacts.find((a) => a.type === "mcp_structured_content");
-        envelope = structured ? { ok: true, data: structured.data } : { ok: false, error: "The tool returned no result." };
+        if (structured) {
+          // Spec §26.3: the tool's model costs ride along; they go to the ledger, never to the agent.
+          const { calls, ...data } = (structured.data ?? {}) as Record<string, unknown>;
+          ledger?.add(parseCalls(calls));
+          envelope = { ok: true, data };
+        } else {
+          envelope = { ok: false, error: "The tool returned no result." };
+        }
       } catch (err) {
         // MCP isError results and a dead child process both throw here.
         envelope = { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -60,9 +68,9 @@ function lock(inner: DynamicStructuredTool, schema: z.ZodObject, personaId: stri
 }
 
 /** Wraps the allowlisted MCP tools for one persona. Anything else the server offers is dropped. */
-export function lockPersona(tools: DynamicStructuredTool[], personaId: string) {
+export function lockPersona(tools: DynamicStructuredTool[], personaId: string, ledger?: CostLedger) {
   return LOCKED_TOOL_NAMES.flatMap((name) => {
     const inner = tools.find((t) => t.name === name);
-    return inner ? [lock(inner, LOCKED_SCHEMAS[name], personaId)] : [];
+    return inner ? [lock(inner, LOCKED_SCHEMAS[name], personaId, ledger)] : [];
   });
 }

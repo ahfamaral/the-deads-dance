@@ -3,7 +3,8 @@ import { closePool, getPool } from "@corpus/db";
 import { GET } from "@/app/api/access/route";
 import { blockUser } from "@/lib/server/users";
 import { resetAuth } from "../helpers/db";
-import { signInAs } from "../helpers/auth";
+import { signInAs, withCookie } from "../helpers/auth";
+import { giveEnergy } from "../helpers/energy";
 
 const check = (cookie?: string) =>
   GET(new Request("http://localhost/api/access", { headers: cookie ? { cookie } : {} }));
@@ -12,11 +13,20 @@ beforeEach(() => resetAuth());
 afterAll(() => closePool());
 
 describe("GET /api/access", () => {
-  it("answers 204 to approved users and the admin", async () => {
-    const ok = await signInAs("ok@example.com", { status: "approved" });
-    expect((await check(ok.cookie)).status).toBe(204);
-    const boss = await signInAs("boss@example.com", { role: "admin" });
-    expect((await check(boss.cookie)).status).toBe(204);
+  it("tells a tester how much energy is left, never money", async () => {
+    const { cookie, userId } = await signInAs("ana@example.com", { status: "approved" });
+    await giveEnergy(userId, 180_000, 1_000_000);
+    const res = await GET(new Request("http://localhost/api/access", withCookie(cookie)));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ energy: { left: 0.18, warningRead: 100 } });
+    expect(JSON.stringify(body)).not.toMatch(/cost|tokens|\$/);
+  });
+
+  it("tells the admin their spend today", async () => {
+    const { cookie } = await signInAs("boss@example.com", { role: "admin" });
+    const res = await GET(new Request("http://localhost/api/access", withCookie(cookie)));
+    expect(await res.json()).toEqual({ spend: { today: { tokens: 0, cost: 0 } } });
   });
 
   it("answers 401 when signed out, including a blocked user's old cookie", async () => {

@@ -3,6 +3,8 @@
 import { useState, type FormEvent } from "react";
 import type { AddPersonaEvent } from "@/lib/add-persona-events";
 import { applyProgress, initialProgress, LONG_WAIT_HINT, progressView, SEGMENTS, type ProgressState } from "@/lib/add-persona-progress";
+import type { IngestReport } from "@/lib/ingest-report";
+import { formatDollars, formatTokens } from "@/lib/money";
 import { readNdjson } from "@/lib/ndjson";
 import type { Persona } from "@/lib/personas";
 
@@ -16,6 +18,7 @@ type AddPersonaFormProps = {
 type Phase =
   | { kind: "idle" }
   | { kind: "working"; progress: ProgressState | null } // null: still looking up the article
+  | { kind: "report"; persona: Persona; report: IngestReport }
   | { kind: "error"; message: string };
 
 /** Adds a persona from an English Wikipedia title, showing the ingest stages as a segmented bar (spec §17.5). */
@@ -39,13 +42,15 @@ export default function AddPersonaForm({ onAdded, onCancel, onWorkingChange }: A
         setPhase({ kind: "error", message: data.error ?? "Adding the persona failed." });
         return;
       }
+      let report: IngestReport | null = null;
       for await (const e of readNdjson<AddPersonaEvent>(res.body)) {
         if (e.type === "progress") {
           setPhase((prev) => ({
             kind: "working",
             progress: applyProgress(prev.kind === "working" && prev.progress ? prev.progress : initialProgress(), e),
           }));
-        } else if (e.type === "done") return onAdded(e.persona);
+        } else if (e.type === "cost") report = e.report;
+        else if (e.type === "done") return report && report.rows.length > 0 ? setPhase({ kind: "report", persona: e.persona, report }) : onAdded(e.persona);
         else return setPhase({ kind: "error", message: e.message });
       }
       setPhase({ kind: "error", message: "The server stopped before finishing." });
@@ -59,6 +64,42 @@ export default function AddPersonaForm({ onAdded, onCancel, onWorkingChange }: A
   const view = phase.kind === "working" && phase.progress ? progressView(phase.progress) : null;
   const status =
     phase.kind === "working" ? (view?.line ?? "Looking up the article…") : phase.kind === "error" ? phase.message : "";
+
+  if (phase.kind === "report") {
+    return (
+      <div className="mb-2 flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm">
+        <p className="text-neutral-300">Persona added: {phase.persona.name}</p>
+        <table className="w-full text-xs tabular-nums text-neutral-400">
+          <tbody>
+            {phase.report.rows.map((row) => (
+              <tr key={row.label}>
+                <td className="py-0.5">{row.label}</td>
+                <td className="py-0.5 text-right">{formatTokens(row.tokens)}</td>
+                <td className="py-0.5 text-right">
+                  {formatDollars(row.cost)}
+                  {row.estimated && " (estimated)"}
+                </td>
+              </tr>
+            ))}
+            <tr className="border-t border-white/10 text-neutral-200">
+              <td className="pt-1">Total</td>
+              <td className="pt-1 text-right">{formatTokens(phase.report.total.tokens)}</td>
+              <td className="pt-1 text-right">{formatDollars(phase.report.total.cost)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => onAdded(phase.persona)}
+            className="min-h-11 rounded-full bg-neutral-100 px-4 py-1.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={submit} className="mb-2 flex flex-col gap-2 rounded-2xl border border-white/10 bg-white/5 p-3">

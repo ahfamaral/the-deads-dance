@@ -28,6 +28,8 @@ export function describeTurnError(err: unknown): { reason: string; retryable: bo
     return { reason: "The persona got stuck. Try rephrasing.", retryable: true };
   }
   const status = httpStatus(err);
+  // Spec §26.4: the OpenRouter key is out of credit. Calm, and no money mentioned.
+  if (status === 402) return { reason: "The dead are resting right now. Try again later.", retryable: false };
   if (status === 401 || status === 403) {
     return { reason: "The model provider rejected the API key. Check OPENROUTER_API_KEY.", retryable: false };
   }

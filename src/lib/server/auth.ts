@@ -34,6 +34,10 @@ export function createAuth(opts: { pool: Pool; env: AuthEnv; siteVerifyURL?: str
         status: { type: "string", required: false, defaultValue: "pending", input: false },
         statusChangedAt: { type: "date", required: false, input: false },
         statusChangedBy: { type: "string", required: false, input: false },
+        // Spec §26.2: energy in micro-dollars, set only by the server.
+        energyBalance: { type: "number", required: false, defaultValue: 0, input: false },
+        energyFull: { type: "number", required: false, defaultValue: 0, input: false },
+        energyWarningRead: { type: "number", required: false, defaultValue: 100, input: false },
       },
     },
     rateLimit: {

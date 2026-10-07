@@ -18,10 +18,17 @@ describe("modelId", () => {
     expect(modelId("helper")).toBe(DEFAULT_MODELS.helper);
   });
 
-  // Spec §19.2: recall needs a model that knows well-documented events; gpt-5-mini didn't.
-  it("defaults recall to gemini-3.8-flash and reads RECALL_MODEL", () => {
+  it("defaults to DeepSeek: v4-pro for the agent, v4.1-flash for the helper and recall", () => {
+    expect(DEFAULT_MODELS).toEqual({
+      agent: "deepseek/deepseek-v4-pro",
+      helper: "deepseek/deepseek-v4.1-flash",
+      recall: "deepseek/deepseek-v4.1-flash",
+    });
+  });
+
+  it("defaults recall and reads RECALL_MODEL", () => {
     vi.stubEnv("RECALL_MODEL", "");
-    expect(modelId("recall")).toBe("google/gemini-3.8-flash");
+    expect(modelId("recall")).toBe(DEFAULT_MODELS.recall);
     vi.stubEnv("RECALL_MODEL", "openai/gpt-5.5");
     expect(modelId("recall")).toBe("openai/gpt-5.5");
   });

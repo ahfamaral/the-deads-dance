@@ -1,11 +1,12 @@
 import { headers } from "next/headers";
 import { connection } from "next/server";
 import type { ReactNode } from "react";
-import { describeDbError } from "@corpus/db";
+import { describeDbError, getPool } from "@corpus/db";
 import ChatFlow from "@/components/chat-flow";
 import SignIn from "@/components/sign-in";
 import StatusScreen from "@/components/status-screen";
 import { currentUser } from "@/lib/server/access";
+import { accessBody, type AccessBody } from "@/lib/server/access-info";
 import { loadPersonas } from "@/lib/server/load-personas";
 
 export default async function Home() {
@@ -21,7 +22,7 @@ export default async function Home() {
     // Spec §24.9: the database is down. Say so instead of crashing the page.
     console.error(err);
     return main(
-      <p role="alert" className="m-auto max-w-[280px] text-center text-sm text-neutral-400">
+      <p role="alert" className="m-auto flex text-center text-sm text-neutral-400">
         Service unavailable. {describeDbError(err) ?? "Try again in a minute."}
       </p>,
     );
@@ -33,5 +34,13 @@ export default async function Home() {
   if (!isAdmin && user.status === "pending") return main(<StatusScreen status="pending" email={user.email} />);
   if (!isAdmin && user.status !== "approved") return main(<StatusScreen status="rejected" email={user.email} />);
   const { personas, unavailable } = await loadPersonas();
-  return main(<ChatFlow initialPersonas={personas} personasUnavailable={unavailable} email={user.email} isAdmin={isAdmin} />);
+  let initialAccess: AccessBody | null = null;
+  try {
+    initialAccess = await accessBody(getPool(), user);
+  } catch (err) {
+    console.error(err); // the screens fetch it again via ensureAccess
+  }
+  return main(
+    <ChatFlow initialPersonas={personas} personasUnavailable={unavailable} email={user.email} isAdmin={isAdmin} initialAccess={initialAccess} />,
+  );
 }

@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import AddEnergyDialog from "@/components/add-energy-dialog";
+import AdminCredit from "@/components/admin-credit";
 import ConfirmDialog from "@/components/confirm-dialog";
+import { energyCell } from "@/lib/admin-spend";
+import { energyLeft, levelOf, type EnergyLevel } from "@/lib/energy";
+import { formatDollars } from "@/lib/money";
 
 type Status = "pending" | "approved" | "rejected" | "blocked";
 type Row = {
@@ -13,6 +18,9 @@ type Row = {
   createdAt: string;
   statusChangedAt: string | null;
   statusChangedByEmail: string | null;
+  energyBalance: number;
+  energyFull: number;
+  spent: number;
 };
 const TABS: { status: Status; label: string }[] = [
   { status: "pending", label: "Pending" },
@@ -24,6 +32,18 @@ const BTN_PRIMARY = "min-h-11 flex-1 whitespace-nowrap rounded-full bg-neutral-1
 const BTN = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-white/15 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] text-neutral-200 hover:bg-white/10 md:flex-none md:px-4 md:text-sm";
 const BACK = "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full border border-white/15 px-4 text-sm text-neutral-200 hover:bg-white/10";
 const BTN_DANGER = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-red-500/50 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] text-red-300 hover:bg-red-500/15 md:flex-none md:px-4 md:text-sm";
+
+// Same colours as EnergyBar, without the pulse or the icon.
+const MINI_FILL: Record<EnergyLevel, string> = { green: "bg-green-500", yellow: "bg-yellow-400", red: "bg-red-500", darkred: "bg-red-800", empty: "" };
+
+function EnergyBarMini({ balance, full }: { balance: number; full: number }) {
+  const left = energyLeft(balance, full);
+  return (
+    <span aria-hidden="true" className="block h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-white/10">
+      <span className={`block h-full rounded-full ${MINI_FILL[levelOf(left)]}`} style={{ width: `${Math.round(left * 100)}%` }} />
+    </span>
+  );
+}
 
 // The actions that ask first, with their dialog and the note shown after.
 type Confirmed = "reject" | "block" | "unblock";
@@ -47,6 +67,9 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
   const [tab, setTab] = useState<Status>("pending");
   const [note, setNote] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ row: Row; action: Confirmed } | null>(null);
+  const [defaultAmount, setDefaultAmount] = useState("1.00");
+  const [adding, setAdding] = useState<Row | null>(null);
+  const onStartingEnergy = useCallback((v: string) => setDefaultAmount(v), []);
 
   const showUsers = useCallback((list: Row[] | null) => (list ? setUsers(list) : setNote("Couldn't load users.")), []);
   const reloadUsers = async () => showUsers(await fetchUsers());
@@ -61,6 +84,22 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
     if (!res.ok) setNote(data.error ?? "That didn't work.");
     else if (action === "approve") setNote(`Approved ${row.email} · ${data.emailSent ? "email sent" : "email failed"}`);
     else setNote(`${CONFIRM[action].done} ${row.email}`);
+    await reloadUsers();
+  }
+
+  async function addEnergy(row: Row, amount: string) {
+    setAdding(null);
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(row.id)}/energy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setNote(res.ok ? `Added ${data.added} for ${row.email}` : (data.error ?? "That didn't work."));
+    } catch {
+      setNote("Couldn't reach the server.");
+    }
     await reloadUsers();
   }
 
@@ -82,9 +121,14 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
       );
     if (row.status === "approved")
       return (
-        <button type="button" className={BTN_DANGER} onClick={() => setConfirm({ row, action: "block" })}>
-          Block
-        </button>
+        <>
+          <button type="button" className={BTN_PRIMARY} onClick={() => setAdding(row)}>
+            Add energy
+          </button>
+          <button type="button" className={BTN_DANGER} onClick={() => setConfirm({ row, action: "block" })}>
+            Block
+          </button>
+        </>
       );
     if (row.status === "blocked")
       return (
@@ -95,6 +139,15 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
     return null;
   }
   const dateOf = (r: Row) => (tab === "pending" ? when(r.createdAt) : when(r.statusChangedAt));
+  const energyOf = (r: Row) =>
+    r.role === "admin" ? (
+      <span className="text-neutral-500">No limit</span>
+    ) : (
+      <span className="flex items-center gap-2">
+        <EnergyBarMini balance={r.energyBalance} full={r.energyFull} />
+        {energyCell(r.energyBalance, r.energyFull)}
+      </span>
+    );
   const byOf = (r: Row) => (r.role === "admin" ? "CLI" : r.statusChangedByEmail === null ? "—" : "you");
 
   return (
@@ -118,6 +171,8 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
         <h1 className="text-lg font-semibold">Testers</h1>
       </header>
 
+      <AdminCredit onStartingEnergy={onStartingEnergy} />
+
       <div role="tablist" className="flex gap-2 overflow-x-auto pb-1">
         {TABS.map((t) => (
           <button
@@ -125,7 +180,7 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
             role="tab"
             aria-selected={tab === t.status}
             onClick={() => setTab(t.status)}
-            className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${tab === t.status ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 text-neutral-300"
+            className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${tab === t.status ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 bg-neutral-900/70 text-neutral-300 backdrop-blur-sm"
               }`}
           >
             {t.label}{" "}
@@ -155,6 +210,8 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
                 <th className="px-2 py-2 font-medium">Email</th>
                 <th className="px-2 py-2 font-medium">{tab === "pending" ? "Signed up" : "Changed"}</th>
                 {tab !== "pending" && <th className="px-2 py-2 font-medium">By</th>}
+                {tab === "approved" && <th className="px-2 py-2 font-medium">Energy left</th>}
+                {tab === "approved" && <th className="px-2 py-2 font-medium">Spent</th>}
                 <th />
               </tr>
             </thead>
@@ -166,6 +223,8 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
                   </td>
                   <td className="px-2 py-2 text-neutral-400">{dateOf(r)}</td>
                   {tab !== "pending" && <td className="px-2 py-2 text-neutral-400">{byOf(r)}</td>}
+                  {tab === "approved" && <td className="px-2 py-2">{energyOf(r)}</td>}
+                  {tab === "approved" && <td className="px-2 py-2 text-neutral-400">{formatDollars(r.spent)}</td>}
                   <td className="px-2 py-2">
                     <div className="flex justify-end gap-2">{actions(r)}</div>
                   </td>
@@ -182,7 +241,9 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
                 </p>
                 <p className="mb-2 text-xs text-neutral-500">
                   {tab === "pending" ? `Signed up ${dateOf(r)}` : `${dateOf(r)} · by ${byOf(r)}`}
+                  {tab === "approved" && ` · spent ${formatDollars(r.spent)}`}
                 </p>
+                {tab === "approved" && <div className="my-1.5 text-sm">{energyOf(r)}</div>}
                 <div className="flex gap-2">{actions(r)}</div>
               </li>
             ))}
@@ -201,6 +262,14 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
           if (c) void act(c.row, c.action);
         }}
         onCancel={() => setConfirm(null)}
+      />
+      <AddEnergyDialog
+        open={adding !== null}
+        email={adding?.email ?? ""}
+        balance={adding?.energyBalance ?? 0}
+        defaultAmount={defaultAmount}
+        onAdd={(a) => adding && void addEnergy(adding, a)}
+        onCancel={() => setAdding(null)}
       />
     </section>
   );

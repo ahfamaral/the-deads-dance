@@ -58,7 +58,7 @@ db-seed: db-setup ## Load the seed personas + chunks (REPLACES existing personas
 	docker-compose exec -T db psql -U persona -d persona -q -v ON_ERROR_STOP=1 < $(SEED) > /dev/null
 	@docker-compose exec -T db psql -U persona -d persona -tAc "SELECT count(*) || ' personas, ' || (SELECT count(*) FROM chunks) || ' chunks loaded.' FROM personas"
 
-ingest: node_modules ## Embed the curated personas (skips unchanged ones)
+ingest: node_modules ## Disabled for now (npm run ingest explains how to bring it back)
 	$(NPM) run ingest
 
 test: node_modules ## Run the test suite (needs `make db-up`)

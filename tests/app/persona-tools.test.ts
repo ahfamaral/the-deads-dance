@@ -2,6 +2,7 @@ import type { DynamicStructuredTool } from "@langchain/core/tools";
 import { tool } from "langchain";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { CostLedger } from "@corpus/cost-ledger";
 import { lockPersona } from "@/lib/server/persona-tools";
 import { fakeMcpTool } from "../helpers/fake-mcp-tool";
 
@@ -92,5 +93,35 @@ describe("lockPersona", () => {
 
     expect(seenSignal).toBe(controller.signal);
     expect(seenSignal?.aborted).toBe(true);
+  });
+});
+
+describe("lockPersona and costs (spec §26.3, Review Focus 4)", () => {
+  const CALL = { role: "helper", model: "m", inputTokens: 1, outputTokens: 1, cost: 5, generationId: null, latencyMs: 1 };
+
+  it("moves the tool's calls to the ledger and keeps them out of what the agent reads", async () => {
+    const ledger = new CostLedger();
+    const inner = fakeMcpTool("search_biography", () => ({ status: "ok", passages: [], queries: ["q"], calls: [CALL] }));
+    const [search] = lockPersona([inner.tool], "wu", ledger);
+    const msg = await search.invoke(call("search_biography", { query: "q" }));
+    expect(ledger.calls).toEqual([CALL]);
+    expect(msg.content).not.toContain("calls");
+    expect(msg.artifact).toEqual({ ok: true, data: { status: "ok", passages: [], queries: ["q"] } });
+  });
+
+  it("drops malformed calls and still passes the data on", async () => {
+    const ledger = new CostLedger();
+    const inner = fakeMcpTool("search_biography", () => ({ status: "ok", passages: [], queries: [], calls: ["junk", { role: "wizard" }] }));
+    const [search] = lockPersona([inner.tool], "wu", ledger);
+    const msg = await search.invoke(call("search_biography", { query: "q" }));
+    expect(ledger.calls).toEqual([]);
+    expect(msg.artifact).toEqual({ ok: true, data: { status: "ok", passages: [], queries: [] } });
+  });
+
+  it("strips calls even without a ledger", async () => {
+    const inner = fakeMcpTool("search_biography", () => ({ status: "empty", queries: [], calls: [CALL] }));
+    const [search] = lockPersona([inner.tool], "wu");
+    const msg = await search.invoke(call("search_biography", { query: "q" }));
+    expect(msg.artifact).toEqual({ ok: true, data: { status: "empty", queries: [] } });
   });
 });

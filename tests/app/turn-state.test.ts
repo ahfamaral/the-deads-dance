@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyChatEvent, replyToStore, startTurn, stoppedMessage, type TurnState } from "@/lib/turn-state";
+import { applyChatEvent, replyToStore, startTurn, type TurnState } from "@/lib/turn-state";
 import type { ChatStreamEvent } from "@/lib/chat-types";
 
 describe("applyChatEvent", () => {
@@ -45,22 +45,6 @@ describe("applyChatEvent", () => {
   });
 });
 
-describe("stoppedMessage", () => {
-  // Review Focus 4: Stop before the first token adds nothing.
-  it("is null before any text arrived", () => {
-    expect(stoppedMessage(applyChatEvent(startTurn("p1"), { type: "tool_start", id: "t1", toolName: "x", arguments: {} }))).toBeNull();
-  });
-
-  it("keeps the text so far and drops calls that were still running", () => {
-    let state = startTurn("p1");
-    state = applyChatEvent(state, { type: "tool_start", id: "t1", toolName: "x", arguments: {} });
-    state = applyChatEvent(state, { type: "tool_end", id: "t1", status: "ok", result: {}, durationMs: 5 });
-    state = applyChatEvent(state, { type: "tool_start", id: "t2", toolName: "x", arguments: {} });
-    state = applyChatEvent(state, { type: "token", text: "I was" });
-    expect(stoppedMessage(state)).toMatchObject({ text: "I was", toolCalls: [{ id: "t1" }] });
-  });
-});
-
 describe("applyChatEvent: act (spec §18.1)", () => {
   it("records the act on the turn, not on the persona message", () => {
     const act = { act: "thanks", offense: 0, sorePoint: false, language: "en", wants: "brief", visitorName: null } as const;
@@ -78,7 +62,7 @@ describe("applyChatEvent: act (spec §18.1)", () => {
   });
 });
 
-describe("replyToStore (spec §25.3 step 9)", () => {
+describe("replyToStore (spec §26.4)", () => {
   const running = (text: string): TurnState => {
     let s = startTurn("p1");
     s = applyChatEvent(s, { type: "tool_start", id: "t1", toolName: "search_biography", arguments: {} });
@@ -90,27 +74,22 @@ describe("replyToStore (spec §25.3 step 9)", () => {
       type: "done",
       message: { text: "Parity fails.", toolCalls: [], sources: [], ended: "farewell" },
     });
-    expect(replyToStore(done, { aborted: false, ended: "farewell" })).toEqual({ message: done.message, stopped: false });
-  });
-
-  it("stores the text so far after Stop, marked stopped, with this turn's ending and no running tools", () => {
-    const reply = replyToStore(running("I was about to"), { aborted: true, ended: "offended" });
-    expect(reply).toEqual({
-      message: { id: "p1", role: "persona", text: "I was about to", toolCalls: [], sources: [], ended: "offended" },
-      stopped: true,
-    });
-  });
-
-  it("stores nothing after a Stop before any text", () => {
-    expect(replyToStore(running(""), { aborted: true, ended: null })).toBeNull();
+    expect(replyToStore(done)).toEqual(done.message);
   });
 
   it("stores nothing for a failed turn, even with text, so the visitor can retry it", () => {
     const failed = applyChatEvent(running("Half an an"), { type: "error", reason: "x", retryable: true });
-    expect(replyToStore(failed, { aborted: false, ended: null })).toBeNull();
+    expect(replyToStore(failed)).toBeNull();
   });
 
-  it("stores nothing for a stream that ended without done, error or Stop", () => {
-    expect(replyToStore(running("Odd"), { aborted: false, ended: null })).toBeNull();
+  it("stores nothing for a stream that ended without done or error", () => {
+    expect(replyToStore(running("Odd"))).toBeNull();
+  });
+
+  it("puts the turn's cost on the reply, and ignores the energy event", () => {
+    let s = startTurn("r");
+    s = applyChatEvent(s, { type: "energy", left: 0.4 });
+    s = applyChatEvent(s, { type: "cost", turn: { tokens: 10, cost: 5, inputTokens: 8, outputTokens: 2 }, conversation: { tokens: 10, cost: 5 } });
+    expect(s.message).toMatchObject({ cost: 5, tokens: 10 });
   });
 });

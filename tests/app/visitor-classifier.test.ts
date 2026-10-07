@@ -3,6 +3,7 @@ import { fakeModel } from "langchain";
 import { describe, expect, it, vi } from "vitest";
 import type { CharacterProfile } from "@corpus/profile";
 import { VisitorActSchema } from "@/lib/visitor-act";
+import { CostLedger } from "@corpus/cost-ledger";
 import { CLASSIFIER_PROMPT, classifyVisitorWith, cleanVisitorAct } from "@/lib/server/visitor-classifier";
 
 const PROFILE: CharacterProfile = {
@@ -145,4 +146,19 @@ describe("classifyVisitorWith", () => {
     expect(CLASSIFIER_PROMPT).toMatch(/long only when the visitor explicitly asks for more/);
     expect(CLASSIFIER_PROMPT).toMatch(/"what was your childhood like\?" is normal, not long/);
   });
+});
+
+it("passes the turn's callbacks to the model call (spec §26.3)", async () => {
+  const seen: unknown[] = [];
+  const model = {
+    withStructuredOutput: () => ({
+      invoke: async (_messages: unknown, config: unknown) => {
+        seen.push(config);
+        return { act: "question", offense: 0, sorePoint: false, language: "en", wants: "normal", visitorName: null };
+      },
+    }),
+  } as unknown as BaseChatModel;
+  const handler = new CostLedger().handler("classifier");
+  await classifyVisitorWith(model)({ personaMessage: null, visitorMessage: "hi", profile: null, callbacks: [handler] });
+  expect((seen[0] as { callbacks?: unknown[] }).callbacks).toEqual([handler]);
 });

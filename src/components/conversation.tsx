@@ -1,9 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import PersonaMessage from "@/components/persona-message";
 import type { LanguageMode, Message } from "@/lib/chat-types";
 
 type ConversationProps = {
   personaName: string;
+  /** Spec §27: whose conversation this is, when the admin opens someone else's. */
+  ownerEmail?: string;
   messages: Message[];
   onBack: () => void;
   /** The persona reply that is still streaming. */
@@ -17,11 +19,20 @@ type ConversationProps = {
   /** Spec §18.4: the "Always answer in my language" switch. */
   languageMode: LanguageMode;
   onLanguageModeChange: (mode: LanguageMode) => void;
+  /** The header's right cell: the energy bar, or the admin's spend badge. */
+  meterSlot?: ReactNode;
+  /** Shown under the tools banner (the energy notice). */
+  notice?: ReactNode;
+  /** Spec §26.4: the server is still writing the reply; shows "Still replying…". */
+  waiting?: boolean;
+  /** Admin only: each reply shows its cost line. */
+  showCost?: boolean;
 };
 
 /** Transcript of the exchange between the user and the persona, including the reply that is still streaming. */
 export default function Conversation({
   personaName,
+  ownerEmail,
   messages,
   onBack,
   pending,
@@ -30,19 +41,23 @@ export default function Conversation({
   toolsUnavailable = false,
   languageMode,
   onLanguageModeChange,
+  meterSlot,
+  notice,
+  waiting = false,
+  showCost = false,
 }: ConversationProps) {
   const endRef = useRef<HTMLDivElement>(null);
   // Keep the newest content in view as the reply streams in.
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, pending?.text, pending?.toolCalls?.length, turnError]);
-  const empty = messages.length === 0 && !pending && !turnError;
+  }, [messages.length, pending?.text, pending?.toolCalls?.length, turnError, waiting]);
+  const empty = messages.length === 0 && !pending && !turnError && !waiting;
   return (
     <section
       aria-label={`Conversation with ${personaName}`}
       className="flex min-h-0 w-full flex-1 flex-col rounded-3xl border border-white/10 bg-neutral-900/80 shadow-lg shadow-black/40 backdrop-blur-md"
     >
-      <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-white/10 p-3">
+      <header className="grid grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-3 border-b border-white/10 p-3">
         <button
           type="button"
           onClick={onBack}
@@ -62,9 +77,12 @@ export default function Conversation({
           </svg>
           Back
         </button>
-        <h2 className="truncate text-sm font-medium text-foreground">{personaName}</h2>
-        {/* Keeps the name centred now that Save is gone (spec §25.5). */}
-        <span aria-hidden="true" />
+        <div className="flex min-w-0 flex-col items-center">
+          <h2 className="min-w-0 max-w-full truncate text-sm font-medium text-foreground">{personaName}</h2>
+          {ownerEmail && <p className="max-w-full truncate text-xs text-neutral-400">{ownerEmail}</p>}
+        </div>
+        {/* The right cell also keeps the name centred (spec §26.5). */}
+        <div className="flex justify-self-end">{meterSlot}</div>
       </header>
       <div className="flex justify-end border-b border-white/10 px-4 py-1.5">
         <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
@@ -82,6 +100,7 @@ export default function Conversation({
           Biography tools unavailable: answers won&apos;t be grounded.
         </p>
       )}
+      {notice}
       <div className="relative flex min-h-0 flex-1 flex-col">
         {/* Inner shadow along the top edge; an overlay so messages scroll beneath it rather than over it. */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-linear-to-b from-black/40 to-transparent" />
@@ -100,10 +119,15 @@ export default function Conversation({
                     </p>
                   </li>
                 ) : (
-                  <PersonaMessage key={message.id} personaName={personaName} message={message} />
+                  <PersonaMessage key={message.id} personaName={personaName} message={message} showCost={showCost} />
                 ),
               )}
-              {pending && <PersonaMessage personaName={personaName} message={pending} streaming />}
+              {pending && <PersonaMessage personaName={personaName} message={pending} streaming showCost={showCost} />}
+              {waiting && (
+                <li role="status" className="animate-pulse text-sm text-neutral-500 motion-reduce:animate-none">
+                  Still replying…
+                </li>
+              )}
               {turnError && (
                 <li
                   role="alert"

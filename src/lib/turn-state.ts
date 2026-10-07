@@ -1,5 +1,4 @@
 import type { ChatStreamEvent, Message, ToolCall } from "@/lib/chat-types";
-import type { VisitEnding } from "@/lib/visit";
 import type { VisitorAct } from "@/lib/visitor-act";
 
 /**
@@ -56,27 +55,14 @@ export function applyChatEvent(state: TurnState, event: ChatStreamEvent): TurnSt
       return { ...state, status: "done", message: { ...state.message, ...event.message } };
     case "error":
       return { ...state, status: "error", error: { reason: event.reason, retryable: event.retryable } };
+    case "energy":
+      return state; // spec §26.5: the screen's meter handles it
+    case "cost":
+      return { ...state, message: { ...state.message, cost: event.turn.cost, tokens: event.turn.tokens } };
   }
 }
 
-/** Stop pressed: keep the text received so far, or nothing if no text arrived yet. */
-export function stoppedMessage(state: TurnState): Message | null {
-  if (!state.message.text.trim()) return null;
-  return updateCalls(state.message, (calls) => calls.filter((c) => c.status !== "running"));
-}
-
-/** What the server stores once a turn's stream ends. */
-export type StoredReply = { message: Message; stopped: boolean };
-
-/**
- * Spec §25.3 step 9: a finished reply as it is; after Stop, the text so far, marked stopped and
- * carrying this turn's ending; nothing for a failed turn or a Stop before any text, which leaves
- * the visitor message unanswered and retryable.
- */
-export function replyToStore(state: TurnState, opts: { aborted: boolean; ended: VisitEnding | null }): StoredReply | null {
-  if (state.status === "done") return { message: state.message, stopped: false };
-  if (state.status === "error" || !opts.aborted) return null;
-  const partial = stoppedMessage(state);
-  if (!partial) return null;
-  return { message: opts.ended ? { ...partial, ended: opts.ended } : partial, stopped: true };
+/** Spec §26.4: the server finishes every turn, so only a finished reply is stored; a failed turn stores none. */
+export function replyToStore(state: TurnState): Message | null {
+  return state.status === "done" ? state.message : null;
 }

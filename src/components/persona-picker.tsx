@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 import AddPersonaForm from "@/components/add-persona-form";
+import GearIcon from "@/components/gear-icon";
+import EnergyBar from "@/components/energy-bar";
+import EnergyNotice from "@/components/energy-notice";
+import SpendBadge from "@/components/spend-badge";
+import { dueBanner, type BannerThreshold } from "@/lib/energy";
+import { isOutOfEnergy, type Meter } from "@/lib/meter";
 import type { Persona } from "@/lib/personas";
 import { useScrollFade } from "@/lib/use-scroll-fade";
 
@@ -13,6 +19,9 @@ type PersonaPickerProps = {
   onDelete: (persona: Persona) => void;
   onAdd: (persona: Persona) => void;
   onBack: () => void;
+  /** Spec §26.5: the tester's energy, or the admin's spend today; null if it couldn't be read. */
+  meter: Meter | null;
+  onDismissBanner: (threshold: BannerThreshold) => void;
 };
 
 /**
@@ -23,12 +32,14 @@ type PersonaPickerProps = {
  * persona from a Wikipedia title. Built-in personas show a disabled trash icon.
  * While a persona is being added, every other button in the panel is disabled.
  */
-export default function PersonaPicker({ personas, canManage, notice, onConfirm, onDelete, onAdd, onBack }: PersonaPickerProps) {
+export default function PersonaPicker({ personas, canManage, notice, onConfirm, onDelete, onAdd, onBack, meter, onDismissBanner }: PersonaPickerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState(false);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const listFade = useScrollFade();
+  const banner = meter?.kind === "energy" ? dueBanner(meter.left, meter.warningRead) : null;
+  const outOfEnergy = isOutOfEnergy(meter);
 
   function toggleConfiguring() {
     setConfiguring((value) => !value);
@@ -44,11 +55,12 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
         aria-labelledby="persona-picker-heading"
         className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/10 bg-neutral-900/80 p-5 shadow-lg shadow-black/40 backdrop-blur-md"
       >
+        <div className="-ml-2 mb-3 flex items-center justify-between gap-3">
         <button
           type="button"
           onClick={onBack}
           disabled={busy}
-          className="-ml-2 mb-3 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
+          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
         >
           <svg
             viewBox="0 0 24 24"
@@ -64,6 +76,9 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
           </svg>
           Back
         </button>
+          {meter?.kind === "energy" && <EnergyBar left={meter.left} />}
+          {meter?.kind === "spend" && <SpendBadge spend={meter.today} suffix="today" />}
+        </div>
         <div className="mb-2 flex items-center justify-between gap-3">
           <h2
             id="persona-picker-heading"
@@ -83,23 +98,11 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                   : "text-neutral-400 hover:bg-white/10 hover:text-foreground"
                 }`}
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={`size-5 transition-transform duration-300 ease-out motion-reduce:transition-none ${configuring ? "rotate-90" : ""
-                  }`}
-                aria-hidden="true"
-              >
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
+              <GearIcon open={configuring} />
             </button>
           )}
         </div>
+        {banner !== null && <EnergyNotice threshold={banner} onDismiss={() => onDismissBanner(banner)} className="mb-2 rounded-xl" />}
         {/* Space for the add button is always reserved, so configure mode
             never shifts the list; the button only fades in and out. */}
         {canManage && (
@@ -183,7 +186,8 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                     inert={!showTalkTo}
                     aria-label={`Talk to ${persona.name}`}
                     onClick={() => onConfirm(persona)}
-                    className={`group col-start-1 row-start-1 flex items-center gap-1.5 whitespace-nowrap rounded-full bg-neutral-100 py-1.5 pl-4 pr-3 text-sm font-medium text-neutral-900 transition-[background-color,opacity,translate] duration-300 ease-out hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 motion-reduce:transition-none ${showTalkTo ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"
+                    disabled={configuring || outOfEnergy}
+                    className={`group col-start-1 row-start-1 flex items-center gap-1.5 whitespace-nowrap rounded-full bg-neutral-100 py-1.5 pl-4 pr-3 text-sm font-medium text-neutral-900 transition-[background-color,opacity,translate] duration-300 ease-out hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 motion-reduce:transition-none ${showTalkTo ? "translate-x-0 opacity-100 disabled:pointer-events-none disabled:opacity-40" : "translate-x-3 opacity-0"
                       }`}
                   >
                     Talk to

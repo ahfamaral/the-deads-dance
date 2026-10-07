@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { CostLedger, type ModelCallRecord } from "../corpus/cost-ledger";
 import { describeDbError } from "../corpus/db";
 import type { Unavailable } from "../corpus/tool-results";
 import { factCheckClaim, type FactCheckDeps } from "./biography/fact-check";
@@ -10,29 +11,34 @@ export type ServerDeps = FactCheckDeps & WorldDeps;
 
 type ToolOutput = { content: { type: "text"; text: string }[]; structuredContent: Record<string, unknown> };
 
-function toOutput(result: object): ToolOutput {
+/** Spec §26.3: deps built for one tool call, so the call's model costs land on its own ledger. */
+export type DepsFor = (ledger: CostLedger) => ServerDeps;
+
+function toOutput(result: object, calls: ModelCallRecord[]): ToolOutput {
   return {
+    // The text is what an MCP client shows a model; the costs travel only in structuredContent.
     content: [{ type: "text", text: JSON.stringify(result) }],
-    structuredContent: result as Record<string, unknown>,
+    structuredContent: { ...(result as Record<string, unknown>), calls },
   };
 }
 
-/** Spec §9: tools return typed failures and never throw — an exception would kill the agent's turn. */
-async function safely(run: () => Promise<object>): Promise<ToolOutput> {
+/** Spec §9: tools return typed failures and never throw. Spec §26.3: each call has its own ledger. */
+async function safely(depsFor: DepsFor, run: (deps: ServerDeps) => Promise<object>): Promise<ToolOutput> {
+  const ledger = new CostLedger();
   try {
-    return toOutput(await run());
+    return toOutput(await run(depsFor(ledger)), ledger.calls);
   } catch (err) {
     console.error(err); // stderr: stdout carries the MCP protocol
     const failure: Unavailable = {
       status: "unavailable",
       reason: describeDbError(err) ?? "The biography service failed. Try again.",
     };
-    return toOutput(failure);
+    return toOutput(failure, ledger.calls);
   }
 }
 
 /** The persona MCP server (spec §3): biography and world tools. Talks Postgres and HTTP only; never sees a request object. */
-export function createServer(deps: ServerDeps): McpServer {
+export function createServer(depsFor: DepsFor): McpServer {
   const server = new McpServer({ name: "persona-biography", version: "0.1.0" });
 
   server.registerTool(
@@ -46,7 +52,7 @@ export function createServer(deps: ServerDeps): McpServer {
         top_k: z.number().int().min(1).max(10).optional().describe("How many passages to return; default 3"),
       },
     },
-    (input) => safely(() => searchBiography(deps, input)),
+    (input) => safely(depsFor, (deps) => searchBiography(deps, input)),
   );
 
   server.registerTool(
@@ -60,7 +66,7 @@ export function createServer(deps: ServerDeps): McpServer {
       },
     },
     // extra.signal aborts when the client cancels the call (Stop or a closed tab aborts the agent).
-    (input, extra) => safely(() => factCheckClaim(deps, input, extra.signal)),
+    (input, extra) => safely(depsFor, (deps) => factCheckClaim(deps, input, extra.signal)),
   );
 
   server.registerTool(
@@ -73,7 +79,7 @@ export function createServer(deps: ServerDeps): McpServer {
         persona_id: z.string().min(1).max(200),
       },
     },
-    (input) => safely(() => getHistoricalContext(deps, input)),
+    (input) => safely(depsFor, (deps) => getHistoricalContext(deps, input)),
   );
 
   return server;

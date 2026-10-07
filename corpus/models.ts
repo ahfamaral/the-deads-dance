@@ -1,3 +1,4 @@
+import type { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import { ChatOpenAI } from "@langchain/openai";
 import { OPENROUTER_BASE_URL } from "./embeddings";
 
@@ -5,10 +6,18 @@ import { OPENROUTER_BASE_URL } from "./embeddings";
  * Chat models for the persona agent and for the MCP server's helper calls (query
  * expansion, fact-check verdicts) and for recall beyond the biography (spec §19). Configurable, because a model-picker dev tool is
  * planned (spec §12); until then AGENT_MODEL / HELPER_MODEL / RECALL_MODEL override these defaults.
- * OpenRouter model ids are namespaced: "openai/gpt-5-mini", not "gpt-5-mini".
+ * OpenRouter model ids are namespaced: "deepseek/deepseek-v4-pro", not "deepseek-v4-pro".
  */
-/** recall: gpt-5-mini didn't know well-documented episodes; gemini-3.8-flash did, in 3–6.5 s (spec §19.2). */
-export const DEFAULT_MODELS = { agent: "openai/gpt-5.5", helper: "openai/gpt-5-mini", recall: "google/gemini-3.8-flash" } as const;
+/**
+ * DeepSeek since 2026-10-07, for cost: the agent on v4-pro (the persona's voice), the helper and recall on
+ * v4.1-flash (fast, for the 10 s classifier and recall budgets). Not yet checked against real turns.
+ * Recall needs a model that knows well-documented episodes (spec §19.2): gpt-5-mini didn't, gemini-3.8-flash did.
+ */
+export const DEFAULT_MODELS = {
+  agent: "deepseek/deepseek-v4-pro",
+  helper: "deepseek/deepseek-v4.1-flash",
+  recall: "deepseek/deepseek-v4.1-flash",
+} as const;
 
 export type ModelRole = keyof typeof DEFAULT_MODELS;
 
@@ -45,7 +54,7 @@ export function modelId(role: ModelRole): string {
 
 export function chatModel(
   role: ModelRole,
-  options: { timeout?: number; maxRetries?: number; reasoningEffort?: ReasoningEffort } = {},
+  options: { timeout?: number; maxRetries?: number; reasoningEffort?: ReasoningEffort; callbacks?: BaseCallbackHandler[] } = {},
 ): ChatOpenAI {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -61,6 +70,7 @@ export function chatModel(
     // Spec §17.1: the profile generator reads a whole article and needs longer than the helper's 20 s.
     timeout: options.timeout ?? settings.timeout,
     maxRetries: options.maxRetries ?? settings.maxRetries,
+    ...(options.callbacks ? { callbacks: options.callbacks } : {}),
     ...(effort ? { modelKwargs: { reasoning: { effort } } } : {}),
   });
 }

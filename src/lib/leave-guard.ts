@@ -1,6 +1,6 @@
 /**
  * Spec §23.2: the end bar replaces the input once the visit has ended. Not while a reply is still
- * streaming (a retry of the exit turn): the input with its Stop stays until the reply lands.
+ * streaming (a retry of the exit turn): the input stays (busy) until the reply lands.
  */
 export function showEndBar(s: { ended: boolean; streaming: boolean }): boolean {
   return s.ended && !s.streaming;

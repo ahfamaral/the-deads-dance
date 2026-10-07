@@ -48,8 +48,8 @@ Three models are used, all via OpenRouter:
 - a recall model: events the biography leaves out.
 
 The optional `AGENT_MODEL` / `HELPER_MODEL` / `RECALL_MODEL` env vars override
-the defaults, which are `openai/gpt-5.5`, `openai/gpt-5-mini` and
-`google/gemini-3.8-flash`. `AGENT_REASONING_EFFORT` sets the agent's reasoning
+the defaults, which are `deepseek/deepseek-v4-pro` for the agent and
+`deepseek/deepseek-v4.1-flash` for the helper and recall. `AGENT_REASONING_EFFORT` sets the agent's reasoning
 effort (default `low`).
 
 ## Getting started
@@ -61,16 +61,17 @@ cp .env.example .env        # then fill in OPENROUTER_API_KEY
 make db-up                  # Postgres 17 + pgvector on localhost:5433
 make db-setup               # apply db/schema.sql (safe to rerun)
 make db-seed                # optional: load seed personas + chunks instead of ingesting (replaces existing personas)
-make ingest                 # embed the curated personas; unchanged ones are skipped
 make                        # dev server on http://localhost:3000
 ```
 
 Embeddings go through OpenRouter too (LangChain `OpenAIEmbeddings`,
 `openai/text-embedding-3-small`), so `OPENROUTER_API_KEY` is the only API key.
 
-`npm run ingest -- <slug>` ingests one persona; `npm run ingest -- --refresh`
-fetches the latest Wikipedia revisions. Without `--refresh`, a persona is only
-re-embedded when the model or chunk settings change, from its stored text.
+`npm run ingest` is disabled for now (since 2026-10-07): the helper model is part
+of each generated profile's stamp, so an ingest after the switch to DeepSeek
+would regenerate every generated persona's profile. Load personas with
+`make db-seed`. When it's back, `npm run ingest -- <slug>` ingests one persona and
+`npm run ingest -- --refresh` fetches the latest Wikipedia revisions.
 
 If port 5433 is already taken, change the host port in
 `docker-compose.yml` and in `DATABASE_URL`.
@@ -102,7 +103,7 @@ In production (`npm run start`), every auth variable is required, or the server 
 | `make check` | lint + typecheck + build |
 | `make db-up` | Start Postgres + pgvector in Docker |
 | `make db-setup` | Apply the schema (idempotent) |
-| `make ingest` | Embed the curated personas |
+| `make ingest` | Disabled for now (see above) |
 | `make test` | Test suite (needs `make db-up`); `npm run test:live` spawns the real MCP server and runs real agent turns (grounding, conduct, behaviour, recall, world context) and the golden retrieval set against the dev database, calling OpenRouter and Wikidata (a few cents) |
 | `make clean` | Remove `.next` and `out` |
 | `make distclean` | Also remove `node_modules` |

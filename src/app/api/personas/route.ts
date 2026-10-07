@@ -4,15 +4,19 @@ import {
   type AddPersonaErrorCode,
   type PreparedPersona,
 } from "@corpus/add-persona";
+import { CostLedger } from "@corpus/cost-ledger";
 import { describeDbError } from "@corpus/db";
 import { EmbeddingDimensionError } from "@corpus/embeddings";
 import { IngestError, ingestPersona } from "@corpus/ingest";
 import { toSummary } from "@corpus/personas";
 import { WikipediaError } from "@corpus/wikipedia";
 import type { AddPersonaEvent } from "@/lib/add-persona-events";
+import { ingestReport } from "@/lib/ingest-report";
 import { toPersona } from "@/lib/personas";
 import { requireAdmin, unavailable } from "@/lib/server/access";
 import { corpusDeps } from "@/lib/server/corpus-deps";
+import { resolveCosts } from "@/lib/server/pricing";
+import { recordCalls } from "@/lib/server/spend";
 
 const STATUS: Record<AddPersonaErrorCode, number> = {
   invalid_title: 400,
@@ -60,9 +64,10 @@ export async function POST(request: Request) {
   const raw = (body as { wikipediaTitle?: unknown } | null)?.wikipediaTitle;
   const title = typeof raw === "string" ? raw : "";
 
+  const ledger = new CostLedger();
   let deps: ReturnType<typeof corpusDeps>;
   try {
-    deps = corpusDeps();
+    deps = corpusDeps(ledger);
   } catch (err) {
     return unavailable(err, { showMessage: true });
   }
@@ -90,13 +95,24 @@ export async function POST(request: Request) {
           // The client went away; the ingest carries on regardless.
         }
       };
-      ingestPersona(prepared.entry, deps, {
-        article: prepared.article,
-        onProgress: (p) => send({ type: "progress", ...p }),
-      })
-        .then((result) => send({ type: "done", persona: toPersona(toSummary(result.persona)) }))
-        .catch((err) => {
+      // Spec §26.6: the ingest's calls are logged against the admin (never charged), then reported.
+      const report = async () => {
+        try {
+          const calls = await resolveCosts(ledger.calls);
+          await recordCalls(deps.pool, { userId: admin.id, calls, charge: false, personaSlug: prepared.entry.slug });
+          send({ type: "cost", report: ingestReport(calls) });
+        } catch (err) {
           console.error(err);
+        }
+      };
+      ingestPersona(prepared.entry, deps, { article: prepared.article, onProgress: (p) => send({ type: "progress", ...p }) })
+        .then(async (result) => {
+          await report();
+          send({ type: "done", persona: toPersona(toSummary(result.persona)) });
+        })
+        .catch(async (err) => {
+          console.error(err);
+          await report();
           send({ type: "error", message: messageFor(err) });
         })
         .finally(() => {

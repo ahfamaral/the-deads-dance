@@ -5,15 +5,18 @@ import { ENDED_NOTE, STOPPED_NOTE } from "@/lib/message-notes";
 import { MIXED_SOURCES_NOTE, passagesById, usesGeneralKnowledge } from "@/lib/tool-display";
 import { thinkingLine } from "@/lib/thinking";
 import { useRevealedText } from "@/lib/use-revealed-text";
+import { spendLabel } from "@/lib/money";
 
 type PersonaMessageProps = {
   personaName: string;
   message: Message;
   /** True while the reply is still arriving: shows "thinking…" or a caret. */
   streaming?: boolean;
+  /** Spec §26.6: the admin sees what the reply cost. */
+  showCost?: boolean;
 };
 
-export default function PersonaMessage({ personaName, message, streaming = false }: PersonaMessageProps) {
+export default function PersonaMessage({ personaName, message, streaming = false, showCost = false }: PersonaMessageProps) {
   const [openChunk, setOpenChunk] = useState<number | null>(null);
   const toolCalls = message.toolCalls ?? [];
   const sources = message.sources ?? [];
@@ -37,6 +40,9 @@ export default function PersonaMessage({ personaName, message, streaming = false
       {line && text && <p className="animate-pulse text-xs text-neutral-500">{line}</p>}
       {message.stopped && <p className="text-xs italic text-neutral-500">{STOPPED_NOTE}</p>}
       {message.ended && <p className="text-xs italic text-neutral-500">{ENDED_NOTE}</p>}
+      {showCost && message.cost !== undefined && (
+        <p className="text-xs tabular-nums text-neutral-500">{spendLabel({ tokens: message.tokens ?? 0, cost: message.cost })}</p>
+      )}
       {sources.length > 0 && (
         <div className="flex max-w-[90%] flex-col gap-2">
           <ul aria-label="Sources" className="flex flex-wrap gap-1.5">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseOpenChat, serializeOpenChat } from "@/lib/open-chat";
+import { canRestoreLive, parseOpenChat, serializeOpenChat } from "@/lib/open-chat";
 
 describe("the open-chat entry (spec §25.5)", () => {
   it("round-trips", () => {
@@ -13,4 +13,15 @@ describe("the open-chat entry (spec §25.5)", () => {
       expect(parseOpenChat(raw)).toBeNull();
     },
   );
+});
+
+describe("restoring the open chat (spec §27)", () => {
+  const conv = (userEmail?: string) => ({ id: "c", personaId: "wu", personaName: "Wu", updatedAt: "", messages: [], ...(userEmail ? { userEmail } : {}) });
+  it("reopens your own conversation live", () => {
+    expect(canRestoreLive(conv(), "ana@example.com")).toBe(true); // a tester's read carries no userEmail
+    expect(canRestoreLive(conv("boss@example.com"), "boss@example.com")).toBe(true);
+  });
+  it("never reopens another user's conversation live, e.g. after switching accounts in the tab", () => {
+    expect(canRestoreLive(conv("ana@example.com"), "boss@example.com")).toBe(false);
+  });
 });

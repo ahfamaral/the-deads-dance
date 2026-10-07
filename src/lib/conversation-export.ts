@@ -1,4 +1,5 @@
 import type { StoredConversation } from "@/lib/conversation-types";
+import { ENDED_NOTE, STOPPED_NOTE } from "@/lib/message-notes";
 
 /**
  * Turns a conversation, as the API returns it (spec §25.4), into a downloadable file. Runs entirely in the browser.
@@ -20,7 +21,7 @@ function toJson(conversation: StoredConversation): string {
   return JSON.stringify(conversation, null, 2);
 }
 
-function toMarkdown(conversation: StoredConversation): string {
+export function toMarkdown(conversation: StoredConversation): string {
   const lines = [
     `# Conversation with ${conversation.personaName}`,
     "",
@@ -32,6 +33,8 @@ function toMarkdown(conversation: StoredConversation): string {
   for (const message of conversation.messages) {
     const speaker = message.role === "user" ? "You" : conversation.personaName;
     lines.push(`**${speaker}:** ${message.text}`, "");
+    if (message.stopped) lines.push(`*(${STOPPED_NOTE})*`, "");
+    if (message.ended) lines.push(`*(${ENDED_NOTE})*`, "");
   }
   return lines.join("\n");
 }

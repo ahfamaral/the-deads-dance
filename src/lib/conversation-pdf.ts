@@ -1,6 +1,7 @@
 import type { jsPDF } from "jspdf";
 import type { Message, ToolCall } from "@/lib/chat-types";
 import type { StoredConversation } from "@/lib/conversation-types";
+import { ENDED_NOTE, STOPPED_NOTE } from "@/lib/message-notes";
 import {
   explanationOf,
   GENERAL_KNOWLEDGE_NOTE,
@@ -195,9 +196,13 @@ export function renderConversationPdf(
 
     write(message.text, STYLES.body);
 
+    if (message.stopped) {
+      gap(1);
+      write(STOPPED_NOTE, { ...STYLES.trace, indent: 0 });
+    }
     if (message.ended) {
       gap(1);
-      write("The visit has ended.", { ...STYLES.trace, indent: 0 });
+      write(ENDED_NOTE, { ...STYLES.trace, indent: 0 });
     }
 
     const sources = [...new Map((message.sources ?? []).map((s) => [s.chunkId, s])).values()];

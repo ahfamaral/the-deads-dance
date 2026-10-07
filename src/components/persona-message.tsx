@@ -1,6 +1,7 @@
 import { useState } from "react";
 import ToolTrace from "@/components/tool-trace";
 import type { Message } from "@/lib/chat-types";
+import { ENDED_NOTE, STOPPED_NOTE } from "@/lib/message-notes";
 import { MIXED_SOURCES_NOTE, passagesById, usesGeneralKnowledge } from "@/lib/tool-display";
 import { thinkingLine } from "@/lib/thinking";
 import { useRevealedText } from "@/lib/use-revealed-text";
@@ -34,9 +35,8 @@ export default function PersonaMessage({ personaName, message, streaming = false
         </p>
       )}
       {line && text && <p className="animate-pulse text-xs text-neutral-500">{line}</p>}
-      {message.ended && (
-        <p className="text-xs italic text-neutral-500">The visit has ended.</p>
-      )}
+      {message.stopped && <p className="text-xs italic text-neutral-500">{STOPPED_NOTE}</p>}
+      {message.ended && <p className="text-xs italic text-neutral-500">{ENDED_NOTE}</p>}
       {sources.length > 0 && (
         <div className="flex max-w-[90%] flex-col gap-2">
           <ul aria-label="Sources" className="flex flex-wrap gap-1.5">

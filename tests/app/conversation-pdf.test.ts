@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { Message, ToolCall } from "@/lib/chat-types";
 import { renderConversationPdf, traceLine, type PdfFonts } from "@/lib/conversation-pdf";
 import type { StoredConversation } from "@/lib/conversation-types";
+import { ENDED_NOTE, STOPPED_NOTE } from "@/lib/message-notes";
 
 const font = (name: string) =>
   readFileSync(fileURLToPath(new URL(`../../public/fonts/${name}`, import.meta.url))).toString("base64");
@@ -134,6 +135,15 @@ describe("renderConversationPdf", () => {
       );
       expect(allText(pages)).toContain("The visit has ended.");
     }
+  });
+
+  it("marks a reply cut short by Stop, before the end of the visit", () => {
+    const text = allText(
+      render(conversation([{ id: "m", role: "persona", text: "Fare", stopped: true, ended: "farewell" }])).pages,
+    );
+    expect(text).toContain(STOPPED_NOTE);
+    expect(text.indexOf(STOPPED_NOTE)).toBeLessThan(text.indexOf(ENDED_NOTE));
+    expect(allText(render(conversation([{ id: "m", role: "persona", text: "Done." }])).pages)).not.toContain(STOPPED_NOTE);
   });
 
   it("produces a PDF file", () => {

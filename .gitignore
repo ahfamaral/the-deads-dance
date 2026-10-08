@@ -53,3 +53,9 @@ db/seed_personas_chunks_*.sql
 
 # local planning notes (next-steps.md, next-steps-*.md, ...)
 next-steps*
+
+# Phase 4 evaluation harness (spec §29.2): local runs, recordings, spend.
+/eval/runs/
+/eval/lookups/
+/eval/budget.json
+/eval/questions.draft.json

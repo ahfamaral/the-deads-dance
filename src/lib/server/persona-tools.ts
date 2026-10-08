@@ -7,7 +7,7 @@ import { z } from "zod";
 export type ToolEnvelope = { ok: true; data: unknown } | { ok: false; error: string };
 
 /** What the model sees. persona_id is deliberately absent: the route injects it (spec §16.2). */
-const LOCKED_SCHEMAS = {
+export const LOCKED_SCHEMAS = {
   search_biography: z.object({
     // F9: matches the server's own bound (mcp-server/server.ts) so the model sees the real limit.
     query: z.string().max(1000).describe("What to look up, in plain words"),

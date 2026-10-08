@@ -13,7 +13,9 @@
     "mcp": "tsx --env-file=.env mcp-server/index.ts",
     "admin:grant": "tsx --env-file=.env scripts/admin-grant.ts",
     "test": "vitest run",
-    "test:live": "LIVE=1 vitest run tests/live"
+    "test:live": "LIVE=1 vitest run tests/live",
+    "eval": "tsx --env-file=.env eval/cli.ts",
+    "eval:questions": "tsx --env-file=.env eval/generate-questions.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.2.12",

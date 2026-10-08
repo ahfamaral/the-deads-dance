@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closePool, getPool } from "@corpus/db";
-import { POST as ADD } from "@/app/api/admin/users/[id]/energy/route";
+import { DELETE as EMPTY, POST as ADD } from "@/app/api/admin/users/[id]/energy/route";
 import { GET as READ_SETTINGS, PUT as WRITE_SETTINGS } from "@/app/api/admin/settings/route";
 import { signInAs, withCookie } from "../helpers/auth";
 import { insertUser } from "../helpers/conversations";
@@ -44,6 +44,33 @@ describe("Add energy (spec §26.6)", () => {
     const { cookie: tester } = await signInAs("ana@example.com", { status: "approved" });
     const ana = (await getPool().query(`SELECT id FROM "user" WHERE email = 'ana@example.com'`)).rows[0].id;
     expect((await add(tester, ana, "1")).status).toBe(404);
+  });
+});
+
+const empty = (cookie: string, id: string) =>
+  EMPTY(new Request(`http://localhost/api/admin/users/${id}/energy`, withCookie(cookie, { method: "DELETE" })), { params: Promise.resolve({ id }) } as never);
+
+describe("Empty energy", () => {
+  it("sets what's left to 0, overdraft included, and keeps the bar's size", async () => {
+    const ana = await insertUser("ana@example.com");
+    await giveEnergy(ana, 600_000, 1_000_000);
+    const res = await empty(admin, ana);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, email: "ana@example.com" });
+    const read = async () => (await getPool().query(`SELECT "energyBalance"::int AS b, "energyFull"::int AS f FROM "user" WHERE id = $1`, [ana])).rows[0];
+    expect(await read()).toEqual({ b: 0, f: 1_000_000 });
+    await giveEnergy(ana, -20_000, 1_000_000);
+    expect((await empty(admin, ana)).status).toBe(200);
+    expect(await read()).toEqual({ b: 0, f: 1_000_000 });
+  });
+
+  it("refuses an admin's row, an unknown user, and a non-admin caller", async () => {
+    const { userId: bossId } = await signInAs("boss@example.com", { role: "admin" });
+    expect((await empty(admin, bossId)).status).toBe(409);
+    expect((await empty(admin, "nobody")).status).toBe(404);
+    const { cookie: tester } = await signInAs("ana@example.com", { status: "approved" });
+    const ana = (await getPool().query(`SELECT id FROM "user" WHERE email = 'ana@example.com'`)).rows[0].id;
+    expect((await empty(tester, ana)).status).toBe(404);
   });
 });
 

@@ -29,7 +29,7 @@ const TABS: { status: Status; label: string }[] = [
   { status: "blocked", label: "Blocked" },
 ];
 const BTN_PRIMARY = "min-h-11 flex-1 whitespace-nowrap rounded-full bg-neutral-100 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] font-semibold text-neutral-900 hover:bg-white md:flex-none md:px-4 md:text-sm md:font-semibold";
-const BTN = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-white/15 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] text-neutral-200 hover:bg-white/10 md:flex-none md:px-4 md:text-sm";
+const BTN = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-white/15 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] text-neutral-200 hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent md:flex-none md:px-4 md:text-sm";
 const BACK = "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full border border-white/15 px-4 text-sm text-neutral-200 hover:bg-white/10";
 const BTN_DANGER = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-red-500/50 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] text-red-300 hover:bg-red-500/15 md:flex-none md:px-4 md:text-sm";
 
@@ -46,11 +46,12 @@ function EnergyBarMini({ balance, full }: { balance: number; full: number }) {
 }
 
 // The actions that ask first, with their dialog and the note shown after.
-type Confirmed = "reject" | "block" | "unblock";
+type Confirmed = "reject" | "block" | "unblock" | "empty";
 const CONFIRM: Record<Confirmed, { label: string; message: string; done: string }> = {
   reject: { label: "Reject", message: "They'll see that their request wasn't approved. This can't be undone yet.", done: "Rejected" },
   block: { label: "Block", message: "They'll be signed out everywhere and can't sign in until you unblock them.", done: "Blocked" },
   unblock: { label: "Unblock", message: "They'll be able to sign in again, with the access they had before.", done: "Unblocked" },
+  empty: { label: "Empty energy", message: "Their energy goes to 0, and they can't talk until you add more.", done: "Emptied the energy of" },
 };
 
 /** The user list, or null when it couldn't be loaded. */
@@ -69,6 +70,7 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
   const [confirm, setConfirm] = useState<{ row: Row; action: Confirmed } | null>(null);
   const [defaultAmount, setDefaultAmount] = useState("1.00");
   const [adding, setAdding] = useState<Row | null>(null);
+  const [changes, setChanges] = useState(0);
   const onStartingEnergy = useCallback((v: string) => setDefaultAmount(v), []);
 
   const showUsers = useCallback((list: Row[] | null) => (list ? setUsers(list) : setNote("Couldn't load users.")), []);
@@ -79,11 +81,16 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
   }, [showUsers]);
 
   async function act(row: Row, action: "approve" | Confirmed) {
-    const res = await fetch(`/api/admin/users/${encodeURIComponent(row.id)}/${action}`, { method: "POST" });
+    const id = encodeURIComponent(row.id);
+    const res =
+      action === "empty"
+        ? await fetch(`/api/admin/users/${id}/energy`, { method: "DELETE" })
+        : await fetch(`/api/admin/users/${id}/${action}`, { method: "POST" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) setNote(data.error ?? "That didn't work.");
     else if (action === "approve") setNote(`Approved ${row.email} · ${data.emailSent ? "email sent" : "email failed"}`);
     else setNote(`${CONFIRM[action].done} ${row.email}`);
+    if (res.ok) setChanges((n) => n + 1);
     await reloadUsers();
   }
 
@@ -97,6 +104,7 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
       });
       const data = await res.json().catch(() => ({}));
       setNote(res.ok ? `Added ${data.added} for ${row.email}` : (data.error ?? "That didn't work."));
+      if (res.ok) setChanges((n) => n + 1);
     } catch {
       setNote("Couldn't reach the server.");
     }
@@ -124,6 +132,9 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
         <>
           <button type="button" className={BTN_PRIMARY} onClick={() => setAdding(row)}>
             Add energy
+          </button>
+          <button type="button" className={BTN} disabled={row.energyBalance === 0} onClick={() => setConfirm({ row, action: "empty" })}>
+            Empty
           </button>
           <button type="button" className={BTN_DANGER} onClick={() => setConfirm({ row, action: "block" })}>
             Block
@@ -171,7 +182,7 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
         <h1 className="text-lg font-semibold">Testers</h1>
       </header>
 
-      <AdminCredit onStartingEnergy={onStartingEnergy} />
+      <AdminCredit refresh={changes} onStartingEnergy={onStartingEnergy} />
 
       <div role="tablist" className="flex gap-2 overflow-x-auto pb-1">
         {TABS.map((t) => (

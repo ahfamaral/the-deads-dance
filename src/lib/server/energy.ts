@@ -51,3 +51,18 @@ export async function addEnergy(
   if (rows[0].role === "admin" || rows[0].status !== "approved") return { ok: false, reason: "not_allowed" };
   return { ok: true, email: rows[0].email, ...(await grantEnergy(pool, userId, amount, by)) };
 }
+
+/**
+ * Empty energy from /admin: approved testers only, never an admin row. The bar keeps its full size, so it
+ * reads "Empty", and the banners aren't cleared, so the tester sees "out of energy" unless they closed it already.
+ */
+export async function emptyEnergy(
+  pool: Pool,
+  userId: string,
+): Promise<{ ok: true; email: string } | { ok: false; reason: "not_found" | "not_allowed" }> {
+  const { rows } = await pool.query(`SELECT email, status, role FROM "user" WHERE id = $1`, [userId]);
+  if (!rows[0]) return { ok: false, reason: "not_found" };
+  if (rows[0].role === "admin" || rows[0].status !== "approved") return { ok: false, reason: "not_allowed" };
+  await pool.query(`UPDATE "user" SET "energyBalance" = 0, "updatedAt" = now() WHERE id = $1`, [userId]);
+  return { ok: true, email: rows[0].email };
+}

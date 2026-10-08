@@ -5,7 +5,7 @@ import AdminCredit from "@/components/admin-credit";
 
 describe("AdminCredit's starting energy", () => {
   it("starts read-only, with a gear to change it and no input", () => {
-    const html = renderToStaticMarkup(createElement(AdminCredit, { onStartingEnergy: () => {} }));
+    const html = renderToStaticMarkup(createElement(AdminCredit, { refresh: 0, onStartingEnergy: () => {} }));
     expect(html).toContain("Starting energy");
     expect(html).toContain('aria-label="Change starting energy"');
     expect(html).toContain('aria-pressed="false"');

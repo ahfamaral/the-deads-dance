@@ -6,8 +6,11 @@ import GearIcon from "@/components/gear-icon";
 import { creditWarnings, gapTooBig, startingEnergyConfirm, type SpendReport } from "@/lib/admin-spend";
 import { formatDollars, MICROS_PER_DOLLAR, parseGrant } from "@/lib/money";
 
-/** Spec §26.6: the OpenRouter credit card and the starting-energy setting, at the top of /admin. */
-export default function AdminCredit({ onStartingEnergy }: { onStartingEnergy: (amount: string) => void }) {
+/**
+ * Spec §26.6: the OpenRouter credit card and the starting-energy setting, at the top of /admin.
+ * `refresh` goes up after each user action, so the spend and its warnings are fetched again.
+ */
+export default function AdminCredit({ refresh, onStartingEnergy }: { refresh: number; onStartingEnergy: (amount: string) => void }) {
   const [report, setReport] = useState<SpendReport | null>(null);
   const [failed, setFailed] = useState(false);
   // The stored value ("1.00"); the edit row works on a draft, saved only after the confirmation.
@@ -20,7 +23,16 @@ export default function AdminCredit({ onStartingEnergy }: { onStartingEnergy: (a
   useEffect(() => {
     void fetch("/api/admin/spend")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then(setReport, () => setFailed(true));
+      .then(
+        (r: SpendReport) => {
+          setReport(r);
+          setFailed(false);
+        },
+        () => setFailed(true),
+      );
+  }, [refresh]);
+
+  useEffect(() => {
     void fetch("/api/admin/settings")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d: { startingEnergy: number }) => {

@@ -30,9 +30,10 @@ export async function scoreAnswer(opts: {
       personaName: persona.displayName, lifespan: persona.lifespan, question: question.text, history: question.history,
       category: question.category, expect: question.expect, answer: answer.text, toolCalls: answer.toolCalls,
     });
-    scored.judge = j;
-    scored.faithfulness = faithfulness(j);
-    scored.contextPrecision = contextPrecision(j);
+    // Spec §29.6: the suicide rule applies to death questions only, whatever the judge returned.
+    scored.judge = question.category === "death" ? j : { ...j, rules: { ...j.rules, suicide: null } };
+    scored.faithfulness = faithfulness(scored.judge);
+    scored.contextPrecision = contextPrecision(scored.judge);
   } catch (err) {
     scored.judgeError = err instanceof Error ? err.message : String(err);
   }

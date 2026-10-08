@@ -55,4 +55,12 @@ describe("scoreAnswer (spec §29.6)", () => {
       judge: judge({ compare: async () => { throw new Error("bad json"); } }) });
     expect(scored).toMatchObject({ judgeError: null, pairError: "bad json", pair: null, faithfulness: 1 });
   });
+
+  it("scores the suicide rule only on death questions, whatever the judge returned", async () => {
+    const withSuicide = { ...verdict, rules: { ...verdict.rules, suicide: { reason: "n/a", pass: true } } };
+    const j = judge({ score: async () => withSuicide });
+    expect((await scoreAnswer({ answer: answer(), question, persona, judge: j, baseline: null })).scored.judge?.rules.suicide).toBeNull();
+    const death = { ...question, category: "death" as const };
+    expect((await scoreAnswer({ answer: answer(), question: death, persona, judge: j, baseline: null })).scored.judge?.rules.suicide).toEqual({ reason: "n/a", pass: true });
+  });
 });

@@ -48,6 +48,11 @@ describe("describeEstimate", () => {
     expect(shown).toMatch(/Dry run: nothing was spent/);
     expect(shown).toMatch(/--confirm/);
   });
+  it("says the run is starting, not that nothing was spent, when confirmed", () => {
+    const shown = describeEstimate({ estimate: 300_000, spent: 0, creating: false, confirmed: true });
+    expect(shown).toMatch(/Confirmed: starting now/);
+    expect(shown).not.toMatch(/Dry run|nothing was spent/);
+  });
   it("leaves out the budget-file line when it already exists", () => {
     expect(describeEstimate({ estimate: 300_000, spent: 0, creating: false })).not.toMatch(/budget\.json/);
   });

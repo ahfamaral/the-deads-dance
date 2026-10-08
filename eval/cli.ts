@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   const refusal = checkLimits(estimate, spent);
   if (refusal) throw new Error(refusal);
 
-  console.log(describeEstimate({ estimate, spent, creating: budget === null }));
+  console.log(describeEstimate({ estimate, spent, creating: budget === null, confirmed: args.confirm }));
   if (!args.confirm) return; // spec §29.4: a dry run spends nothing
 
   const startedAt = new Date().toISOString();
@@ -146,8 +146,12 @@ async function main(): Promise<void> {
 }
 
 if (process.argv[1]?.endsWith("cli.ts")) {
-  main().catch((err) => {
-    console.error(err instanceof Error ? err.message : err);
-    process.exitCode = 1;
-  });
+  main()
+    .catch((err) => {
+      console.error(err instanceof Error ? err.message : err);
+      process.exitCode = 1;
+    })
+    // closeMcpClient() returns but the tsx-wrapped MCP child stays alive and holds the process open;
+    // everything is saved by now, so exit (the child ends with its stdin).
+    .finally(() => process.exit(process.exitCode ?? 0));
 }

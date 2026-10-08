@@ -67,13 +67,13 @@ export function checkLimits(estimate: number, spent: number): string | null {
 }
 
 /** Spec §29.4: the dry run's text. The harness never prompts; "banana" is typed in chat, then Claude adds --confirm. */
-export function describeEstimate(opts: { estimate: number; spent: number; creating: boolean }): string {
+export function describeEstimate(opts: { estimate: number; spent: number; creating: boolean; confirmed?: boolean }): string {
   const left = TOTAL_LIMIT_MICROS - opts.spent;
   return [
     `Estimated cost: ${formatDollars(opts.estimate)} (stops at ${formatDollars(RUN_LIMIT_MICROS)}).`,
     `${formatDollars(left)} left of ${formatDollars(TOTAL_LIMIT_MICROS)} in total.`,
     opts.creating ? "This run creates eval/budget.json." : null,
-    "Dry run: nothing was spent. Add --confirm to start.",
+    opts.confirmed ? "Confirmed: starting now." : "Dry run: nothing was spent. Add --confirm to start.",
   ].filter(Boolean).join("\n");
 }
 

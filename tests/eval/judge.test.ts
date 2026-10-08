@@ -42,6 +42,15 @@ describe("formatEvidence", () => {
   });
 });
 
+describe("formatEvidence passages", () => {
+  it("shows a long passage in full, so the judge never grades against a cut-off text", () => {
+    const long = `${"word ".repeat(300)}the secretaryship of the Oregon Territory, which he declined.`;
+    const text = formatEvidence([{ id: "s", toolName: "search_biography", arguments: { query: "q" }, status: "ok",
+      result: { status: "ok", queries: ["q"], passages: [{ chunk_id: 1, section_heading: "H", content: long }] } }]);
+    expect(text).toContain("which he declined.");
+  });
+});
+
 describe("judgeWith", () => {
   const input: JudgeInput = { personaName: "Albert Einstein", lifespan: "1879–1955", question: "Q?", category: "ordinary", expect: "E", answer: "A.", toolCalls: calls };
 
@@ -57,5 +66,7 @@ describe("judgeWith", () => {
     expect(JUDGE_PROMPT).toMatch(/reason before/i);
     expect(JUDGE_PROMPT).toMatch(/opinions and feelings are not claims/i);
     expect(JUDGE_PROMPT).toMatch(/recalled account counts as evidence/i);
+    // false_yes is about agreeing with the visitor; the persona's own unbacked details count in claims instead.
+    expect(JUDGE_PROMPT).toMatch(/false_yes: fails only if the answer agrees with a claim the visitor made/);
   });
 });

@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   const budget = readBudget("eval/budget.json");
   const estimate = estimateMicros({ live: 0, replay: 0, judged: 0, pairs: 0, generate: calls }, budget?.measured ?? {});
   const refusal = checkLimits(estimate, budget?.spentMicros ?? 0);
-  console.log(refusal ?? describeEstimate({ estimate, spent: budget?.spentMicros ?? 0, creating: budget === null }));
+  console.log(refusal ?? describeEstimate({ estimate, spent: budget?.spentMicros ?? 0, creating: budget === null, confirmed: process.argv.includes("--confirm") }));
   if (refusal || !process.argv.includes("--confirm")) return; // spec §29.4: a dry run spends nothing
 
   // Charged up front: a run that dies halfway may still have spent most of it (a slight overcount, never a loss).

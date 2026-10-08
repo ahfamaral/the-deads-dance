@@ -53,4 +53,23 @@ describe("schema", () => {
     const { rows: left } = await pool.query("SELECT count(*)::int AS n FROM chunks");
     expect(left[0].n).toBe(0);
   });
+
+  it("corrects Max Planck's languages from the old seed (a deprecated Wikidata claim), and nothing else", async () => {
+    const pool = getPool();
+    await pool.query("TRUNCATE personas RESTART IDENTITY CASCADE");
+    const bad = JSON.stringify([{ code: "es", name: "Spanish", native: true }, { code: "de", name: "German", native: false }]);
+    const other = JSON.stringify([{ code: "es", name: "Spanish", native: true }]);
+    await pool.query(
+      `INSERT INTO personas (slug, display_name, wikipedia_title, wikidata_qid, origin, status, languages) VALUES
+         ('max-planck', 'Max Planck', 'Max Planck', 'Q9021', 'curated', 'ready', $1::jsonb),
+         ('someone', 'Someone', 'Someone', 'Q1', 'user', 'ready', $2::jsonb)`,
+      [bad, other],
+    );
+    await applySchema(pool);
+    const { rows } = await pool.query("SELECT slug, languages FROM personas ORDER BY slug");
+    expect(rows).toEqual([
+      { slug: "max-planck", languages: [{ code: "de", name: "German", native: true }] },
+      { slug: "someone", languages: [{ code: "es", name: "Spanish", native: true }] },
+    ]);
+  });
 });

@@ -29,6 +29,12 @@ ALTER TABLE personas DROP COLUMN IF EXISTS system_prompt;
 -- Spec §18.4: languages from Wikidata or a pinned list; null until fetched.
 ALTER TABLE personas ADD COLUMN IF NOT EXISTS languages jsonb;
 
+-- Spec §18.4 fix (2026-10-08): Wikidata lists Spanish for Max Planck with rank "deprecated", which the
+-- old reader didn't skip, so the v1 seed made him a native Spanish speaker. Only that exact value changes.
+UPDATE personas SET languages = '[{"code": "de", "name": "German", "native": true}]'::jsonb
+ WHERE wikidata_qid = 'Q9021'
+   AND languages = '[{"code": "es", "name": "Spanish", "native": true}, {"code": "de", "name": "German", "native": false}]'::jsonb;
+
 CREATE TABLE IF NOT EXISTS chunks (
   id              serial PRIMARY KEY,
   persona_id      int NOT NULL REFERENCES personas (id) ON DELETE CASCADE,

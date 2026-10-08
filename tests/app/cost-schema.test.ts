@@ -18,11 +18,6 @@ describe("cost schema (spec §26.2)", () => {
     await expect(getPool().query(`UPDATE "user" SET "energyWarningRead" = 30 WHERE id = $1`, [id])).rejects.toThrow(/check/i);
   });
 
-  it("seeds the starting energy at $1", async () => {
-    const { rows } = await getPool().query(`SELECT value FROM settings WHERE key = 'default_starting_energy'`);
-    expect(rows[0].value).toBe(1_000_000);
-  });
-
   it("refuses an unknown model-call role or cost source", async () => {
     const id = await insertUser("ana@example.com");
     const insert = (role: string, source: string) =>

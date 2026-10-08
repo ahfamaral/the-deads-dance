@@ -147,13 +147,14 @@ export async function fetchPersonFacts(qid: string, fetchImpl: FetchLike = fetch
   };
 }
 
-type LanguageClaim = { mainsnak?: { datavalue?: { value?: unknown } } };
+type LanguageClaim = { mainsnak?: { datavalue?: { value?: unknown } }; rank?: string };
 type LanguageEntity = { labels?: { en?: { value: string } }; claims?: Record<string, LanguageClaim[]> };
 /** wbgetentities takes at most 50 ids. */
 const MAX_LANGUAGE_ITEMS = 50;
 
 function itemIds(claims: LanguageClaim[] | undefined): string[] {
   return (claims ?? []).flatMap((c) => {
+    if (c.rank === "deprecated") return []; // Wikidata's mark for a claim known to be wrong
     const value = c.mainsnak?.datavalue?.value;
     const id = typeof value === "object" && value !== null ? (value as { id?: unknown }).id : undefined;
     return typeof id === "string" ? [id] : [];

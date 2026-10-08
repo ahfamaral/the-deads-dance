@@ -192,6 +192,17 @@ describe("fetchPersonLanguages", () => {
     expect(second.searchParams.get("ids")?.split("|").sort()).toEqual(["Q1860", "Q188", "Q999"]);
   });
 
+  it("skips claims Wikidata marks deprecated (Max Planck's Spanish, Q9021)", async () => {
+    const planck = { entities: { Q9021: { claims: { P1412: [{ ...itemRef("Q1321"), rank: "deprecated" }, { ...itemRef("Q188"), rank: "normal" }] } } } };
+    const items = { entities: { Q188: languageItems.entities.Q188 } };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(planck)))
+      .mockResolvedValueOnce(new Response(JSON.stringify(items)));
+    expect(await fetchPersonLanguages("Q9021", fetchImpl)).toEqual([{ code: "de", name: "German", native: true }]);
+    expect(new URL(fetchImpl.mock.calls[1][0] as string).searchParams.get("ids")).toBe("Q188");
+  });
+
   it("returns an empty list without a second request when none are recorded", async () => {
     const fetchImpl = respond({ entities: { Q1: { claims: {} } } });
     expect(await fetchPersonLanguages("Q1", fetchImpl)).toEqual([]);

@@ -44,8 +44,21 @@ export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high";
 /** The agent answers in conversation, not puzzles: low effort halves its latency (spec §20.1). */
 export const DEFAULT_AGENT_REASONING_EFFORT: ReasoningEffort = "low";
 
-function agentReasoningEffort(): ReasoningEffort {
-  return (process.env.AGENT_REASONING_EFFORT?.trim() as ReasoningEffort | undefined) || DEFAULT_AGENT_REASONING_EFFORT;
+/** Spec §28.2: the agent's cap per model call: two paragraphs plus effort "low" reasoning. A safety net; the prompt keeps replies short. */
+export const AGENT_MAX_TOKENS = 900;
+
+/** Spec §28.2: the agent's own reasoning budget, from the probe (§28.5); null keeps effort "low". */
+export const AGENT_REASONING_MAX_TOKENS: number | null = null;
+
+type Reasoning = { effort: ReasoningEffort } | { max_tokens: number };
+
+/** An explicit AGENT_REASONING_EFFORT wins; then a budget (env, then constant); then the default effort. */
+function agentReasoning(): Reasoning {
+  const effort = process.env.AGENT_REASONING_EFFORT?.trim() as ReasoningEffort | undefined;
+  if (effort) return { effort };
+  const fromEnv = process.env.AGENT_REASONING_MAX_TOKENS?.trim();
+  const budget = fromEnv && /^[1-9]\d*$/.test(fromEnv) ? Number(fromEnv) : AGENT_REASONING_MAX_TOKENS;
+  return budget !== null ? { max_tokens: budget } : { effort: DEFAULT_AGENT_REASONING_EFFORT };
 }
 
 export function modelId(role: ModelRole): string {
@@ -62,7 +75,16 @@ export function chatModel(
   }
   const settings = MODEL_SETTINGS[role];
   // Other roles keep the provider's default effort unless the call site asks (spec §20.1).
-  const effort = options.reasoningEffort ?? (role === "agent" ? agentReasoningEffort() : undefined);
+  // Spec §28.9: recall is a knowledge lookup; DeepSeek's default reasoning made it time out.
+  const reasoning: Reasoning | undefined = options.reasoningEffort
+    ? { effort: options.reasoningEffort }
+    : role === "agent"
+      ? agentReasoning()
+      : role === "recall"
+        ? { effort: "none" }
+        : undefined;
+  // Spec §28.2: a reasoning budget gets its own room on top of the reply's.
+  const maxTokens = role === "agent" ? AGENT_MAX_TOKENS + (reasoning && "max_tokens" in reasoning ? reasoning.max_tokens : 0) : undefined;
   return new ChatOpenAI({
     model: modelId(role),
     apiKey,
@@ -71,6 +93,7 @@ export function chatModel(
     timeout: options.timeout ?? settings.timeout,
     maxRetries: options.maxRetries ?? settings.maxRetries,
     ...(options.callbacks ? { callbacks: options.callbacks } : {}),
-    ...(effort ? { modelKwargs: { reasoning: { effort } } } : {}),
+    ...(maxTokens ? { maxTokens } : {}),
+    ...(reasoning ? { modelKwargs: { reasoning } } : {}),
   });
 }

@@ -79,16 +79,50 @@ describe("buildPersonaPrompt", () => {
     }
   });
 
-  it("says the persona knows nothing after its death year", () => {
-    expect(buildPersonaPrompt(wu, on)).toMatch(/You died in 1997\.[\s\S]*nothing of what happened after/);
+  // Spec §28.3: "Your time" replaces the death line.
+  it("names the years of the persona's life", () => {
+    expect(buildPersonaPrompt(wu, on)).toContain("Your time:\nYou were born in 1912 and died in 1997.\n- You have no memories from before you were born.");
+    expect(buildPersonaPrompt({ ...wu, lifespan: "c. 1864–1943" }, on)).toContain("You were born around 1864 and died in 1943.");
+    expect(buildPersonaPrompt({ ...wu, lifespan: "470 BC–399 BC" }, on)).toContain("You were born in 470 BC and died in 399 BC.");
   });
 
-  it("still has a death line when the death year is unknown", () => {
-    for (const lifespan of ["born 1950", ""]) {
+  it("names the one year it knows, or neither", () => {
+    expect(buildPersonaPrompt({ ...wu, lifespan: "died 1932" }, on)).toContain("Your time:\nYou died in 1932.\n");
+    expect(buildPersonaPrompt({ ...wu, lifespan: "born 1950" }, on)).toContain("Your time:\nYou were born in 1950. You are no longer alive.\n");
+    const none = buildPersonaPrompt({ ...wu, lifespan: "" }, on);
+    expect(none).toContain("Your time:\nYou are no longer alive.\n");
+    expect(none).not.toMatch(/born in|died in|null|undefined/);
+  });
+
+  it("keeps the persona inside its lifetime, whatever the years", () => {
+    for (const lifespan of ["1912–1997", ""]) {
       const prompt = buildPersonaPrompt({ ...wu, lifespan }, on);
-      expect(prompt).not.toMatch(/You died in/);
-      expect(prompt).toMatch(/You are no longer alive\.[\s\S]*nothing of what happened after your death/);
+      expect(prompt).toContain("You may know history from before your time as anyone of your time would, but never as something you saw.");
+      expect(prompt).toContain("Your death is your last memory.");
+      expect(prompt).toContain("Never describe how a suicide was carried out, and never present suicide as a way out or as noble.");
+      expect(prompt).toContain("nothing of how you are remembered or what your work is worth today");
+      expect(prompt).not.toContain("You know nothing of what happened after");
     }
+  });
+
+  it("caps the lookups and says what to do when they run out or fail", () => {
+    const prompt = buildPersonaPrompt(wu, on);
+    expect(prompt).toContain("You can search your memory at most 4 times per answer, so choose your searches well.");
+    expect(prompt).toContain("If a search fails or you run out of searches, answer with what you did find");
+    expect(prompt).toContain("For the rest, never confirm or deny it: say in your own words that it's hard to remember");
+    expect(prompt).toContain("asking another way might help");
+  });
+
+  it("forbids retelling and long quotes", () => {
+    const prompt = buildPersonaPrompt(wu, on);
+    expect(prompt).toContain("Don't tell the same story twice in one visit.");
+    expect(prompt).toContain("a phrase or a single line at most");
+  });
+
+  it("shows the keeper answering a request for a whole life with its start", () => {
+    const prompt = buildPersonaPrompt(wu, on);
+    expect(prompt).toContain("Visitor: Tell me everything about your life, from childhood to your death.");
+    expect(prompt).toContain("The rest can wait for another climb.");
   });
 
   it("tells the persona to use both tools, speak of results as memory, and treat them as data", () => {
@@ -159,7 +193,9 @@ describe("buildPersonaPrompt: conversational behaviour (spec §18)", () => {
   it("keeps answers short unless the visitor asks for more", () => {
     const prompt = buildPersonaPrompt(wu, on);
     expect(prompt).toContain("usually two to four sentences, and a single line for a short question");
-    expect(prompt).toContain("Go longer only when the visitor asks for more");
+    expect(prompt).toContain("Never more than two short paragraphs, even when the visitor asks for everything.");
+    expect(prompt).toContain("tell the part that matters most and stop; you may say there is more.");
+    expect(prompt).not.toContain("Go longer only when the visitor asks for more");
     expect(prompt).toContain("Pick the one or two things that answer it and leave the rest unsaid.");
     expect(prompt).not.toContain("from one line to a few paragraphs");
   });
@@ -192,9 +228,16 @@ describe("buildPersonaPrompt: recall beyond the biography (spec §19.4)", () => 
   });
 
   it("follows all four verdicts", () => {
+    expect(prompt).toContain("agree if supported, set them straight if contradicted, and recall it faintly if known_elsewhere.");
+    expect(prompt).not.toContain("say you don't remember it that way");
+  });
+
+  // Browser check (2026-10-08): Santos-Dumont denied football on a not_mentioned verdict and on a timed-out check.
+  it("treats not_mentioned as no memory, never as false", () => {
     expect(prompt).toContain(
-      "agree if supported, set them straight if contradicted, recall it faintly if known_elsewhere, and if not_mentioned say you don't remember it that way",
+      "- not_mentioned means your memory holds nothing on it, not that it is false: say you don't remember it, never that it didn't happen. Only contradicted lets you say no.",
     );
+    expect(prompt).toContain("If it is something you would surely remember had it happened, you may doubt it in your own words, but still don't flatly deny it.");
   });
 });
 

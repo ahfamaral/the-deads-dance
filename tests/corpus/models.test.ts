@@ -1,6 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_MODELS, chatModel, modelId } from "../../corpus/models";
+import { AGENT_MAX_TOKENS, DEFAULT_MODELS, chatModel, modelId } from "../../corpus/models";
 
 // AsyncCaller#maxRetries is `protected` in its .d.ts; there's no public accessor, so read it
 // the way the brief allows ("whatever the installed class exposes").
@@ -99,6 +99,7 @@ describe("chatModel reasoning effort", () => {
   it("defaults the agent to low effort", () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     vi.stubEnv("AGENT_REASONING_EFFORT", "");
+    vi.stubEnv("AGENT_REASONING_MAX_TOKENS", "");
     expect(chatModel("agent").modelKwargs).toEqual({ reasoning: { effort: "low" } });
   });
 
@@ -108,10 +109,57 @@ describe("chatModel reasoning effort", () => {
     expect(chatModel("agent").modelKwargs).toEqual({ reasoning: { effort: "medium" } });
   });
 
-  it("leaves helper and recall at the provider's default unless asked", () => {
+  it("leaves the helper at the provider's default unless asked", () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     expect(chatModel("helper").modelKwargs ?? {}).toEqual({});
-    expect(chatModel("recall").modelKwargs ?? {}).toEqual({});
     expect(chatModel("helper", { reasoningEffort: "minimal" }).modelKwargs).toEqual({ reasoning: { effort: "minimal" } });
+  });
+
+  // Spec §28.9: recall is a knowledge lookup; DeepSeek's default reasoning made it time out.
+  it("turns reasoning off for recall unless asked", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    expect(chatModel("recall").modelKwargs).toEqual({ reasoning: { effort: "none" } });
+    expect(chatModel("recall", { reasoningEffort: "low" }).modelKwargs).toEqual({ reasoning: { effort: "low" } });
+  });
+});
+
+// Spec §28.2: max_tokens is the agent's safety net; a reasoning budget, when set, replaces effort "low".
+describe("chatModel output limits", () => {
+  // The Chat Completions request body; the union type also covers the Responses API, which has no max_tokens.
+  const params = (role: "agent" | "helper" | "recall") => chatModel(role).invocationParams() as { max_tokens?: number };
+
+  it("caps the agent and leaves the helper and recall alone", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    vi.stubEnv("AGENT_REASONING_EFFORT", "");
+    vi.stubEnv("AGENT_REASONING_MAX_TOKENS", "");
+    expect(params("agent").max_tokens).toBe(AGENT_MAX_TOKENS);
+    expect(params("helper").max_tokens).toBeUndefined();
+    expect(params("recall").max_tokens).toBeUndefined();
+  });
+
+  it("gives the agent a reasoning budget instead of effort, and room for the reply on top", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    vi.stubEnv("AGENT_REASONING_EFFORT", "");
+    vi.stubEnv("AGENT_REASONING_MAX_TOKENS", "300");
+    expect(chatModel("agent").modelKwargs).toEqual({ reasoning: { max_tokens: 300 } });
+    expect(params("agent").max_tokens).toBe(AGENT_MAX_TOKENS + 300);
+  });
+
+  it("lets an explicit effort win over a budget", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    vi.stubEnv("AGENT_REASONING_EFFORT", "medium");
+    vi.stubEnv("AGENT_REASONING_MAX_TOKENS", "300");
+    expect(chatModel("agent").modelKwargs).toEqual({ reasoning: { effort: "medium" } });
+    expect(params("agent").max_tokens).toBe(AGENT_MAX_TOKENS);
+  });
+
+  it("ignores a budget that isn't a positive integer", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    vi.stubEnv("AGENT_REASONING_EFFORT", "");
+    for (const bad of ["0", "-5", "abc", "1.5"]) {
+      vi.stubEnv("AGENT_REASONING_MAX_TOKENS", bad);
+      expect(chatModel("agent").modelKwargs).toEqual({ reasoning: { effort: "low" } });
+      expect(params("agent").max_tokens).toBe(AGENT_MAX_TOKENS);
+    }
   });
 });

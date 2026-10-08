@@ -8,6 +8,7 @@ import {
   problemOf,
   queriesOf,
   recalledOf,
+  recalledYear,
   toolLabel,
   toolSubject,
   VERDICT_LABELS,
@@ -83,7 +84,7 @@ function ToolRow({ call }: { call: ToolCall }) {
           {explanation && <p>{explanation}</p>}
           {recalled && (
             <blockquote className="border-l border-amber-300/30 pl-3">
-              <p className="text-neutral-500">{recalled.year < 0 ? `${-recalled.year} BC` : recalled.year}</p>
+              {recalled.year !== null && <p className="text-neutral-500">{recalledYear(recalled.year)}</p>}
               <p className="whitespace-pre-wrap">{recalled.account}</p>
               <p className="text-amber-300/80">{GENERAL_KNOWLEDGE_NOTE}</p>
             </blockquote>

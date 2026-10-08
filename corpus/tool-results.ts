@@ -15,8 +15,8 @@ export type SearchBiographyResult =
 
 export type Verdict = "supported" | "contradicted" | "not_mentioned" | "known_elsewhere";
 
-/** Spec §19: what the helper model recalled when the biography was silent. year is negative for BC. */
-export type Recalled = { account: string; year: number };
+/** Spec §19: what the helper model recalled when the biography was silent. year is negative for BC, null when undated (§28.9). */
+export type Recalled = { account: string; year: number | null };
 
 export type FactCheckResult =
   | { status: "ok"; verdict: Verdict; passage?: Passage; explanation: string; recalled?: Recalled }

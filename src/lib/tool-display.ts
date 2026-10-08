@@ -75,7 +75,13 @@ export function recalledOf(call: ToolCall): Recalled | null {
   const r = call.result;
   if (verdictOf(call) !== "known_elsewhere" || !isRecord(r) || !isRecord(r.recalled)) return null;
   const { account, year } = r.recalled;
-  return typeof account === "string" && typeof year === "number" ? { account, year } : null;
+  return typeof account === "string" && (typeof year === "number" || year === null) ? { account, year } : null;
+}
+
+/** A recalled account's year for the trace and the PDF ("405 BC"), or null when it is undated (§28.9). */
+export function recalledYear(year: number | null): string | null {
+  if (year === null) return null;
+  return year < 0 ? `${-year} BC` : String(year);
 }
 
 export function explanationOf(call: ToolCall): string | null {

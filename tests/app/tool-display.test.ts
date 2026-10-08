@@ -9,6 +9,7 @@ import {
   problemOf,
   queriesOf,
   recalledOf,
+  recalledYear,
   toolLabel,
   toolSubject,
   usesGeneralKnowledge,
@@ -72,6 +73,7 @@ describe("tool display helpers", () => {
     expect(recalledOf(withRecalled(undefined))).toBeNull();
     expect(recalledOf(withRecalled({ account: "x" }))).toBeNull();
     expect(recalledOf(withRecalled({ account: 3, year: 1980 }))).toBeNull();
+    expect(recalledOf(withRecalled({ account: "x", year: "1980" }))).toBeNull();
     expect(recalledOf({ ...withRecalled({ account: "x", year: 1980 }), status: "error" })).toBeNull();
   });
 
@@ -152,5 +154,19 @@ describe("tool display helpers", () => {
     };
     expect([...passagesById(message).keys()]).toEqual([1, 2, 3]);
     expect(passagesById({ id: "old", role: "persona", text: "No trace." }).size).toBe(0);
+  });
+});
+
+// Spec §28.9: recall may hold a dateless account (a membership, a habit).
+describe("recalled accounts without a year", () => {
+  it("reads year null", () => {
+    const check = call({ toolName: "fact_check_claim", result: { status: "ok", verdict: "known_elsewhere", explanation: "x", recalled: { account: "Member no. 11 of Fluminense.", year: null } } });
+    expect(recalledOf(check)).toEqual({ account: "Member no. 11 of Fluminense.", year: null });
+  });
+
+  it("formats the year for the trace and the PDF, or nothing", () => {
+    expect(recalledYear(1980)).toBe("1980");
+    expect(recalledYear(-405)).toBe("405 BC");
+    expect(recalledYear(null)).toBeNull();
   });
 });

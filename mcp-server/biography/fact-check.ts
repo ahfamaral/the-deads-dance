@@ -66,13 +66,10 @@ const NOT_MENTIONED = "The biography doesn't settle this.";
 export const KNOWN_ELSEWHERE = "The biography doesn't cover this; it is widely recorded elsewhere.";
 
 /**
- * Spec §19.2: the whole fact check must finish inside the 30 s MCP tool timeout, or the
- * biography's own answer is lost too. Recall gets what the biography stage left of this budget,
- * at most its model's 10 s, and is skipped when less than RECALL_MIN_MS is left.
+ * Spec §19.2 and §28.9: recall runs alongside the biography check, inside the 30 s MCP tool
+ * timeout, with its model's 10 s. Run after it, recall got only what a slow biography check left.
  */
-export const FACT_CHECK_BUDGET_MS = 27_000;
 export const RECALL_MAX_MS = 10_000;
-export const RECALL_MIN_MS = 3_000;
 
 async function checkBiography(
   deps: FactCheckDeps,
@@ -113,17 +110,19 @@ async function recallClaim(
   deps: FactCheckDeps,
   input: { claim: string; persona_id: string },
   timeoutMs: number,
-  signal: AbortSignal | undefined,
+  signal: AbortSignal,
 ): Promise<FactCheckResult | null> {
-  if (timeoutMs < RECALL_MIN_MS || signal?.aborted) return null;
+  if (signal.aborted) return null;
   try {
     const persona = await findPersona(deps.pool, input.persona_id);
     if (!persona) return null;
     const { displayName, description, lifespan } = persona;
-    const raw = await deps.recall(input.claim, { displayName, description, lifespan }, signal ? { timeoutMs, signal } : { timeoutMs });
+    const raw = await deps.recall(input.claim, { displayName, description, lifespan }, { timeoutMs, signal });
     const recalled = acceptRecall(raw, lifespan);
     return recalled ? { status: "ok", verdict: "known_elsewhere", recalled, explanation: KNOWN_ELSEWHERE } : null;
   } catch (err) {
+    // Aborted on purpose: Stop, or the biography answered without it (§28.9).
+    if (signal.aborted) return null;
     console.error("Recall failed; keeping not_mentioned.", err);
     return null;
   }
@@ -138,9 +137,13 @@ export async function factCheckClaim(
   input: { claim: string; persona_id: string },
   signal?: AbortSignal,
 ): Promise<FactCheckResult> {
-  const started = Date.now();
+  // Spec §28.9: started first, and aborted once the biography answers on its own.
+  const unneeded = new AbortController();
+  const recalling = recallClaim(deps, input, RECALL_MAX_MS, signal ? AbortSignal.any([signal, unneeded.signal]) : unneeded.signal);
   const biography = await checkBiography(deps, input);
-  if (biography.status !== "ok" || biography.verdict !== "not_mentioned") return biography;
-  const left = Math.min(RECALL_MAX_MS, FACT_CHECK_BUDGET_MS - (Date.now() - started));
-  return (await recallClaim(deps, input, left, signal)) ?? biography;
+  if (biography.status !== "ok" || biography.verdict !== "not_mentioned") {
+    unneeded.abort();
+    return biography;
+  }
+  return (await recalling) ?? biography;
 }

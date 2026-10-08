@@ -16,3 +16,9 @@ export function deathYearNumber(lifespan: string): number | null {
   const n = Number.parseInt(year, 10);
   return /BC$/.test(year) ? -n : n;
 }
+
+/** "1912–1997" → 1912, "c. 1864–1943" → 1864 (approximate), "born 1950" → 1950; "died 1932" → null (spec §28.3). */
+export function birthYear(lifespan: string): { year: string; approximate: boolean } | null {
+  const match = lifespan.trim().match(/^(?:born\s+)?(c\.\s*)?(\d{1,4}(?:\s*BC)?)(?=\s*(?:[–-]|$))/);
+  return match ? { year: match[2], approximate: match[1] !== undefined } : null;
+}

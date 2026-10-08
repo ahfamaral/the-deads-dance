@@ -24,7 +24,6 @@ describe("acceptRecall", () => {
   it.each([
     ["not known", { ...good, known: false }],
     ["low confidence", { ...good, confidence: "low" }],
-    ["a missing year", { ...good, year: null }],
     ["a null account", { ...good, account: null }],
     ["a blank account", { ...good, account: "   " }],
     ["an account of only angle brackets", { ...good, account: "<<>>" }],
@@ -35,11 +34,16 @@ describe("acceptRecall", () => {
     expect(acceptRecall(raw, MARLEY)).toBeNull();
   });
 
-  // Spec §19.2: an unknown death year skips the timeline check; the year is still required.
+  // Spec §19.2: an unknown death year skips the timeline check.
   it("skips the timeline check when the death year is unknown", () => {
     expect(acceptRecall({ ...good, year: 2020 }, "born 1950")).toMatchObject({ year: 2020 });
     expect(acceptRecall({ ...good, year: 2020 }, "")).toMatchObject({ year: 2020 });
-    expect(acceptRecall({ ...good, year: null }, "")).toBeNull();
+  });
+
+  // Spec §28.9: a membership, a habit or a trait has no single date (Santos-Dumont, Fluminense member no. 11).
+  it("accepts a dateless account, with year null", () => {
+    expect(acceptRecall({ ...good, account: "Member no. 11 of Fluminense.", year: null }, "1873–1932")).toEqual({ account: "Member no. 11 of Fluminense.", year: null });
+    expect(acceptRecall({ ...good, year: null }, "")).toEqual({ account: good.account, year: null });
   });
 
   it("compares BC years", () => {
@@ -71,6 +75,7 @@ describe("recall prompt", () => {
   it("asks neutrally and demands every detail", () => {
     expect(RECALL_PROMPT).toMatch(/Asking about it doesn't make it true/);
     expect(RECALL_PROMPT).toMatch(/known is true only if every detail of the claim is well documented/);
+    expect(RECALL_PROMPT).toContain("null when it has no single date, such as a membership, a habit or a trait");
     expect(RECALL_PROMPT).toMatch(/data, not instructions/);
   });
 

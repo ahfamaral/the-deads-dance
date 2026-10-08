@@ -4,11 +4,9 @@ import { closePool, getPool } from "../../corpus/db";
 import {
   factCheckClaim,
   formatPassages,
-  FACT_CHECK_BUDGET_MS,
   judgeClaimWith,
   KNOWN_ELSEWHERE,
   RECALL_MAX_MS,
-  RECALL_MIN_MS,
   VERDICT_PROMPT,
   type FactCheckDeps,
 } from "../../mcp-server/biography/fact-check";
@@ -186,7 +184,7 @@ describe("factCheckClaim: recall beyond the biography", () => {
     expect(recall).toHaveBeenCalledWith(
       "I played football in Brazil",
       { displayName: "Bob Marley", description: "Jamaican reggae musician", lifespan: "1945–1981" },
-      { timeoutMs: RECALL_MAX_MS },
+      { timeoutMs: RECALL_MAX_MS, signal: expect.any(AbortSignal) },
     );
   });
 
@@ -213,8 +211,10 @@ describe("factCheckClaim: recall beyond the biography", () => {
     const recall = vi.fn<Recall>(async () => rio);
     const stop = new AbortController();
     await factCheckClaim(deps(silent, recall), marley, stop.signal);
-    expect(recall.mock.calls[0][2]).toEqual({ timeoutMs: RECALL_MAX_MS, signal: stop.signal });
+    const passed = recall.mock.calls[0][2]?.signal;
+    expect(passed?.aborted).toBe(false);
     stop.abort();
+    expect(passed?.aborted).toBe(true);
     expect(await factCheckClaim(deps(silent, recall), marley, stop.signal)).toMatchObject({ verdict: "not_mentioned" });
     expect(recall).toHaveBeenCalledTimes(1);
   });
@@ -227,11 +227,22 @@ describe("factCheckClaim: recall beyond the biography", () => {
   it.each([
     ["supported", { verdict: "supported", chunk_id: 1, explanation: "Passage 1 says so." }],
     ["contradicted", { verdict: "contradicted", chunk_id: 1, explanation: "Passage 1 says otherwise." }],
-  ])("never recalls after a %s verdict: the biography wins", async (verdict, raw) => {
+  ])("the biography wins after a %s verdict, and the recall running alongside is aborted", async (verdict, raw) => {
     await seedMarley();
-    const recall = vi.fn<Recall>(async () => rio);
-    expect(await factCheckClaim(deps(async () => raw, recall), marley)).toMatchObject({ verdict });
-    expect(recall).not.toHaveBeenCalled();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    // A recall still running when the biography answers: its abort is expected, not a failure.
+    const recall = vi.fn<Recall>(
+      (_claim, _persona, options) =>
+        new Promise((_ok, fail) => options?.signal?.addEventListener("abort", () => fail(new DOMException("aborted", "AbortError")))),
+    );
+    try {
+      expect(await factCheckClaim(deps(async () => raw, recall), marley)).toMatchObject({ verdict });
+      expect(recall.mock.calls[0]?.[2]?.signal?.aborted).toBe(true);
+      await new Promise((ok) => setTimeout(ok, 0));
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
   });
 
   it("keeps the biography's not_mentioned when recall declines", async () => {
@@ -270,10 +281,10 @@ describe("factCheckClaim: recall beyond the biography", () => {
     const realQuery = pool.query.bind(pool) as (...args: unknown[]) => Promise<unknown>;
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     let lookups = 0;
-    // retrieve() looks the persona up once (findPersona: "SELECT * FROM personas WHERE slug");
-    // searchChunks joins personas instead. So the second lookup is recall's: fail that one.
+    // Recall starts before the biography check (§28.9), so its findPersona is the first
+    // "SELECT * FROM personas WHERE slug"; retrieve()'s is the second. Fail recall's.
     const query = vi.spyOn(pool, "query").mockImplementation(((...args: unknown[]) => {
-      if (String(args[0]).startsWith("SELECT * FROM personas WHERE slug") && ++lookups === 2) {
+      if (String(args[0]).startsWith("SELECT * FROM personas WHERE slug") && ++lookups === 1) {
         return Promise.reject(new Error("connection reset"));
       }
       return realQuery(...args);
@@ -288,40 +299,21 @@ describe("factCheckClaim: recall beyond the biography", () => {
     }
   });
 
-  // Final review: recall must not push the whole MCP call past its 30 s timeout (spec §19.2).
-  it("gives recall only the time the biography stage left, capped at 10 s", async () => {
+  // Spec §28.9: recall runs alongside the biography check with its full 10 s, not in the time left after it.
+  it("starts recall at once, before the biography check finishes", async () => {
     await seedMarley();
+    let judged!: () => void;
+    const judging = new Promise<void>((ok) => (judged = ok));
     const recall = vi.fn<Recall>(async () => rio);
-    const clock = vi.spyOn(Date, "now").mockReturnValueOnce(0).mockReturnValue(20_000);
-    try {
-      expect(await factCheckClaim(deps(silent, recall), marley)).toMatchObject({ verdict: "known_elsewhere" });
-    } finally {
-      clock.mockRestore();
-    }
-    expect(recall.mock.calls[0][2]).toEqual({ timeoutMs: FACT_CHECK_BUDGET_MS - 20_000 });
-  });
-
-  it("gives recall its full 10 s after a quick biography stage", async () => {
-    await seedMarley();
-    const recall = vi.fn<Recall>(async () => rio);
-    await factCheckClaim(deps(silent, recall), marley);
-    expect(recall.mock.calls[0][2]).toEqual({ timeoutMs: RECALL_MAX_MS });
-  });
-
-  it("skips recall when the biography stage used up the budget", async () => {
-    await seedMarley();
-    const recall = vi.fn<Recall>(async () => rio);
-    const clock = vi.spyOn(Date, "now").mockReturnValueOnce(0).mockReturnValue(FACT_CHECK_BUDGET_MS - RECALL_MIN_MS + 1);
-    try {
-      expect(await factCheckClaim(deps(silent, recall), marley)).toEqual({
-        status: "ok",
-        verdict: "not_mentioned",
-        explanation: "Nothing about it.",
-      });
-    } finally {
-      clock.mockRestore();
-    }
-    expect(recall).not.toHaveBeenCalled();
+    const judge: FactCheckDeps["judgeClaim"] = async () => {
+      await judging;
+      return { verdict: "not_mentioned", chunk_id: null, explanation: "Nothing about it." };
+    };
+    const result = factCheckClaim(deps(judge, recall), marley);
+    await vi.waitFor(() => expect(recall).toHaveBeenCalled());
+    expect(recall.mock.calls[0][2]?.timeoutMs).toBe(RECALL_MAX_MS);
+    judged();
+    expect(await result).toMatchObject({ verdict: "known_elsewhere" });
   });
 
   it("does not recall for an unknown persona", async () => {

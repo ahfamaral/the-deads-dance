@@ -8,6 +8,7 @@ import {
   MIXED_SOURCES_NOTE,
   problemOf,
   recalledOf,
+  recalledYear,
   toolLabel,
   toolSubject,
   usesGeneralKnowledge,
@@ -187,8 +188,8 @@ export function renderConversationPdf(
       if (explanation) write(explanation, STYLES.traceDetail);
       const recalled = recalledOf(call);
       if (recalled) {
-        const year = recalled.year < 0 ? `${-recalled.year} BC` : String(recalled.year);
-        write(`${year}: ${recalled.account}`, STYLES.traceDetail);
+        const year = recalledYear(recalled.year);
+        write(year ? `${year}: ${recalled.account}` : recalled.account, STYLES.traceDetail);
         write(GENERAL_KNOWLEDGE_NOTE, { ...STYLES.traceDetail, color: COLORS.warning });
       }
     }

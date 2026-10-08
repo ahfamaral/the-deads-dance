@@ -17,10 +17,11 @@ export function sourcesFrom(toolCalls: ToolCall[], personaId: string): Source[] 
   return [...sources.values()];
 }
 
+/** Agent middleware wraps a model error and keeps the provider's error as its cause (spec §28.2). */
 function httpStatus(err: unknown): number | undefined {
-  return typeof err === "object" && err !== null && "status" in err && typeof err.status === "number"
-    ? err.status
-    : undefined;
+  if (typeof err !== "object" || err === null) return undefined;
+  if ("status" in err && typeof err.status === "number") return err.status;
+  return "cause" in err ? httpStatus(err.cause) : undefined;
 }
 
 export function describeTurnError(err: unknown): { reason: string; retryable: boolean } {
@@ -45,6 +46,18 @@ function isAbort(err: unknown): boolean {
 }
 
 /**
+ * Spec §28.2: a reply cut off by max_tokens ends at its last full sentence: the last ., !, ? or …
+ * followed by a space or the end, with any closing quotes or brackets. A full stop after a title or
+ * "c." (circa) doesn't end a sentence. With none, it trails off.
+ */
+const SENTENCE_END = /^[\s\S]*(?:[!?…]|(?<!\b(?:Mr|Mrs|Ms|Dr|St|Sr|Jr|Sra|Dra|c))\.)["'”’»)\]]*(?=\s|$)/;
+
+export function trimToSentence(text: string): string {
+  const match = text.match(SENTENCE_END);
+  return match ? match[0] : `${text.trimEnd()}…`;
+}
+
+/**
  * Turns the agent's events into the stream the browser reads: forwards tokens and tool
  * events (adding durations), then sends the finished message with its trace and sources.
  */
@@ -61,6 +74,7 @@ export async function* chatEvents(opts: {
   // F4: tokens from separate model steps (before/after a tool call) run together otherwise,
   // e.g. "Let me check.I joined…". Only insert once, right after a tool ends.
   let afterToolEnd = false;
+  let truncated = false;
 
   try {
     for await (const event of opts.turn) {
@@ -72,6 +86,8 @@ export async function* chatEvents(opts: {
         afterToolEnd = false;
         text += event.text;
         yield event;
+      } else if (event.type === "truncated") {
+        truncated = true;
       } else if (event.type === "tool_start") {
         startedAt.set(event.id, now());
         calls.set(event.id, { id: event.id, toolName: event.toolName, arguments: event.arguments, status: "running" });
@@ -102,6 +118,11 @@ export async function* chatEvents(opts: {
   }
   yield {
     type: "done",
-    message: { text, toolCalls, sources: sourcesFrom(toolCalls, opts.personaId), ...(opts.ended ? { ended: opts.ended } : {}) },
+    message: {
+      text: truncated ? trimToSentence(text) : text,
+      toolCalls,
+      sources: sourcesFrom(toolCalls, opts.personaId),
+      ...(opts.ended ? { ended: opts.ended } : {}),
+    },
   };
 }

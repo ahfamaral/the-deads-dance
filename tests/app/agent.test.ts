@@ -176,13 +176,16 @@ describe("lookupLimit", () => {
     expect(seen.messages).toBe(messages);
   });
 
-  it("then offers no tools and says so in a closing system note", async () => {
+  // Phase 4 pilot: DeepSeek answers nothing (3 of 3) to a request that ends in a system message and offers
+  // no tools; with the same note as a user message it answered in character.
+  it("then offers no tools and says so in a closing note sent as a user message, never a trailing system message", async () => {
     const messages = [new HumanMessage("hi"), ...ran(MAX_TOOL_CALLS)];
     const seen = await requestFor(messages);
     expect(seen.tools).toEqual([]);
     expect(seen.toolChoice).toBeUndefined();
     expect(seen.messages.slice(0, -1)).toEqual(messages);
-    expect(seen.messages.at(-1)).toBeInstanceOf(SystemMessage);
+    expect(seen.messages.at(-1)).toBeInstanceOf(HumanMessage);
+    expect(seen.messages.at(-1)).not.toBeInstanceOf(SystemMessage);
     expect(seen.messages.at(-1)!.content).toBe(LOOKUPS_USED_NOTE);
   });
 

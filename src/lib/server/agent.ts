@@ -1,6 +1,6 @@
 import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { LLMResult } from "@langchain/core/outputs";
-import { AIMessage as AIMessageClass, SystemMessage, createAgent, createMiddleware, modelCallLimitMiddleware, toolCallLimitMiddleware, type AIMessage, type BaseMessage, type ToolMessage } from "langchain";
+import { AIMessage as AIMessageClass, HumanMessage, createAgent, createMiddleware, modelCallLimitMiddleware, toolCallLimitMiddleware, type AIMessage, type BaseMessage, type ToolMessage } from "langchain";
 import type { ToolEnvelope } from "./persona-tools";
 import { MAX_TOOL_CALLS } from "./turn-limits";
 
@@ -22,7 +22,7 @@ export const LOOKUPS_USED_NOTE =
 
 /**
  * Spec §28.2: once this turn's lookups are used up, the model gets no tools and a closing note saying
- * so. toolCallLimitMiddleware alone would block a further call and end the turn with no answer. The
+ * so, sent as a user message (the Phase 4 pilot found DeepSeek returns nothing after a trailing system message). toolCallLimitMiddleware alone would block a further call and end the turn with no answer. The
  * probe (§28.5) showed DeepSeek ignoring tool_choice "none" and calling a tool even with none offered,
  * so a call it still makes is dropped, and its text, if any, is the answer. A reply with no text (the
  * probe saw one that was all reasoning) is asked for once more.
@@ -33,7 +33,8 @@ export const lookupLimit = createMiddleware({
     const lastHuman = request.messages.findLastIndex((m) => m.type === "human");
     const used = request.messages.slice(lastHuman + 1).filter((m) => m.type === "tool").length;
     if (used < MAX_TOOL_CALLS) return handler(request);
-    const ask = () => handler({ ...request, tools: [], toolChoice: undefined, messages: [...request.messages, new SystemMessage(LOOKUPS_USED_NOTE)] });
+    // A user message, not a system one: DeepSeek answers nothing to a request that ends in a system message with no tools offered.
+    const ask = () => handler({ ...request, tools: [], toolChoice: undefined, messages: [...request.messages, new HumanMessage(LOOKUPS_USED_NOTE)] });
     const hasText = (r: unknown) => AIMessageClass.isInstance(r) && typeof r.content === "string" && r.content.trim() !== "";
     let reply = await ask();
     if (AIMessageClass.isInstance(reply) && !hasText(reply)) reply = await ask();

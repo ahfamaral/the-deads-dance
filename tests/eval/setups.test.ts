@@ -25,7 +25,7 @@ describe("setups (spec §29.2)", () => {
   });
   it("picks a comma list, and names the known setups on an unknown one", () => {
     expect(pickSetups("v0").map((s) => s.id)).toEqual(["v0"]);
-    expect(() => pickSetups("v9")).toThrow(/Unknown setup v9; known: v0, f, v3, v4, v5, m-v4pro, m-haiku, m-qwen, m-v4flash, m-kimi, m-minimax/);
+    expect(() => pickSetups("v9")).toThrow(/Unknown setup v9; known: v0, f, v3, v4, v5, m-v4pro, m-haiku, m-qwen, m-v4flash, m-minimax, m-mistral, m-mimo/);
   });
 });
 
@@ -41,10 +41,10 @@ describe("the model round (spec §30.2)", () => {
     }
     vi.unstubAllEnvs();
   });
-  it("names the six models of §30.2", () => {
+  it("names the seven models the user chose on 2026-10-09 (Kimi dropped; v4-flash's July release; Mistral Small and MiMo added)", () => {
     expect(Object.values(MODEL_ROUND)).toEqual([
       "deepseek/deepseek-v4-pro", "anthropic/claude-haiku-5.5", "qwen/qwen3.8-flash",
-      "deepseek/deepseek-v4-flash", "moonshotai/kimi-k2.6", "minimax/minimax-m3",
+      "deepseek/deepseek-v4-flash-0731", "minimax/minimax-m3", "mistralai/mistral-small-2603", "xiaomi/mimo-v2.6-flash",
     ]);
   });
   it("checks the voice cards before a run that needs them, not after --confirm (final review #5)", () => {

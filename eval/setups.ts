@@ -46,14 +46,18 @@ const PROMPT_SETUPS: Record<string, Setup> = {
   v5: { id: "v5", describe: "V5: a voice card per persona (§30.3)", buildPrompt: v5Prompt, agentModel: () => chatModel("agent"), lookups: "replay", languageMode: "visitor", postProcess: applyGuards },
 };
 
-/** Spec §30.2: the persona models screened in round 3, by setup id. */
+/**
+ * Spec §30.2: the persona models screened in round 3, by setup id. The user's list of 2026-10-09, after checking
+ * benchmarks: Kimi K2.6 dropped (dearest, no quality edge), v4-flash's July release, Mistral Small and MiMo added.
+ */
 export const MODEL_ROUND = {
   "m-v4pro": "deepseek/deepseek-v4-pro",
   "m-haiku": "anthropic/claude-haiku-5.5",
   "m-qwen": "qwen/qwen3.8-flash",
-  "m-v4flash": "deepseek/deepseek-v4-flash",
-  "m-kimi": "moonshotai/kimi-k2.6",
+  "m-v4flash": "deepseek/deepseek-v4-flash-0731",
   "m-minimax": "minimax/minimax-m3",
+  "m-mistral": "mistralai/mistral-small-2603",
+  "m-mimo": "xiaomi/mimo-v2.6-flash",
 } as const;
 
 /** Spec §30.5: the prompt setup the model round uses; set from round 2's result. */

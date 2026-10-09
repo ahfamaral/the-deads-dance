@@ -76,6 +76,8 @@ export type RunResults = {
   estimateMicros: number;
   actualMicros: number;
   stoppedReason: string | null;
+  /** Remarks added after the run, e.g. answers merged in from a redo. */
+  notes?: string[];
   /** What was measured: each setup's agent model, and the judge. */
   models: { judge: string; agent: Record<string, string> };
   answers: ScoredAnswer[];

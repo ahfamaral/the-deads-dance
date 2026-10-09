@@ -24,6 +24,13 @@ describe("runChecks (spec §29.6)", () => {
     expect(c.machineryWords).toEqual(expect.arrayContaining(["searched", "biography", "passages"]));
   });
 
+  it("spots openers that announce a search or a pause (baseline: Lincoln, Curie, Einstein)", () => {
+    for (const text of ["Let me search my memory on this.", "I would need to search my memory first.", "Let me gather my thoughts.", "Let me check my notes.", "Let me look into that."]) {
+      expect(runChecks(text, [], "1879–1955").assistantPhrases, text).not.toEqual([]);
+    }
+    expect(runChecks("Let me tell you about Ulm.", [], "1879–1955").assistantPhrases).toEqual([]);
+  });
+
   it("lists 4-digit years after the death year, and none when it is unknown", () => {
     expect(runChecks("In 1905 I wrote papers; the laser came in 1960.", [], "1879–1955").yearsAfterDeath).toEqual([1960]);
     expect(runChecks("In 1960 something.", [], "").yearsAfterDeath).toEqual([]);

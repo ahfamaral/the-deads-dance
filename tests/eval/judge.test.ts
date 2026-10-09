@@ -1,6 +1,6 @@
 import { fakeModel } from "langchain";
 import { describe, expect, it } from "vitest";
-import { contextPrecision, faithfulness, formatEvidence, JUDGE_PROMPT, judgeWith, type JudgeInput } from "../../eval/judge";
+import { contextPrecision, faithfulness, formatEvidence, JUDGE_PROMPT, judgeMessage, judgeWith, type JudgeInput } from "../../eval/judge";
 import type { JudgeResult } from "../../eval/types";
 import type { ToolCall } from "@/lib/chat-types";
 
@@ -60,6 +60,15 @@ describe("judgeWith", () => {
 
   it("throws on malformed output, so the caller marks the answer not scored", async () => {
     await expect(judgeWith(fakeModel().structuredResponse({ claims: "lots" })).score(input)).rejects.toThrow();
+  });
+
+  it("tells the judge how many paragraphs the answer has, counted in code", () => {
+    expect(judgeMessage({ ...input, answer: "One.\n\nTwo.\n\nThree." })).toContain('<answer paragraphs="3">\nOne.');
+  });
+
+  it("holds length and openers strictly (baseline: 4 paragraphs passed as two; 'search my memory' passed)", () => {
+    expect(JUDGE_PROMPT).toMatch(/paragraph count[\s\S]*is exact[\s\S]*more paragraphs than [\s\S]*fails/i);
+    expect(JUDGE_PROMPT).toMatch(/in_character:[\s\S]*"let me search my memory"[\s\S]*"let me gather my thoughts"/);
   });
 
   it("puts reasons before results and never sees the persona's prompt", () => {

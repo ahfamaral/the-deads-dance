@@ -6,6 +6,8 @@ import type { Checks } from "./types";
 export const ASSISTANT_PHRASES = [
   "great question", "as an ai", "i can't help with that", "i cannot help with that", "i'm sorry, but",
   "happy to help", "feel free to ask", "your feelings are valid", "is there anything else",
+  // Openers that announce a lookup or a pause (§28 known issue; seen in the baseline).
+  "search my memory", "let me search", "let me check", "let me look", "gather my thoughts",
 ] as const;
 
 const MARKDOWN = /(\*\*[^*\n]+\*\*)|(\*[^*\s][^*\n]*\*)|(\b_[^_\n]+_\b)|(^|\n)\s*(#{1,6}\s|[-•]\s|\d+\.\s)/;

@@ -45,6 +45,11 @@ describe("renderReport", () => {
     expect(md).toContain("[ ] agree [ ] disagree");
     expect(md).toContain("after_death: why");
   });
+  it("shows notes apart from a stop, so a merged run doesn't read as stopped early", () => {
+    const noted = renderReport({ ...results, notes: ["8 answers re-run in visitor mode"] }, { random: () => 0 });
+    expect(noted).toContain("**Note:** 8 answers re-run in visitor mode.");
+    expect(noted).not.toContain("Stopped early");
+  });
   it("ranks under the three criteria", () => {
     expect(md).toContain("Hard rules as a gate, then side-by-side wins");
     expect(md).toContain("Weighted score");

@@ -11,8 +11,8 @@ import { buildPersonaPrompt } from "@/lib/server/persona-prompt";
 const persona = { id: 1, slug: "albert-einstein", displayName: "Albert Einstein", description: "Physicist", lifespan: "1879–1955",
   profile: null, languages: [{ code: "de", name: "German" }], status: "ready" } as never;
 const question: Question = { id: "q1", persona: "albert-einstein", category: "ordinary", text: "Where were you born?", expect: "Ulm.", screening: false };
-const setup = (model: unknown, lookups: "replay" | "live" = "replay"): Setup =>
-  ({ id: "v0", describe: "", buildPrompt: buildPersonaPrompt, agentModel: () => model as never, lookups });
+const setup = (model: unknown, lookups: "replay" | "live" = "replay", languageMode: Setup["languageMode"] = "visitor"): Setup =>
+  ({ id: "v0", describe: "", buildPrompt: buildPersonaPrompt, agentModel: () => model as never, lookups, languageMode });
 const searchCall = new AIMessage({ content: "", tool_calls: [{ id: "t1", name: "search_biography", args: { query: "birth" }, type: "tool_call" }] });
 // Shaped like an MCP tool: lockPersona reads the "mcp_structured_content" artifact and builds the envelope.
 const liveSearch = tool(async () => ["ignored", [{ type: "mcp_structured_content", data: { passages: [] } }]], {
@@ -114,5 +114,18 @@ describe("runQuestion (spec §29.4)", () => {
     const model = fakeModel().respond(new AIMessage("As I said."));
     await runQuestion(deps(), { ...question, history: [{ role: "user", text: "Earlier?" }, { role: "persona", text: "Yes." }] }, setup(model), persona);
     expect(JSON.stringify(model.calls)).toContain("Earlier?");
+  });
+
+  it("answers in the visitor's language when the setup says so, as the chat's checkbox does", async () => {
+    const english = { act: "question", offense: 0, sorePoint: false, language: "en", wants: "normal", visitorName: null } as const;
+    const prompts: string[] = [];
+    const capture = (mode: Setup["languageMode"]): Setup => ({
+      ...setup(fakeModel().respond(new AIMessage("In Ulm.")), "live", mode),
+      buildPrompt: (p, o) => (prompts.push(o.state ?? ""), buildPersonaPrompt(p, o)),
+    });
+    await runQuestion(deps({ classify: async () => english }), question, capture("visitor"), persona);
+    await runQuestion(deps({ classify: async () => english }), question, capture("realistic"), persona);
+    expect(prompts[0]).toMatch(/Answer in English, even though you never spoke it/);
+    expect(prompts[1]).toMatch(/you cannot understand what they wrote/);
   });
 });

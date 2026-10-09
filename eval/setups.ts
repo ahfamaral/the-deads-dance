@@ -1,4 +1,5 @@
 import { chatModel } from "@corpus/models";
+import type { LanguageMode } from "@/lib/chat-types";
 import type { AgentModel } from "@/lib/server/agent";
 import { buildPersonaPrompt } from "@/lib/server/persona-prompt";
 
@@ -12,6 +13,8 @@ export type Setup = {
   buildPrompt: typeof buildPersonaPrompt;
   agentModel: () => AgentModel;
   lookups: "replay" | "live";
+  /** The chat's language checkbox: "visitor" answers in the visitor's language, "realistic" only in the persona's own. */
+  languageMode: LanguageMode;
 };
 
 export const SETUPS: Record<string, Setup> = {
@@ -21,6 +24,8 @@ export const SETUPS: Record<string, Setup> = {
     buildPrompt: buildPersonaPrompt,
     agentModel: () => chatModel("agent"),
     lookups: "replay",
+    // The user's choice (2026-10-09): otherwise Mao and Planck refuse English questions and can't be measured.
+    languageMode: "visitor",
   },
 };
 

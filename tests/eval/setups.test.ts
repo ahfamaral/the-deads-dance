@@ -6,6 +6,8 @@ describe("setups (spec §29.2)", () => {
   it("v0 is today's prompt, replaying lookups when recorded", () => {
     expect(SETUPS.v0.buildPrompt).toBe(buildPersonaPrompt);
     expect(SETUPS.v0.lookups).toBe("replay");
+    // The user's choice (2026-10-09): tests answer in the visitor's language, so Mao and Planck are measured, not refused.
+    expect(SETUPS.v0.languageMode).toBe("visitor");
   });
   it("v0's model is the app's agent model", () => {
     vi.stubEnv("OPENROUTER_API_KEY", "k");

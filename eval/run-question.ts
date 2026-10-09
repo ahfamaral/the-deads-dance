@@ -93,7 +93,7 @@ export async function runQuestion(
     // One null act for every earlier visitor message in the question's history, then this question's act.
     const earlierActs = (q.history ?? []).filter((m) => m.role === "user").map(() => null);
     const visit = foldVisit([...earlierActs, act]);
-    const state = renderConversationState({ visit, languages: persona.languages, languageMode: "realistic" });
+    const state = renderConversationState({ visit, languages: persona.languages, languageMode: setup.languageMode });
     for await (const event of chatEvents({
       personaId: persona.slug,
       ended: visit.ended ?? null,

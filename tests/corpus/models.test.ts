@@ -47,6 +47,17 @@ describe("chatModel", () => {
     expect(() => chatModel("agent")).toThrow(/OPENROUTER_API_KEY/);
   });
 
+  it("takes another model id for the agent and keeps the agent's settings (spec §30.6)", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    vi.stubEnv("AGENT_REASONING_EFFORT", "");
+    vi.stubEnv("AGENT_REASONING_MAX_TOKENS", "");
+    const model = chatModel("agent", { model: "anthropic/claude-haiku-5.5" });
+    expect(model.model).toBe("anthropic/claude-haiku-5.5");
+    expect(model.maxTokens).toBe(AGENT_MAX_TOKENS);
+    expect(model.timeout).toBe(60_000);
+    expect(model.modelKwargs).toEqual({ reasoning: { effort: "low" } });
+  });
+
   it("builds a ChatOpenAI for the role's model", () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     vi.stubEnv("HELPER_MODEL", "");

@@ -3,10 +3,10 @@ import { birthYear, deathYear } from "@corpus/lifespan";
 import { hasKnownTraits, isKnown, PROFILE_FIELDS, type CharacterProfile } from "@corpus/profile";
 import { MAX_TOOL_CALLS } from "./turn-limits";
 
-type PromptPersona = Pick<PersonaRow, "displayName" | "description" | "lifespan" | "profile">;
+export type PromptPersona = Pick<PersonaRow, "displayName" | "description" | "lifespan" | "profile">;
 
 /** Wikipedia/Wikidata text is third-party (spec §10): it must not be able to close the block it sits in. */
-function asData(value: string): string {
+export function asData(value: string): string {
   return value.replace(/[<>]/g, "").trim() || "unknown";
 }
 
@@ -91,30 +91,43 @@ function timeSection(lifespan: string): string {
   return `Your time:\n${lifeLine(lifespan)}\n${TIME_RULES}`;
 }
 
+export type PromptOptions = { toolsAvailable: boolean; state?: string | null };
+
+/** The prompt's sections, in the order buildPersonaPrompt joins them. Spec §30.6: the eval's variants rearrange them. */
+export const SECTION_ORDER = [
+  "identity", "facts", "profile", "state", "character", "stateRule", "memory", "time", "requests", "manner", "examples", "toolsOff",
+] as const;
+export type PromptSections = Record<(typeof SECTION_ORDER)[number], string | null>;
+
+export function promptSections(persona: PromptPersona, options: PromptOptions): PromptSections {
+  const withProfile = hasKnownTraits(persona.profile);
+  const state = options.state?.trim() || null;
+  return {
+    identity: IDENTITY,
+    facts: `<persona_facts>\nname: ${asData(persona.displayName)}\ndescription: ${asData(persona.description)}\nlifespan: ${asData(persona.lifespan)}\n</persona_facts>`,
+    profile: withProfile && persona.profile ? profileBlock(persona.profile) : null,
+    state,
+    character: withProfile ? CHARACTER : null,
+    stateRule: state ? STATE_RULE : null,
+    memory: MEMORY,
+    time: timeSection(persona.lifespan),
+    requests: REQUESTS,
+    manner: MANNER,
+    examples: EXAMPLES,
+    toolsOff: options.toolsAvailable ? null : TOOLS_OFF,
+  };
+}
+
+export function joinSections(parts: readonly (string | null)[]): string {
+  return parts.filter((s): s is string => s !== null).join("\n\n");
+}
+
 /**
  * Spec §7, §17 and §18: one shared template for every persona. The persona's fields and
  * character profile go in as delimited data; the conduct rules hold for everyone. The state block
  * describes the current visit. The visitor always speaks first (spec §18.5).
  */
-export function buildPersonaPrompt(
-  persona: PromptPersona,
-  options: { toolsAvailable: boolean; state?: string | null },
-): string {
-  const withProfile = hasKnownTraits(persona.profile);
-  const state = options.state?.trim() || null;
-  const sections = [
-    IDENTITY,
-    `<persona_facts>\nname: ${asData(persona.displayName)}\ndescription: ${asData(persona.description)}\nlifespan: ${asData(persona.lifespan)}\n</persona_facts>`,
-    withProfile && persona.profile ? profileBlock(persona.profile) : null,
-    state,
-    withProfile ? CHARACTER : null,
-    state ? STATE_RULE : null,
-    MEMORY,
-    timeSection(persona.lifespan),
-    REQUESTS,
-    MANNER,
-    EXAMPLES,
-    options.toolsAvailable ? null : TOOLS_OFF,
-  ];
-  return sections.filter((s): s is string => s !== null).join("\n\n");
+export function buildPersonaPrompt(persona: PromptPersona, options: PromptOptions): string {
+  const s = promptSections(persona, options);
+  return joinSections(SECTION_ORDER.map((k) => s[k]));
 }

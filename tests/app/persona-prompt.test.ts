@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CharacterProfile } from "@corpus/profile";
-import { buildPersonaPrompt } from "@/lib/server/persona-prompt";
+import { buildPersonaPrompt, joinSections, promptSections, SECTION_ORDER } from "@/lib/server/persona-prompt";
 
 const PROFILE: CharacterProfile = {
   temperament: "Exacting, reserved",
@@ -252,5 +252,18 @@ describe("buildPersonaPrompt: the world in your time (spec §4)", () => {
 
   it("treats the result as memory of the times, not of your own life", () => {
     expect(prompt).toMatch(/what you remember of the times, not facts about your own life/);
+  });
+});
+
+describe("promptSections (spec §30.6)", () => {
+  it("joined in SECTION_ORDER, gives exactly buildPersonaPrompt", () => {
+    for (const o of [on, { toolsAvailable: false }, { toolsAvailable: true, state: "<conversation_state>x</conversation_state>" }]) {
+      const s = promptSections(wu, o);
+      expect(joinSections(SECTION_ORDER.map((k) => s[k]))).toBe(buildPersonaPrompt(wu, o));
+    }
+  });
+  it("leaves out what doesn't apply: no profile, no state, tools on", () => {
+    const s = promptSections({ ...wu, profile: null }, on);
+    expect([s.profile, s.character, s.state, s.stateRule, s.toolsOff]).toEqual([null, null, null, null, null]);
   });
 });

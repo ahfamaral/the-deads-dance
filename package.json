@@ -15,7 +15,9 @@
     "test": "vitest run",
     "test:live": "LIVE=1 vitest run tests/live",
     "eval": "tsx --env-file=.env eval/cli.ts",
-    "eval:questions": "tsx --env-file=.env eval/generate-questions.ts"
+    "eval:questions": "tsx --env-file=.env eval/generate-questions.ts",
+    "eval:voice-cards": "tsx --env-file=.env eval/generate-voice-cards.ts",
+    "eval:merge": "tsx eval/merge-runs.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.2.12",

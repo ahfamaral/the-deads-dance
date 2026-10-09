@@ -11,9 +11,10 @@ import { checkLimits, DEFAULT_COSTS, describeEstimate, estimateMicros, readBudge
 import { judgeWith } from "./judge";
 import { questionKey, readRecording, writeRecording } from "./lookups";
 import { loadQuestions, selectQuestions } from "./questions";
+import { describeModels, fetchModelPrices, priceScale } from "./model-prices";
 import { renderReport } from "./report";
 import { runEval } from "./run";
-import { pickSetups } from "./setups";
+import { pickSetups, preflightSetups, type Setup } from "./setups";
 import type { AnswerRecord, RunResults } from "./types";
 
 const BUDGET = "eval/budget.json";
@@ -42,28 +43,48 @@ export function baselineWarning(setupIds: string[], baselineSetupId: string): st
     : null;
 }
 
+/** The live answers that measure liveAnswer: on the app's own model only, so a model round can't skew later estimates (§30.6). */
+export function measuredLiveAnswers<A extends { setupId: string; lookups: string; error: string | null }>(answers: A[], setups: Pick<Setup, "id" | "modelId">[]): A[] {
+  const appModel = new Set(setups.filter((s) => !s.modelId || s.modelId === modelId("agent")).map((s) => s.id));
+  return answers.filter((a) => a.lookups === "live" && !a.error && appModel.has(a.setupId));
+}
+
+/** Spec §30.4: the baseline is one setup of an earlier run: the one named after a colon, or the run's first. */
+export function baselineFrom(prior: RunResults, setupId: string | null): { setupId: string; answers: Map<string, AnswerRecord> } {
+  const id = setupId ?? prior.setups[0];
+  if (!prior.setups.includes(id)) throw new Error(`${id} isn't in that run; it has ${prior.setups.join(", ")}.`);
+  return { setupId: id, answers: new Map(prior.answers.filter((a) => a.setupId === id).map((a) => [a.questionId, a])) };
+}
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const setups = pickSetups(args.setups);
+  preflightSetups(setups);
   const questions = selectQuestions(loadQuestions(), args.questions);
   const budget: BudgetFile | null = readBudget(BUDGET); // throws on a corrupt file (spec §29.8)
   const spent = budget?.spentMicros ?? 0;
 
   let baseline: { setupId: string; answers: Map<string, AnswerRecord> } | null = null;
   if (args.baseline) {
-    const prior = JSON.parse(readFileSync(join(args.baseline, "results.json"), "utf8")) as RunResults;
-    const setupId = prior.setups[0];
-    baseline = { setupId, answers: new Map(prior.answers.filter((a) => a.setupId === setupId).map((a) => [a.questionId, a])) };
-    const warning = baselineWarning(setups.map((s) => s.id), setupId);
+    const colon = args.baseline.lastIndexOf(":");
+    const [dir, setupId] = colon > 0 ? [args.baseline.slice(0, colon), args.baseline.slice(colon + 1)] : [args.baseline, null];
+    baseline = baselineFrom(JSON.parse(readFileSync(join(dir, "results.json"), "utf8")) as RunResults, setupId);
+    const warning = baselineWarning(setups.map((s) => s.id), baseline.setupId);
     if (warning) console.log(warning);
   }
 
   // Spec §29.4: count what will run live (no recording yet, or a live setup) and what replays.
-  const runs = setups.flatMap((s) => questions.map((q) => s.lookups === "replay" && readRecording(LOOKUPS, q.id)?.question === questionKey(q)));
-  const replay = runs.filter(Boolean).length;
-  const live = runs.length - replay;
+  // Spec §30.6: a live answer on another model is priced by that model's share of v4-pro's price.
+  const onModels = setups.filter((s) => s.modelId);
+  const prices = onModels.length ? await fetchModelPrices() : null;
+  const scales = new Map(onModels.map((s) => [s.id, priceScale(prices!, s.modelId!)]));
+  if (scales.size) console.log(describeModels(onModels.map((s) => ({ setupId: s.id, model: s.modelId!, scale: scales.get(s.id)! }))));
+  const runs = setups.flatMap((s) => questions.map((q) => ({ setup: s, replay: s.lookups === "replay" && readRecording(LOOKUPS, q.id)?.question === questionKey(q) })));
+  const replay = runs.filter((r) => r.replay).length;
+  const liveOnModels = runs.filter((r) => !r.replay && scales.has(r.setup.id)).map((r) => scales.get(r.setup.id)!);
+  const live = runs.length - replay - liveOnModels.length;
   const pairs = baseline ? setups.filter((s) => s.id !== baseline!.setupId).length * questions.length : 0;
-  const estimate = estimateMicros({ live, replay, judged: live + replay, pairs }, budget?.measured ?? {});
+  const estimate = estimateMicros({ live, replay, judged: runs.length, pairs, liveOnModels }, budget?.measured ?? {});
   const refusal = checkLimits(estimate, spent);
   if (refusal) throw new Error(refusal);
 
@@ -123,7 +144,7 @@ async function main(): Promise<void> {
     });
     // The budget first: it is the one file that must never fall behind what was spent.
     const next = withRun(budget, { name: args.name, at: startedAt, micros: results.actualMicros });
-    const liveAnswers = results.answers.filter((a) => a.lookups === "live" && !a.error);
+    const liveAnswers = measuredLiveAnswers(results.answers, setups);
     const replayAnswers = results.answers.filter((a) => a.lookups === "replay" && !a.error);
     if (liveAnswers.length) next.measured.liveAnswer = Math.round(liveAnswers.reduce((s, a) => s + a.answerMicros, 0) / liveAnswers.length);
     if (replayAnswers.length) next.measured.replayAnswer = Math.round(replayAnswers.reduce((s, a) => s + a.answerMicros, 0) / replayAnswers.length);

@@ -67,7 +67,7 @@ export function modelId(role: ModelRole): string {
 
 export function chatModel(
   role: ModelRole,
-  options: { timeout?: number; maxRetries?: number; reasoningEffort?: ReasoningEffort; callbacks?: BaseCallbackHandler[] } = {},
+  options: { timeout?: number; maxRetries?: number; reasoningEffort?: ReasoningEffort; callbacks?: BaseCallbackHandler[]; model?: string } = {},
 ): ChatOpenAI {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -86,7 +86,8 @@ export function chatModel(
   // Spec §28.2: a reasoning budget gets its own room on top of the reply's.
   const maxTokens = role === "agent" ? AGENT_MAX_TOKENS + (reasoning && "max_tokens" in reasoning ? reasoning.max_tokens : 0) : undefined;
   return new ChatOpenAI({
-    model: modelId(role),
+    // Spec §30.6: the eval's model round runs other persona models with the role's own settings.
+    model: options.model ?? modelId(role),
     apiKey,
     configuration: { baseURL: OPENROUTER_BASE_URL },
     // Spec §17.1: the profile generator reads a whole article and needs longer than the helper's 20 s.

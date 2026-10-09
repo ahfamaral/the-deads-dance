@@ -128,4 +128,25 @@ describe("runQuestion (spec §29.4)", () => {
     expect(prompts[0]).toMatch(/Answer in English, even though you never spoke it/);
     expect(prompts[1]).toMatch(/you cannot understand what they wrote/);
   });
+
+  it("applies the setup's guards to the reply and keeps the raw text when they changed it", async () => {
+    const model = fakeModel().respond(new AIMessage("Let me gather my thoughts. In **Ulm**."));
+    const guarded: Setup = { ...setup(model), postProcess: (t) => t.replace("Let me gather my thoughts. ", "").replaceAll("**", "") };
+    const { answer } = await runQuestion(deps(), question, guarded, persona);
+    expect(answer.text).toBe("In Ulm.");
+    expect(answer.rawText).toBe("Let me gather my thoughts. In **Ulm**.");
+  });
+
+  it("keeps no raw text when the guards changed nothing", async () => {
+    const model = fakeModel().respond(new AIMessage("In Ulm."));
+    const { answer } = await runQuestion(deps(), question, { ...setup(model), postProcess: (t) => t }, persona);
+    expect(answer.rawText).toBeUndefined();
+  });
+
+  it("never records lookups for a live setup, so a model's searches never replay for v0", async () => {
+    const model = fakeModel().respond(searchCall).respond(new AIMessage("In Ulm."));
+    const { answer, recording } = await runQuestion(deps(), question, setup(model, "live"), persona);
+    expect(answer.lookups).toBe("live");
+    expect(recording).toBeNull();
+  });
 });

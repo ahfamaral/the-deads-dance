@@ -36,13 +36,17 @@ export function loadQuestions(path = "eval/questions.json"): Question[] {
   return parseQuestions(JSON.parse(readFileSync(path, "utf8")));
 }
 
-/** "all", "screening", or a comma list of ids, in the order given. */
+/** "all", "screening", or a comma list of ids, in the order given; "@k/n" after it takes every n-th from the k-th (spec §30.4). */
 export function selectQuestions(all: Question[], which: string): Question[] {
-  if (which === "all") return all;
-  if (which === "screening") return all.filter((q) => q.screening);
-  return which.split(",").map((id) => {
+  const [set, part] = which.split("@");
+  const chosen = set === "all" ? all : set === "screening" ? all.filter((q) => q.screening) : set.split(",").map((id) => {
     const found = all.find((q) => q.id === id.trim());
     if (!found) throw new Error(`Unknown question id: ${id.trim()}`);
     return found;
   });
+  if (part === undefined) return chosen;
+  const m = /^(\d+)\/(\d+)$/.exec(part);
+  const [k, n] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
+  if (!m || k < 1 || k > n) throw new Error(`Bad part ${part}: use k/n, e.g. screening@1/2.`);
+  return chosen.filter((_, i) => i % n === k - 1);
 }

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_COSTS, RUN_LIMIT_MICROS, RunSpend, TOTAL_LIMIT_MICROS,
-  checkLimits, describeEstimate, estimateMicros, readBudget, runLimitMicros, withRun, writeBudget,
+  checkLimits, describeEstimate, estimateMicros, liveAnswerMicros, readBudget, runLimitMicros, withRun, writeBudget,
 } from "../../eval/budget";
 
 const dir = () => mkdtempSync(join(tmpdir(), "eval-budget-"));
@@ -84,5 +84,17 @@ describe("RunSpend", () => {
     spend.add(1);
     expect(spend.over).toBe(true);
     expect(spend.micros).toBe(RUN_LIMIT_MICROS);
+  });
+});
+
+describe("liveAnswerMicros (spec §30.6)", () => {
+  it("keeps the lookups' measured cost and scales the persona's own calls", () => {
+    const measured = { liveAnswer: 5_000, replayAnswer: 3_000 };
+    expect(liveAnswerMicros(measured)).toBe(5_000);
+    expect(liveAnswerMicros(measured, 0.5)).toBe(2_000 + 1_500);
+  });
+  it("adds live answers on other models to an estimate", () => {
+    const measured = { liveAnswer: 5_000, replayAnswer: 3_000, judge: 1_000 };
+    expect(estimateMicros({ live: 0, replay: 0, judged: 2, pairs: 0, liveOnModels: [0.5, 2] }, measured)).toBe(3_500 + 8_000 + 2_000);
   });
 });

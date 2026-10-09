@@ -44,16 +44,23 @@ export function withRun(before: BudgetFile | null, run: BudgetFile["runs"][numbe
 }
 
 export function estimateMicros(
-  plan: { live: number; replay: number; judged: number; pairs: number; generate?: number },
+  plan: { live: number; replay: number; judged: number; pairs: number; generate?: number; liveOnModels?: number[] },
   measured: BudgetFile["measured"],
 ): number {
   const cost = { ...DEFAULT_COSTS, ...measured };
   return (
     plan.live * cost.liveAnswer +
+    (plan.liveOnModels ?? []).reduce((s, scale) => s + liveAnswerMicros(measured, scale), 0) +
     plan.replay * cost.replayAnswer +
     (plan.judged + plan.pairs) * cost.judge +
     (plan.generate ?? 0) * cost.generate
   );
+}
+
+/** Spec §30.6: a live answer on another persona model: the lookups as measured, the persona's own calls scaled by price. */
+export function liveAnswerMicros(measured: BudgetFile["measured"], scale = 1): number {
+  const cost = { ...DEFAULT_COSTS, ...measured };
+  return Math.round(Math.max(0, cost.liveAnswer - cost.replayAnswer) + cost.replayAnswer * scale);
 }
 
 export function checkLimits(estimate: number, spent: number): string | null {

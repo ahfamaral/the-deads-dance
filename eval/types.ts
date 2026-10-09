@@ -17,6 +17,8 @@ export type AnswerRecord = {
   persona: string;
   category: string;
   text: string | null;
+  /** The reply before the setup's guards, kept only when they changed it (spec §30.6). */
+  rawText?: string;
   error: string | null;
   truncated: boolean;
   toolCalls: ToolCall[];

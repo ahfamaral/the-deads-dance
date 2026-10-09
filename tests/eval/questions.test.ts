@@ -28,6 +28,12 @@ describe("selectQuestions", () => {
     expect(selectQuestions(all, "screening").map((x) => x.id)).toEqual(["a", "b"]);
     expect(selectQuestions(all, "b,einstein-g1").map((x) => x.id)).toEqual(["b", "einstein-g1"]);
   });
+  it("takes one part of a set: every n-th question from the k-th", () => {
+    expect(selectQuestions(all, "all@1/2").map((x) => x.id)).toEqual(["einstein-g1", "b"]);
+    expect(selectQuestions(all, "all@2/2").map((x) => x.id)).toEqual(["a"]);
+    expect(selectQuestions(all, "screening@2/2").map((x) => x.id)).toEqual(["b"]);
+    expect(() => selectQuestions(all, "all@3/2")).toThrow(/Bad part 3\/2/);
+  });
   it("throws on an unknown id", () => {
     expect(() => selectQuestions(all, "nope")).toThrow(/Unknown question id: nope/);
   });

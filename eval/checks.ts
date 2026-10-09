@@ -2,12 +2,15 @@ import { deathYearNumber } from "@corpus/lifespan";
 import type { ToolCall } from "@/lib/chat-types";
 import type { Checks } from "./types";
 
+/** Openers that announce a lookup or a pause (§28 known issue; seen in the baseline). */
+// "let me look" alone would catch an in-character "let me look at you" (final review #3).
+export const OPENER_PHRASES = ["search my memory", "let me search", "let me check", "let me look into", "let me look it up", "gather my thoughts"] as const;
+
 /** Spec §29.6: phrases a persona never says; matched case-insensitively. */
 export const ASSISTANT_PHRASES = [
   "great question", "as an ai", "i can't help with that", "i cannot help with that", "i'm sorry, but",
   "happy to help", "feel free to ask", "your feelings are valid", "is there anything else",
-  // Openers that announce a lookup or a pause (§28 known issue; seen in the baseline).
-  "search my memory", "let me search", "let me check", "let me look", "gather my thoughts",
+  ...OPENER_PHRASES,
 ] as const;
 
 const MARKDOWN = /(\*\*[^*\n]+\*\*)|(\*[^*\s][^*\n]*\*)|(\b_[^_\n]+_\b)|(^|\n)\s*(#{1,6}\s|[-•]\s|\d+\.\s)/;

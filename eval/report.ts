@@ -7,6 +7,8 @@ export type SetupSummary = {
   faithfulness: number | null; relevancy: number | null; contextPrecision: number | null;
   recallAt3: number | null; mrr: number | null;
   wordsMedian: number | null; wordsMax: number | null; overTwoParagraphs: number; markdown: number; assistantPhrases: number;
+  /** Replies the setup's guards changed (spec §30.6). */
+  guardsFired: number;
   /** Answers with checks (a text to measure): the base for length and markdown counts. */
   checked: number;
   /** Replies cut off at the agent's max_tokens (spec §28.2). */
@@ -15,6 +17,9 @@ export type SetupSummary = {
   costPerAnswerMicros: number; msMedian: number | null; msMax: number | null;
   pairs: { wins: number; ties: number; losses: number; baselineFirstWins: number; candidateFirstWins: number } | null;
 };
+
+/** Spec §30.4: in the model rounds the gate compares with the winning prompt on today's model. */
+const MODEL_REFERENCE = "m-v4pro";
 
 const RULES = ["after_death", "before_birth", "suicide", "wrong_denial", "false_yes", "in_character", "as_expected"] as const;
 /** Spec §29.7 (a): a finalist is never worse than the baseline on these. */
@@ -56,6 +61,7 @@ function summarizeGroup(setupId: string, answers: ScoredAnswer[]): SetupSummary 
       : null,
     markdown: ok.filter((a) => a.checks!.markdown).length,
     assistantPhrases: ok.filter((a) => a.checks!.assistantPhrases.length).length,
+    guardsFired: answers.filter((a) => a.rawText !== undefined).length,
     costPerAnswerMicros: answers.length ? Math.round(answers.reduce((s, a) => s + a.answerMicros + a.judgeMicros, 0) / answers.length) : 0,
     msMedian: median(answers.filter((a) => !a.error).map((a) => a.durationMs)),
     msMax: answers.length ? Math.max(...answers.map((a) => a.durationMs)) : null,
@@ -93,9 +99,9 @@ export function renderReport(r: RunResults, opts: { random?: () => number; leftM
   if (r.stoppedReason) out.push(`**Stopped early:** ${r.stoppedReason}.`);
   for (const note of r.notes ?? []) out.push(`**Note:** ${note}.`);
 
-  out.push("", "## Summary", "", "| Setup | Answers | Errors | Faithfulness | Relevancy | Ctx precision | Recall@3 | MRR | Words (median/max) | Over 2 ¶ | Markdown | Assistant phrases | Cut off | Tokens in/out (mean) | Cost/answer | Time (median/max) |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+  out.push("", "## Summary", "", "| Setup | Model | Answers | Errors | Faithfulness | Relevancy | Ctx precision | Recall@3 | MRR | Words (median/max) | Over 2 ¶ | Markdown | Assistant phrases | Guards fired | Cut off | Tokens in/out (mean) | Cost/answer | Time (median/max) |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const s of summaries) {
-    out.push(`| ${s.setupId} | ${s.answers} | ${s.errors} | ${pct(s.faithfulness)} | ${num(s.relevancy, 1)} | ${pct(s.contextPrecision)} | ${pct(s.recallAt3)} | ${num(s.mrr)} | ${s.wordsMedian ?? "—"}/${s.wordsMax ?? "—"} | ${s.overTwoParagraphs} | ${s.markdown} | ${s.assistantPhrases} | ${s.truncated} | ${s.tokensMean ? `${s.tokensMean.input}/${s.tokensMean.output}` : "—"} | ${formatDollars(s.costPerAnswerMicros)} | ${s.msMedian === null ? "—" : `${(s.msMedian / 1000).toFixed(1)} s`}/${s.msMax === null ? "—" : `${(s.msMax / 1000).toFixed(1)} s`} |`);
+    out.push(`| ${s.setupId} | ${r.models.agent[s.setupId] ?? "—"} | ${s.answers} | ${s.errors} | ${pct(s.faithfulness)} | ${num(s.relevancy, 1)} | ${pct(s.contextPrecision)} | ${pct(s.recallAt3)} | ${num(s.mrr)} | ${s.wordsMedian ?? "—"}/${s.wordsMax ?? "—"} | ${s.overTwoParagraphs} | ${s.markdown} | ${s.assistantPhrases} | ${s.guardsFired} | ${s.truncated} | ${s.tokensMean ? `${s.tokensMean.input}/${s.tokensMean.output}` : "—"} | ${formatDollars(s.costPerAnswerMicros)} | ${s.msMedian === null ? "—" : `${(s.msMedian / 1000).toFixed(1)} s`}/${s.msMax === null ? "—" : `${(s.msMax / 1000).toFixed(1)} s`} |`);
   }
   out.push("", "| Setup | " + RULES.join(" | ") + " |", "|---|" + RULES.map(() => "---").join("|") + "|");
   for (const s of summaries) out.push(`| ${s.setupId} | ${RULES.map((rule) => pct(s.rules[rule])).join(" | ")} |`);
@@ -112,7 +118,11 @@ export function renderReport(r: RunResults, opts: { random?: () => number; leftM
   }
 
   out.push("", "## Rankings", "", "Criteria are decided later; these views are for discussion (spec §29.7).", "");
-  const base = r.baseline ? summaries.find((s) => s.setupId === r.baseline) : undefined;
+  // Spec §30.5: the gate compares with the baseline setup when it ran here; a model round's baseline is an earlier run, so its first setup stands in.
+  const base = r.baseline
+    ? (summaries.find((s) => s.setupId === r.baseline) ?? summaries.find((s) => s.setupId === MODEL_REFERENCE) ?? summaries[0])
+    : undefined;
+  if (base) out.push(`Gate measured against: ${base.setupId}.`, "");
   const gate = (s: SetupSummary) => !base || HARD_RULES.every((h) => (s.rules[h] ?? 1) >= (base.rules[h] ?? 1)) && s.errors <= base.errors;
   const byWins = summaries.filter(gate).sort((a, b) => (b.pairs?.wins ?? 0) - (a.pairs?.wins ?? 0));
   out.push("**(a) Hard rules as a gate, then side-by-side wins:** " + (byWins.map((s) => `${s.setupId} (${s.pairs ? `${s.pairs.wins}W/${s.pairs.ties}T/${s.pairs.losses}L` : "no pairs"})`).join(", ") || "none pass the gate"));

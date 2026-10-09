@@ -120,6 +120,13 @@ export async function runQuestion(
     error = err instanceof Error ? err.message : String(err);
   }
 
+  // Spec §30.6: the guards' output is what the checks and the judge see; the raw reply is kept when they changed it.
+  let rawText: string | undefined;
+  if (text !== null && !error && setup.postProcess) {
+    const guarded = setup.postProcess(text);
+    if (guarded !== text) [rawText, text] = [text, guarded];
+  }
+
   const priced = await priceCalls(deps, ledger.calls);
   const answer: AnswerRecord = {
     questionId: q.id,
@@ -127,6 +134,7 @@ export async function runQuestion(
     persona: persona.slug,
     category: q.category,
     text: error ? null : text,
+    ...(rawText === undefined ? {} : { rawText }),
     error,
     truncated: seen.truncated,
     toolCalls,
@@ -137,6 +145,7 @@ export async function runQuestion(
     outputTokens: priced.reduce((s, c) => s + c.outputTokens, 0),
   };
   // A failed turn or a failed lookup is never recorded: every later replay would inherit the failure.
-  const clean = !saved && !error && recorded.every(lookupWorked);
+  // A live setup (another model) never records: its searches would replay for v0 (spec §30.6).
+  const clean = setup.lookups === "replay" && !saved && !error && recorded.every(lookupWorked);
   return { answer, recording: clean ? { questionId: q.id, question: questionKey(q), act, tools: recorded } : null };
 }

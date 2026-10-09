@@ -50,6 +50,23 @@ describe("renderReport", () => {
     expect(noted).toContain("**Note:** 8 answers re-run in visitor mode.");
     expect(noted).not.toContain("Stopped early");
   });
+  it("shows each setup's model and how often the guards changed a reply", () => {
+    const guarded = { ...results, answers: [scored({ questionId: "a", rawText: "**A**" }), scored({ questionId: "b" })] };
+    const out = renderReport(guarded, { random: () => 0 });
+    expect(out).toMatch(/\| Setup \| Model \| Answers \|/);
+    expect(out).toMatch(/\| Guards fired \|/);
+    expect(summarize(guarded)[0].guardsFired).toBe(1);
+    expect(out).toContain("| v1 | deepseek/deepseek-v4-pro |");
+  });
+  it("gates against the run's first setup when the baseline setup didn't run in it", () => {
+    const models = { ...results, baseline: "f", setups: ["m-v4pro", "m-haiku"],
+      models: { judge: "j", agent: { "m-v4pro": "deepseek/deepseek-v4-pro", "m-haiku": "anthropic/claude-haiku-5.5" } },
+      answers: [scored({ setupId: "m-v4pro" }), scored({ setupId: "m-haiku", judge: { ...scored({}).judge!, rules: { ...scored({}).judge!.rules, after_death: rule(false) } } })] };
+    const out = renderReport(models, { random: () => 0 });
+    expect(out).toContain("Gate measured against: m-v4pro");
+    expect(out).toMatch(/\(a\) Hard rules as a gate, then side-by-side wins:\*\* m-v4pro/);
+    expect(out).not.toMatch(/\(a\)[^\n]*m-haiku/);
+  });
   it("ranks under the three criteria", () => {
     expect(md).toContain("Hard rules as a gate, then side-by-side wins");
     expect(md).toContain("Weighted score");
@@ -86,5 +103,11 @@ describe("weighted", () => {
       scored({ questionId: "z" }),
     ] });
     expect(weighted(s)).toBeGreaterThanOrEqual(0);
+  });
+  it("gates a model run against m-v4pro wherever it is listed (final review #2)", () => {
+    const run = { ...results, baseline: "f", setups: ["m-haiku", "m-v4pro"],
+      models: { judge: "j", agent: { "m-v4pro": "deepseek/deepseek-v4-pro", "m-haiku": "anthropic/claude-haiku-5.5" } },
+      answers: [scored({ setupId: "m-haiku" }), scored({ setupId: "m-v4pro" })] };
+    expect(renderReport(run, { random: () => 0 })).toContain("Gate measured against: m-v4pro");
   });
 });

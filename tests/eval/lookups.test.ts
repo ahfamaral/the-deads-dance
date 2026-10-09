@@ -21,24 +21,42 @@ const recording: Recording = {
   ],
 };
 
-describe("replayTools (spec §29.4)", () => {
-  it("serves each tool's results in recorded order, whatever the search wording", async () => {
-    const tools = replayTools(recording);
-    const search = tools.find((t) => t.name === "search_biography")!;
-    const check = tools.find((t) => t.name === "fact_check_claim")!;
-    expect((await call(search, "search_biography", { query: "something else" })).artifact).toEqual({ ok: true, data: { passages: [] } });
-    expect((await call(check, "fact_check_claim", { claim: "y" })).artifact).toEqual({ ok: false, error: "timeout" });
-    expect((await call(search, "search_biography", { query: "z" }, "c2")).artifact).toEqual({ ok: true, data: { passages: [1] } });
+describe("replayTools (replay by arguments, after round 2a's mismatched fact-checks)", () => {
+  const liveSearch = (seen: string[]) => tool(async ({ query }: { query: string }) => { seen.push(query); return [`live ${query}`, { ok: true, data: { live: query } }]; }, {
+    name: "search_biography", description: "d", schema: z.object({ query: z.string() }), responseFormat: "content_and_artifact",
   });
 
-  it("gives an extra call beyond the recording an empty result, never a crash", async () => {
+  it("serves the recorded result whose arguments match, whatever the order of the calls", async () => {
+    const tools = replayTools(recording);
+    const search = tools.find((t) => t.name === "search_biography")!;
+    expect((await call(search, "search_biography", { query: "Bern" })).artifact).toEqual({ ok: true, data: { passages: [1] } });
+    expect((await call(search, "search_biography", { query: "Ulm" }, "c2")).artifact).toEqual({ ok: true, data: { passages: [] } });
+  });
+
+  it("matches arguments ignoring case and surrounding spaces", async () => {
     const search = replayTools(recording).find((t) => t.name === "search_biography")!;
-    await call(search, "search_biography", { query: "a" });
-    await call(search, "search_biography", { query: "b" });
-    const extra = await call(search, "search_biography", { query: "c" });
-    expect(extra.artifact).toEqual(EXTRA_CALL_RESULT);
-    const history = replayTools(recording).find((t) => t.name === "get_historical_context")!;
-    expect((await call(history, "get_historical_context", { year: 1905 })).artifact).toEqual(EXTRA_CALL_RESULT);
+    expect((await call(search, "search_biography", { query: "  ulm " })).artifact).toEqual({ ok: true, data: { passages: [] } });
+  });
+
+  it("serves the same recorded result again for a repeated identical call", async () => {
+    const search = replayTools(recording).find((t) => t.name === "search_biography")!;
+    await call(search, "search_biography", { query: "Ulm" });
+    expect((await call(search, "search_biography", { query: "Ulm" }, "c2")).artifact).toEqual({ ok: true, data: { passages: [] } });
+  });
+
+  it("runs a call nothing in the recording matches against the live tool, and counts it", async () => {
+    const seen: string[] = [];
+    let liveCalls = 0;
+    const search = replayTools(recording, async () => [liveSearch(seen) as never], () => liveCalls++).find((t) => t.name === "search_biography")!;
+    expect((await call(search, "search_biography", { query: "Zurich" })).artifact).toEqual({ ok: true, data: { live: "Zurich" } });
+    expect(seen).toEqual(["Zurich"]);
+    expect(liveCalls).toBe(1);
+  });
+
+  it("without live tools, an unmatched call gets the empty result, never a crash", async () => {
+    const tools = replayTools(recording);
+    expect((await call(tools.find((t) => t.name === "search_biography")!, "search_biography", { query: "c" })).artifact).toEqual(EXTRA_CALL_RESULT);
+    expect((await call(tools.find((t) => t.name === "get_historical_context")!, "get_historical_context", { year: 1905 })).artifact).toEqual(EXTRA_CALL_RESULT);
   });
 
   it("offers exactly the three locked tools", () => {
@@ -56,6 +74,17 @@ describe("recordingTools", () => {
     const result = await call(wrapped, "search_biography", { query: "Ulm" });
     expect(result.artifact).toEqual({ ok: true, data: { query: "Ulm" } });
     expect(into).toEqual([{ name: "search_biography", args: { query: "Ulm" }, content: "found Ulm", envelope: { ok: true, data: { query: "Ulm" } } }]);
+  });
+
+  it("records calls in the order they were made, even when a later call finishes first", async () => {
+    const live = tool(async ({ query }: { query: string }) => {
+      await new Promise((r) => setTimeout(r, query === "slow" ? 30 : 0));
+      return [query, { ok: true, data: { query } }];
+    }, { name: "search_biography", description: "d", schema: z.object({ query: z.string() }), responseFormat: "content_and_artifact" });
+    const into: ToolRecord[] = [];
+    const [wrapped] = recordingTools([live], into);
+    await Promise.all([call(wrapped, "search_biography", { query: "slow" }), call(wrapped, "search_biography", { query: "fast" }, "c2")]);
+    expect(into.map((r) => r.args.query)).toEqual(["slow", "fast"]);
   });
 });
 

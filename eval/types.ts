@@ -23,6 +23,8 @@ export type AnswerRecord = {
   truncated: boolean;
   toolCalls: ToolCall[];
   lookups: "live" | "replay";
+  /** In a replay, the calls the recording didn't hold, run live. */
+  liveLookups?: number;
   durationMs: number;
   answerMicros: number;
   inputTokens: number;

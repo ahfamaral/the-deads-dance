@@ -37,7 +37,7 @@ describe("runQuestion (spec §29.4)", () => {
   });
 
   it("replays a saved recording without touching live tools or the classifier", async () => {
-    const saved: Recording = { questionId: "q1", question: questionKey(question), act: null, tools: [{ name: "search_biography", args: { query: "x" }, content: "c", envelope: { ok: true, data: { passages: [] } } }] };
+    const saved: Recording = { questionId: "q1", question: questionKey(question), act: null, tools: [{ name: "search_biography", args: { query: "birth" }, content: "c", envelope: { ok: true, data: { passages: [] } } }] };
     const liveTools = vi.fn(async () => null);
     const classify = vi.fn(async () => null);
     const model = fakeModel().respond(searchCall).respond(new AIMessage("In Ulm."));
@@ -147,6 +147,17 @@ describe("runQuestion (spec §29.4)", () => {
     const model = fakeModel().respond(searchCall).respond(new AIMessage("In Ulm."));
     const { answer, recording } = await runQuestion(deps(), question, setup(model, "live"), persona);
     expect(answer.lookups).toBe("live");
+    expect(recording).toBeNull();
+  });
+
+  it("runs a replayed call that doesn't match the recording live, and counts it", async () => {
+    const saved: Recording = { questionId: "q1", question: questionKey(question), act: null, tools: [{ name: "search_biography", args: { query: "something else" }, content: "c", envelope: { ok: true, data: { passages: [] } } }] };
+    const liveTools = vi.fn(async () => [liveSearch as never]);
+    const model = fakeModel().respond(searchCall).respond(new AIMessage("In Ulm."));
+    const { answer, recording } = await runQuestion(deps({ liveTools, recordingFor: () => saved }), question, setup(model), persona);
+    expect(answer.lookups).toBe("replay");
+    expect(answer.liveLookups).toBe(1);
+    expect(liveTools).toHaveBeenCalledTimes(1);
     expect(recording).toBeNull();
   });
 });

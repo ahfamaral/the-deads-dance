@@ -64,6 +64,7 @@ export async function runQuestion(
   const previous = q.history?.at(-1);
 
   let act: Recording["act"] = null;
+  let liveLookups = 0;
   const recorded: ToolRecord[] = [];
   const seen = { truncated: false };
   let text: string | null = null;
@@ -73,7 +74,11 @@ export async function runQuestion(
     let tools: DynamicStructuredTool[];
     if (saved) {
       act = saved.act;
-      tools = replayTools(saved);
+      // A call the recording doesn't hold runs live, on this question's ledger (found after round 2a).
+      tools = replayTools(saved, async () => {
+        const live = await deps.liveTools();
+        return live && lockPersona(live, persona.slug, ledger);
+      }, () => liveLookups++);
     } else {
       const [live, classified] = await Promise.all([
         deps.liveTools(),
@@ -135,6 +140,7 @@ export async function runQuestion(
     category: q.category,
     text: error ? null : text,
     ...(rawText === undefined ? {} : { rawText }),
+    ...(saved ? { liveLookups } : {}),
     error,
     truncated: seen.truncated,
     toolCalls,

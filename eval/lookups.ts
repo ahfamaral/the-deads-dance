@@ -6,7 +6,7 @@ import { z } from "zod";
 import { LOCKED_SCHEMAS, LOCKED_TOOL_NAMES, type ToolEnvelope } from "@/lib/server/persona-tools";
 import type { Question, Recording, ToolRecord } from "./types";
 
-/** Spec §29.4: a replayed setup that calls a tool more often than the recording gets nothing more. */
+/** Spec §29.4: a replayed call with no recorded match and no live tools gets nothing more. */
 export const EXTRA_CALL_RESULT: ToolEnvelope = { ok: false, error: "No more results." };
 const EXTRA_CALL_CONTENT = "Tool failed: No more results.";
 
@@ -27,13 +27,15 @@ export function recordingTools(live: DynamicStructuredTool[], into: ToolRecord[]
   return live.map((inner) =>
     tool(
       async (args: Record<string, unknown>, config) => {
+        // The slot is taken before the call, so parallel calls are recorded in the order they were made.
+        const slot = into.push({ name: inner.name, args, content: "", envelope: { ok: false, error: "The tool returned no result." } }) - 1;
         const msg = await inner.invoke(
           { type: "tool_call", id: config.toolCall?.id ?? crypto.randomUUID(), name: inner.name, args },
           { signal: config.signal },
         );
         const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
         const envelope = (msg.artifact ?? { ok: false, error: "The tool returned no result." }) as ToolEnvelope;
-        into.push({ name: inner.name, args, content, envelope });
+        into[slot] = { name: inner.name, args, content, envelope };
         return asArtifactResult({ content, envelope });
       },
       { name: inner.name, description: inner.description, schema: inner.schema, responseFormat: "content_and_artifact" },
@@ -41,16 +43,39 @@ export function recordingTools(live: DynamicStructuredTool[], into: ToolRecord[]
   );
 }
 
-/** Spec §29.4, replay mode: the three locked tools, serving the recording by tool name and call order. */
-export function replayTools(recording: Recording): DynamicStructuredTool[] {
-  const served = new Map<string, number>();
+/** Arguments compared for replay: keys sorted, string values trimmed and lower-cased. */
+function argsKey(args: Record<string, unknown>): string {
+  return JSON.stringify(Object.keys(args).sort().map((k) => [k, typeof args[k] === "string" ? (args[k] as string).trim().toLowerCase() : args[k]]));
+}
+
+/**
+ * Replay mode: the three locked tools. A call gets the recorded result for the same tool and arguments, whatever
+ * the order (serving by call order gave fact-checks other claims' verdicts, found after round 2a). A call nothing
+ * matches runs against the live tools when given (counted by onLive), or gets the empty result.
+ */
+export function replayTools(
+  recording: Recording,
+  live?: () => Promise<DynamicStructuredTool[] | null>,
+  onLive?: () => void,
+): DynamicStructuredTool[] {
+  const used = new Set<number>();
+  let liveTools: Promise<DynamicStructuredTool[] | null> | null = null;
   return LOCKED_TOOL_NAMES.map((name) =>
     tool(
-      async () => {
-        const nth = served.get(name) ?? 0;
-        served.set(name, nth + 1);
-        const hit = recording.tools.filter((t) => t.name === name)[nth];
-        return asArtifactResult(hit ?? { content: EXTRA_CALL_CONTENT, envelope: EXTRA_CALL_RESULT });
+      async (args: Record<string, unknown>, config) => {
+        const key = argsKey(args);
+        const matches = recording.tools.flatMap((t, i) => (t.name === name && argsKey(t.args) === key ? [i] : []));
+        const hit = matches.find((i) => !used.has(i)) ?? matches[0];
+        if (hit !== undefined) {
+          used.add(hit);
+          return asArtifactResult(recording.tools[hit]);
+        }
+        const inner = live ? (await (liveTools ??= live()))?.find((t) => t.name === name) : undefined;
+        if (!inner) return asArtifactResult({ content: EXTRA_CALL_CONTENT, envelope: EXTRA_CALL_RESULT });
+        onLive?.();
+        const msg = await inner.invoke({ type: "tool_call", id: config.toolCall?.id ?? crypto.randomUUID(), name, args }, { signal: config.signal });
+        const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+        return asArtifactResult({ content, envelope: (msg.artifact ?? { ok: false, error: "The tool returned no result." }) as ToolEnvelope });
       },
       { name, description: DESCRIPTIONS[name], schema: LOCKED_SCHEMAS[name], responseFormat: "content_and_artifact" },
     ) as DynamicStructuredTool,

@@ -39,7 +39,7 @@ function byPersona(questions: Question[]): Question[] {
 
 const failed = (q: Question, setup: Setup, error: string): ScoredAnswer => ({
   questionId: q.id, setupId: setup.id, persona: q.persona, category: q.category, text: null, error, truncated: false,
-  toolCalls: [], lookups: "live", durationMs: 0, answerMicros: 0, inputTokens: 0, outputTokens: 0,
+  toolCalls: [], lookups: "live", durationMs: 0, firstWordMs: null, answerMicros: 0, inputTokens: 0, outputTokens: 0,
   checks: null, judge: null, judgeError: null, pairError: null, faithfulness: null, contextPrecision: null, retrieval: null, pair: null, judgeMicros: 0,
 });
 

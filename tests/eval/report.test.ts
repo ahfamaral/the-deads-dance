@@ -34,6 +34,25 @@ describe("summarize (spec §29.7)", () => {
   });
 });
 
+describe("latency (spec §30.5)", () => {
+  const timed = (i: number) => scored({ questionId: `t${i}`, durationMs: i * 1_000, firstWordMs: i * 100 });
+  const run10 = { ...results, answers: Array.from({ length: 10 }, (_, i) => timed(i + 1)) };
+  it("reports the first word's median and 90th percentile, and the total time's 90th percentile", () => {
+    const [s] = summarize(run10);
+    expect(s).toMatchObject({ firstWordMedian: 500, firstWordP90: 900, msMedian: 5_000, msP90: 9_000, msMax: 10_000 });
+  });
+  it("leaves the first word out for answers from before it was timed", () => {
+    expect(summarize(results)[0]).toMatchObject({ firstWordMedian: null, firstWordP90: null });
+  });
+  it("shows the times in the summary and a quality / cost / speed view", () => {
+    const md = renderReport(run10, { random: () => 0 });
+    expect(md).toContain("| First word (median/p90) | Time (median/p90/max) |");
+    expect(md).toContain("| 0.5 s/0.9 s | 5.0 s/9.0 s/10.0 s |");
+    expect(md).toContain("## Quality, cost and speed");
+    expect(md).toMatch(/\| v1 \| 0\.\d\d \| 100% \| \$0\.003 \| 0\.5 s \| 5\.0 s \|/);
+  });
+});
+
 describe("renderReport", () => {
   const md = renderReport(results, { random: () => 0, leftMicros: 6_000_000 });
   it("has the header, summary, per-category, rankings, worst answers, spot-check and caveats", () => {

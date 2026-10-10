@@ -70,6 +70,7 @@ export async function runQuestion(
   let text: string | null = null;
   let error: string | null = null;
   let toolCalls: AnswerRecord["toolCalls"] = [];
+  let firstWordMs: number | null = null;
   try {
     let tools: DynamicStructuredTool[];
     if (saved) {
@@ -113,7 +114,9 @@ export async function runQuestion(
         seen,
       ),
     })) {
-      if (event.type === "done") {
+      if (event.type === "token" && firstWordMs === null && /\S/.test(event.text)) {
+        firstWordMs = now() - started;
+      } else if (event.type === "done") {
         text = event.message.text;
         toolCalls = event.message.toolCalls;
       } else if (event.type === "error") {
@@ -146,6 +149,7 @@ export async function runQuestion(
     toolCalls,
     lookups: saved ? "replay" : "live",
     durationMs: now() - started,
+    firstWordMs,
     answerMicros: priced.reduce((s, c) => s + c.cost, 0),
     inputTokens: priced.reduce((s, c) => s + c.inputTokens, 0),
     outputTokens: priced.reduce((s, c) => s + c.outputTokens, 0),

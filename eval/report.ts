@@ -15,7 +15,8 @@ export type SetupSummary = {
   /** Replies cut off at the agent's max_tokens (spec §28.2). */
   truncated: number;
   tokensMean: { input: number; output: number } | null;
-  costPerAnswerMicros: number; msMedian: number | null; msMax: number | null;
+  costPerAnswerMicros: number; msMedian: number | null; msP90: number | null; msMax: number | null;
+  firstWordMedian: number | null; firstWordP90: number | null;
   pairs: { wins: number; ties: number; losses: number; baselineFirstWins: number; candidateFirstWins: number } | null;
 };
 
@@ -32,6 +33,9 @@ const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.floor((s.length - 1) / 2)];
 };
+/** The 90th percentile by nearest rank: the time 9 in 10 answers beat. */
+const p90 = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.ceil(xs.length * 0.9) - 1] : null);
+const secs = (ms: number | null) => (ms === null ? "—" : `${(ms / 1000).toFixed(1)} s`);
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
 const num = (x: number | null, d = 2) => (x === null ? "—" : x.toFixed(d));
 
@@ -65,6 +69,9 @@ function summarizeGroup(setupId: string, answers: ScoredAnswer[]): SetupSummary 
     guardsFired: answers.filter((a) => a.rawText !== undefined).length,
     costPerAnswerMicros: answers.length ? Math.round(answers.reduce((s, a) => s + a.answerMicros + a.judgeMicros, 0) / answers.length) : 0,
     msMedian: median(answers.filter((a) => !a.error).map((a) => a.durationMs)),
+    msP90: p90(answers.filter((a) => !a.error).map((a) => a.durationMs)),
+    firstWordMedian: median(answers.flatMap((a) => (a.firstWordMs == null ? [] : [a.firstWordMs]))),
+    firstWordP90: p90(answers.flatMap((a) => (a.firstWordMs == null ? [] : [a.firstWordMs]))),
     msMax: answers.length ? Math.max(...answers.map((a) => a.durationMs)) : null,
     pairs: pairs.length
       ? {
@@ -101,9 +108,9 @@ export function renderReport(r: RunResults, opts: { random?: () => number; leftM
   if (r.stoppedReason) out.push(`**Stopped early:** ${r.stoppedReason}.`);
   for (const note of r.notes ?? []) out.push(`**Note:** ${note}.`);
 
-  out.push("", "## Summary", "", "| Setup | Model | Answers | Errors | Faithfulness | Relevancy | Ctx precision | Recall@3 | MRR | Words (median/max) | Over 2 ¶ | Markdown | Assistant phrases | Guards fired | Cut off | Tokens in/out (mean) | Cost/answer | Time (median/max) |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+  out.push("", "## Summary", "", "| Setup | Model | Answers | Errors | Faithfulness | Relevancy | Ctx precision | Recall@3 | MRR | Words (median/max) | Over 2 ¶ | Markdown | Assistant phrases | Guards fired | Cut off | Tokens in/out (mean) | Cost/answer | First word (median/p90) | Time (median/p90/max) |", "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const s of summaries) {
-    out.push(`| ${s.setupId} | ${r.models.agent[s.setupId] ?? "—"} | ${s.answers} | ${s.errors} | ${pct(s.faithfulness)} | ${num(s.relevancy, 1)} | ${pct(s.contextPrecision)} | ${pct(s.recallAt3)} | ${num(s.mrr)} | ${s.wordsMedian ?? "—"}/${s.wordsMax ?? "—"} | ${s.overTwoParagraphs} | ${s.markdown} | ${s.assistantPhrases} | ${s.guardsFired} | ${s.truncated} | ${s.tokensMean ? `${s.tokensMean.input}/${s.tokensMean.output}` : "—"} | ${formatDollars(s.costPerAnswerMicros)} | ${s.msMedian === null ? "—" : `${(s.msMedian / 1000).toFixed(1)} s`}/${s.msMax === null ? "—" : `${(s.msMax / 1000).toFixed(1)} s`} |`);
+    out.push(`| ${s.setupId} | ${r.models.agent[s.setupId] ?? "—"} | ${s.answers} | ${s.errors} | ${pct(s.faithfulness)} | ${num(s.relevancy, 1)} | ${pct(s.contextPrecision)} | ${pct(s.recallAt3)} | ${num(s.mrr)} | ${s.wordsMedian ?? "—"}/${s.wordsMax ?? "—"} | ${s.overTwoParagraphs} | ${s.markdown} | ${s.assistantPhrases} | ${s.guardsFired} | ${s.truncated} | ${s.tokensMean ? `${s.tokensMean.input}/${s.tokensMean.output}` : "—"} | ${formatDollars(s.costPerAnswerMicros)} | ${secs(s.firstWordMedian)}/${secs(s.firstWordP90)} | ${secs(s.msMedian)}/${secs(s.msP90)}/${secs(s.msMax)} |`);
   }
   out.push("", "| Setup | " + RULES.join(" | ") + " |", "|---|" + RULES.map(() => "---").join("|") + "|");
   for (const s of summaries) out.push(`| ${s.setupId} | ${RULES.map((rule) => pct(s.rules[rule])).join(" | ")} |`);
@@ -133,6 +140,13 @@ export function renderReport(r: RunResults, opts: { random?: () => number; leftM
   out.push("**(c) Cheapest at least as good as the baseline:** " + (asGood.sort((a, b) => a.costPerAnswerMicros - b.costPerAnswerMicros).map((s) => `${s.setupId} ${formatDollars(s.costPerAnswerMicros)}`).join(", ") || "none"));
   for (const s of summaries) {
     if (s.pairs) out.push(`Position lean for ${s.setupId}: wins when shown first ${s.pairs.candidateFirstWins}, when shown second ${s.pairs.baselineFirstWins}.`);
+  }
+
+  // Spec §30.5: quality first; cost and speed only break ties between setups of about the same quality.
+  out.push("", "## Quality, cost and speed", "", "Sorted by weighted score; cost and speed break ties only. Compare times only between live setups.", "");
+  out.push("| Setup | Weighted | As expected | Cost/answer | First word (median) | Time (median) |", "|---|---|---|---|---|---|");
+  for (const s of [...summaries].sort((a, b) => weighted(b) - weighted(a))) {
+    out.push(`| ${s.setupId} | ${weighted(s).toFixed(2)} | ${pct(s.rules.as_expected)} | ${formatDollars(s.costPerAnswerMicros)} | ${secs(s.firstWordMedian)} | ${secs(s.msMedian)} |`);
   }
 
   const failedRules = (a: ScoredAnswer) => (a.judge ? RULES.filter((rule) => a.judge!.rules[rule]?.pass === false) : []);

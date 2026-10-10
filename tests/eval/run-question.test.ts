@@ -64,6 +64,19 @@ describe("runQuestion (spec §29.4)", () => {
     expect(answer.inputTokens).toBe(answer.answerMicros / 1_000 * 10);
   });
 
+  it("times the first word apart from the whole answer (spec §30.5, latency)", async () => {
+    const model = fakeModel().respond(new AIMessage("In Ulm."));
+    const { answer } = await runQuestion(deps(), question, setup(model), persona);
+    expect(answer.firstWordMs).toBe(100); // the clock ticks 100 ms a reading: start, first word, end
+    expect(answer.durationMs).toBe(200);
+  });
+
+  it("has no first word when the turn fails", async () => {
+    const model = fakeModel().respond(new Error("429 Too Many Requests"));
+    const { answer } = await runQuestion(deps(), question, setup(model), persona);
+    expect(answer.firstWordMs).toBeNull();
+  });
+
   it("records a turn that fails as an error, not a throw, and saves no recording of it", async () => {
     const model = fakeModel().respond(new Error("429 Too Many Requests"));
     const { answer, recording } = await runQuestion(deps(), question, setup(model), persona);

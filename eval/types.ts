@@ -26,6 +26,8 @@ export type AnswerRecord = {
   /** In a replay, the calls the recording didn't hold, run live. */
   liveLookups?: number;
   durationMs: number;
+  /** Spec §30.5: when the first visible word streamed; null if none did, missing on runs from before it was timed. */
+  firstWordMs?: number | null;
   answerMicros: number;
   inputTokens: number;
   outputTokens: number;

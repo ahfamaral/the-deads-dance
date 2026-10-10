@@ -48,7 +48,7 @@ Three models are used, all via OpenRouter:
 - a recall model: events the biography leaves out.
 
 The optional `AGENT_MODEL` / `HELPER_MODEL` / `RECALL_MODEL` env vars override
-the defaults, which are `deepseek/deepseek-v4-pro` for the agent and
+the defaults, which are `anthropic/claude-haiku-5.5` for the agent and
 `deepseek/deepseek-v4.1-flash` for the helper and recall. `AGENT_REASONING_EFFORT` sets the agent's reasoning
 effort (default `low`).
 

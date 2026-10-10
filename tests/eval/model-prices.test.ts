@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeModels, fetchModelPrices, priceScale } from "../../eval/model-prices";
+import { describeModels, fetchModelPrices, PRICE_REFERENCE, priceScale } from "../../eval/model-prices";
 
 const list = { data: [
   { id: "deepseek/deepseek-v4-pro", pricing: { prompt: "0.00000096", completion: "0.00000191" } },
@@ -14,7 +14,8 @@ describe("model prices (spec §30.6)", () => {
     expect(haiku.prompt).toBeCloseTo(0.1, 9); // 1e-7 × 1e6 is 0.0999… in floating point
     expect(haiku.completion).toBeCloseTo(0.5, 9);
   });
-  it("scales by the cost of a baseline-sized answer against v4-pro", async () => {
+  it("scales by the cost of a baseline-sized answer against v4-pro, whatever the app's model", async () => {
+    expect(PRICE_REFERENCE).toBe("deepseek/deepseek-v4-pro");
     const prices = await fetchModelPrices(fakeFetch);
     expect(priceScale(prices, "deepseek/deepseek-v4-pro")).toBe(1);
     const expected = (9_119 * 0.1 + 2_221 * 0.5) / (9_119 * 0.96 + 2_221 * 1.91);

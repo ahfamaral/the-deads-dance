@@ -14,7 +14,7 @@ describe("setups (spec §29.2)", () => {
   it("v0's model is the app's agent model", () => {
     vi.stubEnv("OPENROUTER_API_KEY", "k");
     vi.stubEnv("AGENT_MODEL", "");
-    expect((SETUPS.v0.agentModel() as unknown as { model: string }).model).toBe("deepseek/deepseek-v4-pro");
+    expect((SETUPS.v0.agentModel() as unknown as { model: string }).model).toBe("anthropic/claude-haiku-5.5");
     vi.unstubAllEnvs();
   });
   it("registers F, V3, V4 and V5 with replayed lookups, the app's model and the visitor's language", () => {

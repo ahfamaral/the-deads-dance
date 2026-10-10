@@ -12,7 +12,7 @@ import { codeWarning, readCodeVersion } from "./code-version";
 import { judgeWith } from "./judge";
 import { questionKey, readRecording, writeRecording } from "./lookups";
 import { loadQuestions, selectQuestions } from "./questions";
-import { describeModels, fetchModelPrices, priceScale } from "./model-prices";
+import { describeModels, fetchModelPrices, PRICE_REFERENCE, priceScale } from "./model-prices";
 import { renderReport } from "./report";
 import { runEval } from "./run";
 import { pickSetups, preflightSetups, type Setup } from "./setups";
@@ -44,10 +44,10 @@ export function baselineWarning(setupIds: string[], baselineSetupId: string): st
     : null;
 }
 
-/** The live answers that measure liveAnswer: on the app's own model only, so a model round can't skew later estimates (§30.6). */
+/** The live answers that measure liveAnswer: on the price reference (v4-pro) only, so neither a model round nor the app's own model can skew later estimates (§30.6). */
 export function measuredLiveAnswers<A extends { setupId: string; lookups: string; error: string | null }>(answers: A[], setups: Pick<Setup, "id" | "modelId">[]): A[] {
-  const appModel = new Set(setups.filter((s) => !s.modelId || s.modelId === modelId("agent")).map((s) => s.id));
-  return answers.filter((a) => a.lookups === "live" && !a.error && appModel.has(a.setupId));
+  const onReference = new Set(setups.filter((s) => (s.modelId ?? modelId("agent")) === PRICE_REFERENCE).map((s) => s.id));
+  return answers.filter((a) => a.lookups === "live" && !a.error && onReference.has(a.setupId));
 }
 
 /** Spec §30.4: the baseline is one setup of an earlier run: the one named after a colon, or the run's first. */

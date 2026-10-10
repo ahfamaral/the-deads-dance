@@ -18,9 +18,9 @@ describe("modelId", () => {
     expect(modelId("helper")).toBe(DEFAULT_MODELS.helper);
   });
 
-  it("defaults to DeepSeek: v4-pro for the agent, v4.1-flash for the helper and recall", () => {
+  it("defaults to Claude Haiku 5.5 for the agent (Phase 5's winner), DeepSeek v4.1-flash for the helper and recall", () => {
     expect(DEFAULT_MODELS).toEqual({
-      agent: "deepseek/deepseek-v4-pro",
+      agent: "anthropic/claude-haiku-5.5",
       helper: "deepseek/deepseek-v4.1-flash",
       recall: "deepseek/deepseek-v4.1-flash",
     });

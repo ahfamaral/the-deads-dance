@@ -1,9 +1,14 @@
 import { z } from "zod";
 import { OPENROUTER_BASE_URL } from "@corpus/embeddings";
-import { DEFAULT_MODELS } from "@corpus/models";
 
 /** Micro-dollars per token. */
 export type ModelPrice = { prompt: number; completion: number };
+
+/**
+ * The model the estimates are measured on: REFERENCE_TOKENS and budget.json's live-answer cost come from v4-pro runs.
+ * Fixed, not the app's model, so switching the app (to Haiku in Phase 5) doesn't rescale every estimate.
+ */
+export const PRICE_REFERENCE = "deepseek/deepseek-v4-pro";
 
 /** The baseline's mean tokens per answer on v4-pro (eval/runs/2026-10-08-17-39-baseline-v0). */
 export const REFERENCE_TOKENS = { input: 9_119, output: 2_221 };
@@ -19,7 +24,7 @@ export async function fetchModelPrices(fetchImpl: typeof fetch = fetch): Promise
 }
 
 /** Spec §30.6: what a baseline-sized answer costs on `model`, as a share of the same answer on the reference. */
-export function priceScale(prices: Map<string, ModelPrice>, model: string, reference: string = DEFAULT_MODELS.agent): number {
+export function priceScale(prices: Map<string, ModelPrice>, model: string, reference: string = PRICE_REFERENCE): number {
   const cost = (id: string) => {
     const p = prices.get(id);
     if (!p) throw new Error(`${id} is not on OpenRouter's price list; check the id before spending.`);

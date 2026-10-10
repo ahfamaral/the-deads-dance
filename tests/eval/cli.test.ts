@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { baselineFrom, baselineWarning, measuredLiveAnswers, parseArgs } from "../../eval/cli";
 
 describe("parseArgs", () => {
@@ -34,10 +34,17 @@ describe("baselineFrom (spec §30.4)", () => {
 });
 
 describe("measuredLiveAnswers (final review #1)", () => {
-  it("measures live cost only on the app's own model, so a model round can't skew later estimates", () => {
-    const setups = [{ id: "v0" }, { id: "m-v4pro", modelId: "deepseek/deepseek-v4-pro" }, { id: "m-kimi", modelId: "moonshotai/kimi-k2.6" }] as never;
-    const a = (setupId: string, lookups = "live", error: string | null = null) => ({ setupId, lookups, error }) as never;
-    const kept = measuredLiveAnswers([a("v0"), a("m-v4pro"), a("m-kimi"), a("v0", "replay"), a("v0", "live", "down")], setups);
-    expect(kept.map((x: { setupId: string }) => x.setupId)).toEqual(["v0", "m-v4pro"]);
+  afterEach(() => vi.unstubAllEnvs());
+  const setups = [{ id: "v0" }, { id: "m-v4pro", modelId: "deepseek/deepseek-v4-pro" }, { id: "m-kimi", modelId: "moonshotai/kimi-k2.6" }] as never;
+  const a = (setupId: string, lookups = "live", error: string | null = null) => ({ setupId, lookups, error }) as never;
+  const answers = () => [a("v0"), a("m-v4pro"), a("m-kimi"), a("v0", "replay"), a("v0", "live", "down")];
+  const ids = (xs: { setupId: string }[]) => xs.map((x) => x.setupId);
+  it("measures live cost only on the price reference (v4-pro), so a model round can't skew later estimates", () => {
+    vi.stubEnv("AGENT_MODEL", "deepseek/deepseek-v4-pro");
+    expect(ids(measuredLiveAnswers(answers(), setups))).toEqual(["v0", "m-v4pro"]);
+  });
+  it("leaves out the app's own setups once the app runs another model (Haiku since Phase 5)", () => {
+    vi.stubEnv("AGENT_MODEL", "anthropic/claude-haiku-5.5");
+    expect(ids(measuredLiveAnswers(answers(), setups))).toEqual(["m-v4pro"]);
   });
 });

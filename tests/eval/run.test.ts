@@ -40,6 +40,11 @@ describe("runEval (spec §29.4, §29.8)", () => {
     expect(r.models).toEqual({ judge: "j", agent: { v0: "m" } });
   });
 
+  it("records the code version it ran on", async () => {
+    const code = { commit: "13fa689", uncommitted: [] };
+    expect((await runEval(opts({ code }))).code).toEqual([code]);
+  });
+
   it("stops at $1 and keeps every answer done so far (Review Focus 1)", async () => {
     const r = await runEval(opts({ questions: [q("a"), q("b"), q("c"), q("d"), q("e")], spend: new RunSpend() }));
     expect(r.answers).toHaveLength(4); // 4 × 301,000 crosses $1 on the 4th

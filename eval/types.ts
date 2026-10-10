@@ -71,6 +71,9 @@ export type ScoredAnswer = AnswerRecord & {
   judgeMicros: number;
 };
 
+/** The git commit a run's answers came from, and any code files changed but not committed (spec §30.4). */
+export type CodeVersion = { commit: string; uncommitted: string[] };
+
 export type RunResults = {
   name: string;
   startedAt: string;
@@ -84,5 +87,7 @@ export type RunResults = {
   notes?: string[];
   /** What was measured: each setup's agent model, and the judge. */
   models: { judge: string; agent: Record<string, string> };
+  /** One per run merged in; missing on runs from before commits were recorded. */
+  code?: CodeVersion[];
   answers: ScoredAnswer[];
 };

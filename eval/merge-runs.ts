@@ -19,6 +19,7 @@ export function mergeResults(into: RunResults, from: RunResults, note: string): 
     stoppedReason: [into.stoppedReason, from.stoppedReason].filter(Boolean).join("; ") || null,
     notes: [...(into.notes ?? []), note],
     models: { judge: into.models.judge, agent: { ...into.models.agent, ...from.models.agent } },
+    code: [...(into.code ?? []), ...(from.code ?? [])].filter((c, i, all) => all.findIndex((d) => JSON.stringify(d) === JSON.stringify(c)) === i),
     answers: [...into.answers.filter((a) => !replaced.has(key(a))), ...from.answers],
   };
 }

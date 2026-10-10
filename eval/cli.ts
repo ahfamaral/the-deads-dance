@@ -8,6 +8,7 @@ import { resolveCosts } from "@/lib/server/pricing";
 import { visitorClassifier } from "@/lib/server/visitor-classifier";
 import { CostLedger } from "@corpus/cost-ledger";
 import { checkLimits, DEFAULT_COSTS, describeEstimate, estimateMicros, readBudget, RunSpend, runLimitMicros, TOTAL_LIMIT_MICROS, withRun, writeBudget, type BudgetFile } from "./budget";
+import { codeWarning, readCodeVersion } from "./code-version";
 import { judgeWith } from "./judge";
 import { questionKey, readRecording, writeRecording } from "./lookups";
 import { loadQuestions, selectQuestions } from "./questions";
@@ -88,6 +89,9 @@ async function main(): Promise<void> {
   const refusal = checkLimits(estimate, spent);
   if (refusal) throw new Error(refusal);
 
+  const code = readCodeVersion();
+  const dirty = codeWarning(code);
+  if (dirty) console.log(dirty);
   console.log(describeEstimate({ estimate, spent, creating: budget === null, confirmed: args.confirm }));
   if (!args.confirm) return; // spec §29.4: a dry run spends nothing
 
@@ -139,6 +143,7 @@ async function main(): Promise<void> {
         saveSpend(micros);
       },
       priceJudge,
+      code,
       models: { judge: modelId("helper"), agent: Object.fromEntries(setups.map((s) => [s.id, (s.agentModel() as unknown as { model: string }).model])) },
       now: () => new Date(startedAt),
     });

@@ -72,6 +72,10 @@ describe("renderReport", () => {
     expect(md).toContain("Weighted score");
     expect(md).toContain("Cheapest at least as good as the baseline");
   });
+  it("names the commit the answers ran on", () => {
+    expect(renderReport({ ...results, code: [{ commit: "13fa689", uncommitted: [] }] }, { random: () => 0 })).toContain("Code: commit 13fa689.");
+    expect(md).toContain("Code: commit not recorded.");
+  });
   it("names the models that were measured and the judge", () => {
     expect(md).toContain("v1: deepseek/deepseek-v4-pro");
     expect(md).toContain("Judge: deepseek/deepseek-v4.1-flash");

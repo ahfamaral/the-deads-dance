@@ -1,4 +1,5 @@
 import { formatDollars, TOTAL_LIMIT_MICROS } from "./budget";
+import { describeCode } from "./code-version";
 import type { RunResults, ScoredAnswer } from "./types";
 
 export type SetupSummary = {
@@ -95,6 +96,7 @@ export function renderReport(r: RunResults, opts: { random?: () => number; leftM
   out.push(`# Evaluation run: ${r.name}`, "");
   out.push(`Started ${r.startedAt}. Setups: ${r.setups.join(", ")}${r.baseline ? `; baseline: ${r.baseline}` : ""}. Questions: ${r.questions.length}.`);
   out.push(`Estimated ${formatDollars(r.estimateMicros)}, actual ${formatDollars(r.actualMicros)}.${opts.leftMicros === undefined ? "" : ` ${formatDollars(opts.leftMicros)} left of ${formatDollars(TOTAL_LIMIT_MICROS)}.`}`);
+  out.push(describeCode(r.code));
   out.push(`Models: ${Object.entries(r.models.agent).map(([id, m]) => `${id}: ${m}`).join("; ")}. Judge: ${r.models.judge}, reasoning off.`);
   if (r.stoppedReason) out.push(`**Stopped early:** ${r.stoppedReason}.`);
   for (const note of r.notes ?? []) out.push(`**Note:** ${note}.`);

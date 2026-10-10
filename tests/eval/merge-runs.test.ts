@@ -25,6 +25,13 @@ describe("mergeResults (spec §30.4)", () => {
     expect(merged.notes).toEqual(["second half"]);
     expect(Object.keys(merged.models.agent)).toEqual(["v0", "f"]);
   });
+  it("keeps each half's code version, once each", () => {
+    const a = { commit: "13fa689", uncommitted: [] };
+    const b = { commit: "abc1234", uncommitted: [] };
+    expect(mergeResults(run({ code: [a] }), run({ code: [b] }), "n").code).toEqual([a, b]);
+    expect(mergeResults(run({ code: [a] }), run({ code: [a] }), "n").code).toEqual([a]);
+    expect(mergeResults(run({}), run({ code: [b] }), "n").code).toEqual([b]);
+  });
   it("keeps one answer per setup and question: the newer", () => {
     const merged = mergeResults(run({ answers: [ans("v0", "a", "old")] }), run({ answers: [ans("v0", "a", "new")] }), "redo");
     expect(merged.answers).toEqual([ans("v0", "a", "new")]);

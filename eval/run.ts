@@ -4,7 +4,7 @@ import type { Judge } from "./judge";
 import { runQuestion, type QuestionDeps } from "./run-question";
 import { scoreAnswer } from "./score";
 import type { Setup } from "./setups";
-import type { AnswerRecord, Question, Recording, RunResults, ScoredAnswer } from "./types";
+import type { AnswerRecord, CodeVersion, Question, Recording, RunResults, ScoredAnswer } from "./types";
 
 export type RunOpts = {
   name: string;
@@ -22,6 +22,7 @@ export type RunOpts = {
   log?: (line: string) => void;
   now?: () => Date;
   models: RunResults["models"];
+  code?: CodeVersion;
   /** Called with the run's spend after every answer, so the budget file is current if the run dies. */
   onSpend?: (micros: number) => void;
   /** Prices the judge calls made since the last call; without it, each call costs judgeCallMicros. */
@@ -118,6 +119,7 @@ export async function runEval(opts: RunOpts): Promise<RunResults> {
     actualMicros: spend.micros,
     stoppedReason,
     models: opts.models,
+    ...(opts.code ? { code: [opts.code] } : {}),
     answers,
   };
 }

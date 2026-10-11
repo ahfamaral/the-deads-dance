@@ -37,13 +37,17 @@ async function priceCalls(deps: QuestionDeps, calls: readonly ModelCallRecord[])
 /** A lookup failed when the call threw or the tool answered "unavailable" (spec §9's typed failure). */
 const lookupWorked = (t: ToolRecord) => t.envelope.ok && (t.envelope.data as { status?: string } | undefined)?.status !== "unavailable";
 
-/** Notes a truncated event on its way to chatEvents, which swallows it (spec §28.2). */
-async function* watchTruncation(turn: AsyncIterable<TurnEvent>, seen: { truncated: boolean }): AsyncGenerator<TurnEvent> {
+/** Notes a truncated event on its way to chatEvents, which swallows it (spec §28.2), and the raw reply before the guards (§30.7). */
+async function* watchTruncation(turn: AsyncIterable<TurnEvent>, seen: { truncated: boolean; raw: string }): AsyncGenerator<TurnEvent> {
   for await (const e of turn) {
     if (e.type === "truncated") seen.truncated = true;
+    if (e.type === "token") seen.raw += e.text;
     yield e;
   }
 }
+
+/** chatEvents adds a blank line between model steps, even where the raw reply had no space (final review #3). */
+const collapse = (s: string) => s.replace(/\s+/g, "");
 
 /**
  * Spec §29.4: one visitor turn through the app's own pipeline. Live without a recording (the
@@ -66,7 +70,7 @@ export async function runQuestion(
   let act: Recording["act"] = null;
   let liveLookups = 0;
   const recorded: ToolRecord[] = [];
-  const seen = { truncated: false };
+  const seen = { truncated: false, raw: "" };
   let text: string | null = null;
   let error: string | null = null;
   let toolCalls: AnswerRecord["toolCalls"] = [];
@@ -128,12 +132,9 @@ export async function runQuestion(
     error = err instanceof Error ? err.message : String(err);
   }
 
-  // Spec §30.6: the guards' output is what the checks and the judge see; the raw reply is kept when they changed it.
-  let rawText: string | undefined;
-  if (text !== null && !error && setup.postProcess) {
-    const guarded = setup.postProcess(text);
-    if (guarded !== text) [rawText, text] = [text, guarded];
-  }
+  // Spec §30.7: chatEvents applies the app's guards; the raw reply is kept when they changed it ("Guards fired").
+  // Whitespace is ignored (chatEvents adds a blank line between model steps); a truncated reply is trimmed, not guarded.
+  const rawText = text !== null && !error && !seen.truncated && collapse(seen.raw) !== collapse(text) ? seen.raw : undefined;
 
   const priced = await priceCalls(deps, ledger.calls);
   const answer: AnswerRecord = {

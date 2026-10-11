@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { CharacterProfile } from "@corpus/profile";
 import { buildPersonaPrompt, joinSections, promptSections, SECTION_ORDER } from "@/lib/server/persona-prompt";
@@ -107,7 +108,7 @@ describe("buildPersonaPrompt", () => {
 
   it("caps the lookups and says what to do when they run out or fail", () => {
     const prompt = buildPersonaPrompt(wu, on);
-    expect(prompt).toContain("You can search your memory at most 4 times per answer, so choose your searches well.");
+    expect(prompt).toContain("You can look things up at most 4 times per answer, so choose your searches well.");
     expect(prompt).toContain("If a search fails or you run out of searches, answer with what you did find");
     expect(prompt).toContain("For the rest, never confirm or deny it: say in your own words that it's hard to remember");
     expect(prompt).toContain("asking another way might help");
@@ -265,5 +266,22 @@ describe("promptSections (spec §30.6)", () => {
   it("leaves out what doesn't apply: no profile, no state, tools on", () => {
     const s = promptSections({ ...wu, profile: null }, on);
     expect([s.profile, s.character, s.state, s.stateRule, s.toolsOff]).toEqual([null, null, null, null, null]);
+  });
+});
+
+describe("prompt F, shipped (spec §30.7)", () => {
+  const golden = (name: string) => readFileSync(`tests/fixtures/prompt-f/${name}.txt`, "utf8");
+  const einstein = {
+    displayName: "Albert Einstein", description: "Theoretical physicist", lifespan: "1879–1955",
+    profile: { temperament: "Curious and independent", humour: "Dry", passions: "Physics, music", indifferences: "unknown", speech: "Reflective", sore_points: "unknown" },
+  } as never;
+  const bare = { displayName: "Ada Lovelace", description: "Mathematician", lifespan: "1815–1852", profile: null } as never;
+  it("is exactly the F that was tested, character for character", () => {
+    expect(buildPersonaPrompt(einstein, { toolsAvailable: true })).toBe(golden("einstein"));
+    expect(buildPersonaPrompt(bare, { toolsAvailable: false })).toBe(golden("no-profile-tools-off"));
+    expect(buildPersonaPrompt(einstein, { toolsAvailable: true, state: "<conversation_state>\nturns: 3\n</conversation_state>" })).toBe(golden("with-state"));
+  });
+  it("no longer says 'search your memory', which primed the opener", () => {
+    expect(buildPersonaPrompt(einstein, { toolsAvailable: true })).not.toMatch(/search your memory/i);
   });
 });

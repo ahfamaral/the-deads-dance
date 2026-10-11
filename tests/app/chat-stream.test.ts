@@ -40,8 +40,8 @@ describe("chatEvents", () => {
       { type: "tool_end", id: "s1", status: "ok", result: searchResult(1, 2), durationMs: 250 },
       { type: "tool_start", id: "f1", toolName: "fact_check_claim", arguments: { claim: "I did it" } },
       { type: "tool_end", id: "f1", status: "ok", result: verdict, durationMs: 1000 },
-      { type: "token", text: "I " },
-      { type: "token", text: "did." },
+      // Spec §30.7: the stream guard holds a short first sentence back, so it arrives whole.
+      { type: "token", text: "I did." },
       {
         type: "done",
         message: {
@@ -65,16 +65,16 @@ describe("chatEvents", () => {
       chatEvents({
         personaId: "wu",
         turn: turn([
-          { type: "token", text: "Let me check." },
+          { type: "token", text: "Columbia, then." },
           { type: "tool_start", id: "s1", toolName: "search_biography", arguments: { query: "q" } },
           { type: "tool_end", id: "s1", envelope: { ok: true, data: searchResult(1) } },
-          { type: "token", text: "I joined in 1912." },
+          { type: "token", text: "I joined in 1944." },
         ]),
       }),
     );
     const tokens = events.filter((e) => e.type === "token").map((e) => (e as { text: string }).text);
-    expect(tokens).toEqual(["Let me check.", "\n\n", "I joined in 1912."]);
-    expect(events.at(-1)).toMatchObject({ type: "done", message: { text: "Let me check.\n\nI joined in 1912." } });
+    expect(tokens.join("")).toBe("Columbia, then.\n\nI joined in 1944.");
+    expect(events.at(-1)).toMatchObject({ type: "done", message: { text: "Columbia, then.\n\nI joined in 1944." } });
   });
 
   it("doesn't insert a separator when the text before a tool call already ends with whitespace", async () => {
@@ -82,15 +82,15 @@ describe("chatEvents", () => {
       chatEvents({
         personaId: "wu",
         turn: turn([
-          { type: "token", text: "Let me check.\n" },
+          { type: "token", text: "Columbia, then.\n" },
           { type: "tool_start", id: "s1", toolName: "search_biography", arguments: { query: "q" } },
           { type: "tool_end", id: "s1", envelope: { ok: true, data: searchResult(1) } },
-          { type: "token", text: "I joined in 1912." },
+          { type: "token", text: "I joined in 1944." },
         ]),
       }),
     );
     const tokens = events.filter((e) => e.type === "token").map((e) => (e as { text: string }).text);
-    expect(tokens).toEqual(["Let me check.\n", "I joined in 1912."]);
+    expect(tokens.join("")).toBe("Columbia, then.\nI joined in 1944.");
   });
 
   it("marks a failed tool call as an error and cites nothing from it", async () => {
@@ -138,9 +138,10 @@ describe("chatEvents", () => {
 
   it("ends quietly when the turn is aborted", async () => {
     const events = await collect(
-      chatEvents({ personaId: "wu", turn: turn([{ type: "token", text: "I" }], new DOMException("aborted", "AbortError")) }),
+      chatEvents({ personaId: "wu", turn: turn([{ type: "token", text: "I was born in Ulm. Then" }], new DOMException("aborted", "AbortError")) }),
     );
-    expect(events).toEqual([{ type: "token", text: "I" }]);
+    // No error and no message; what the guard had released stays shown (spec §30.7 holds back the rest).
+    expect(events).toEqual([{ type: "token", text: "I was born in Ulm. Then" }]);
   });
 });
 
@@ -269,5 +270,41 @@ describe("chatEvents: truncation (spec §28.2)", () => {
   it("still reports an empty truncated reply as no answer", async () => {
     const events = await collect(chatEvents({ personaId: "einstein", turn: turn([{ type: "truncated" }]) }));
     expect(events).toEqual([{ type: "error", reason: "The persona didn't answer. Try rephrasing.", retryable: true }]);
+  });
+});
+
+describe("chatEvents: reply guards (spec §30.7)", () => {
+  const tokensOf = (events: ChatStreamEvent[]) => events.filter((e) => e.type === "token").map((e) => (e as { text: string }).text).join("");
+  const doneOf = (events: ChatStreamEvent[]) => events.find((e) => e.type === "done") as { message: { text: string } };
+  const run = (events: TurnEvent[]) => collect(chatEvents({ personaId: "einstein", turn: turn(events) }));
+
+  it("drops an opener said before a tool call, from the stream and the message", async () => {
+    const events = await run([
+      { type: "token", text: "Let me check." },
+      { type: "tool_start", id: "t1", toolName: "search_biography", arguments: {} },
+      { type: "tool_end", id: "t1", envelope: { ok: true, data: searchResult(1) } },
+      { type: "token", text: "I was born in Ulm." },
+    ]);
+    expect(tokensOf(events)).toBe("I was born in Ulm.");
+    expect(doneOf(events).message.text).toBe("I was born in Ulm.");
+  });
+  it("strips markdown from the stream and the message", async () => {
+    const events = await run([{ type: "token", text: "**Ulm**" }, { type: "token", text: ", in 1879. *Truly*." }]);
+    expect(tokensOf(events)).toBe("Ulm, in 1879. Truly.");
+    expect(doneOf(events).message.text).toBe("Ulm, in 1879. Truly.");
+  });
+  it("trims a truncated reply first, then guards it", async () => {
+    const events = await run([{ type: "token", text: "**Ulm**, 1879. And then my fa" }, { type: "truncated" }]);
+    expect(doneOf(events).message.text).toBe("Ulm, 1879.");
+  });
+  it("lets the finished message replace a streamed tail that truncation cut (spec §28.2 accepts this)", async () => {
+    const events = await run([{ type: "token", text: "I was born in Ulm. It was 1879 and my father was" }, { type: "truncated" }]);
+    expect(doneOf(events).message.text).toBe("I was born in Ulm.");
+    expect(tokensOf(events).startsWith("I was born in Ulm.")).toBe(true);
+  });
+  it("keeps a reply that is only an opener", async () => {
+    const events = await run([{ type: "token", text: "Let me search my memory." }]);
+    expect(doneOf(events).message.text).toBe("Let me search my memory.");
+    expect(tokensOf(events)).toBe("Let me search my memory.");
   });
 });

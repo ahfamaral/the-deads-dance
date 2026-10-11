@@ -2,6 +2,7 @@ import type { ChatStreamEvent, Source, ToolCall } from "@/lib/chat-types";
 import { passagesIn } from "@/lib/tool-display";
 import type { VisitEnding } from "@/lib/visit";
 import type { TurnEvent } from "./agent";
+import { applyGuards, createStreamGuard } from "./reply-guards";
 
 /** Every passage the turn's tools returned, once each. Simplification (spec §16.2): retrieved counts as cited. */
 export function sourcesFrom(toolCalls: ToolCall[], personaId: string): Source[] {
@@ -58,8 +59,9 @@ export function trimToSentence(text: string): string {
 }
 
 /**
- * Turns the agent's events into the stream the browser reads: forwards tokens and tool
- * events (adding durations), then sends the finished message with its trace and sources.
+ * Turns the agent's events into the stream the browser reads: forwards tokens through the reply
+ * guards (spec §30.7) and tool events (adding durations), then sends the finished message with its
+ * trace and sources. The finished message's text is the guarded reply: the browser shows and stores it.
  */
 export async function* chatEvents(opts: {
   turn: AsyncIterable<TurnEvent>;
@@ -75,17 +77,19 @@ export async function* chatEvents(opts: {
   // e.g. "Let me check.I joined…". Only insert once, right after a tool ends.
   let afterToolEnd = false;
   let truncated = false;
+  const guard = createStreamGuard();
+  const guarded = function* (chunk: string): Generator<ChatStreamEvent> {
+    text += chunk;
+    const shown = guard.push(chunk);
+    if (shown) yield { type: "token", text: shown };
+  };
 
   try {
     for await (const event of opts.turn) {
       if (event.type === "token") {
-        if (afterToolEnd && text && !/\s$/.test(text)) {
-          text += "\n\n";
-          yield { type: "token", text: "\n\n" };
-        }
+        if (afterToolEnd && text && !/\s$/.test(text)) yield* guarded("\n\n");
         afterToolEnd = false;
-        text += event.text;
-        yield event;
+        yield* guarded(event.text);
       } else if (event.type === "truncated") {
         truncated = true;
       } else if (event.type === "tool_start") {
@@ -116,10 +120,13 @@ export async function* chatEvents(opts: {
     yield { type: "error", reason: "The persona didn't answer. Try rephrasing.", retryable: true };
     return;
   }
+  const final = applyGuards(truncated ? trimToSentence(text) : text);
+  const rest = guard.finish(final);
+  if (rest) yield { type: "token", text: rest };
   yield {
     type: "done",
     message: {
-      text: truncated ? trimToSentence(text) : text,
+      text: final,
       toolCalls,
       sources: sourcesFrom(toolCalls, opts.personaId),
       ...(opts.ended ? { ended: opts.ended } : {}),

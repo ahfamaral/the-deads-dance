@@ -15,7 +15,7 @@ import { loadQuestions, selectQuestions } from "./questions";
 import { describeModels, fetchModelPrices, PRICE_REFERENCE, priceScale } from "./model-prices";
 import { renderReport } from "./report";
 import { runEval } from "./run";
-import { pickSetups, preflightSetups, type Setup } from "./setups";
+import { pickSetups, type Setup } from "./setups";
 import type { AnswerRecord, RunResults } from "./types";
 
 const BUDGET = "eval/budget.json";
@@ -60,7 +60,6 @@ export function baselineFrom(prior: RunResults, setupId: string | null): { setup
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const setups = pickSetups(args.setups);
-  preflightSetups(setups);
   const questions = selectQuestions(loadQuestions(), args.questions);
   const budget: BudgetFile | null = readBudget(BUDGET); // throws on a corrupt file (spec §29.8)
   const spent = budget?.spentMicros ?? 0;

@@ -142,17 +142,23 @@ describe("runQuestion (spec §29.4)", () => {
     expect(prompts[1]).toMatch(/you cannot understand what they wrote/);
   });
 
-  it("applies the setup's guards to the reply and keeps the raw text when they changed it", async () => {
+  it("records the raw reply when the app's guards changed it (spec §30.7)", async () => {
     const model = fakeModel().respond(new AIMessage("Let me gather my thoughts. In **Ulm**."));
-    const guarded: Setup = { ...setup(model), postProcess: (t) => t.replace("Let me gather my thoughts. ", "").replaceAll("**", "") };
-    const { answer } = await runQuestion(deps(), question, guarded, persona);
+    const { answer } = await runQuestion(deps(), question, setup(model), persona);
     expect(answer.text).toBe("In Ulm.");
     expect(answer.rawText).toBe("Let me gather my thoughts. In **Ulm**.");
   });
 
-  it("keeps no raw text when the guards changed nothing", async () => {
+  it("records no raw reply for a multi-step answer the guards left alone (final review #3)", async () => {
+    const model = fakeModel().respond(new AIMessage({ content: "Columbia, then.", tool_calls: [{ id: "t1", name: "search_biography", args: { query: "birth" }, type: "tool_call" }] })).respond(new AIMessage("I joined in 1944."));
+    const { answer } = await runQuestion(deps(), question, setup(model), persona);
+    expect(answer.text).toBe("Columbia, then.\n\nI joined in 1944.");
+    expect(answer.rawText).toBeUndefined();
+  });
+
+  it("records no raw reply when the guards changed nothing", async () => {
     const model = fakeModel().respond(new AIMessage("In Ulm."));
-    const { answer } = await runQuestion(deps(), question, { ...setup(model), postProcess: (t) => t }, persona);
+    const { answer } = await runQuestion(deps(), question, setup(model), persona);
     expect(answer.rawText).toBeUndefined();
   });
 

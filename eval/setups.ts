@@ -45,6 +45,11 @@ export const MODEL_ROUND = {
   "m-minimax": "minimax/minimax-m3",
   "m-mistral": "mistralai/mistral-small-2603",
   "m-mimo": "xiaomi/mimo-v2.6-flash",
+  // The user's addition of 2026-10-15: OpenAI models, against Haiku rerun on the same code.
+  "m-gpt6luna": "openai/gpt-6-luna",
+  "m-gpt56luna": "openai/gpt-5.6-luna",
+  "m-gptoss": "openai/gpt-oss-120b",
+  "m-gpt41mini": "openai/gpt-4.1-mini",
 } as const;
 
 function modelSetup(id: string, model: string): Setup {

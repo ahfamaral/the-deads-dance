@@ -60,7 +60,7 @@ describe("renderReport", () => {
       expect(md).toContain(heading);
     }
     expect(md).toMatch(/Estimated \$0\.01, actual \$0\.009/);
-    expect(md).toMatch(/\$6\.00 left of \$7\.00/);
+    expect(md).toMatch(/\$6\.00 left of \$8\.50/);
     expect(md).toContain("[ ] agree [ ] disagree");
     expect(md).toContain("after_death: why");
   });

@@ -4,9 +4,9 @@ import { formatDollars } from "@/lib/money";
 
 export { formatDollars };
 
-/** Spec §29.1: $1 per run, $7 in total; raising either needs the user's explicit OK. */
+/** Spec §29.1: $1 per run, $7 in total; raising either needs the user's explicit OK. Raised to $8.50 by the user on 2026-10-15 for the OpenAI model round. */
 export const RUN_LIMIT_MICROS = 1_000_000;
-export const TOTAL_LIMIT_MICROS = 7_000_000;
+export const TOTAL_LIMIT_MICROS = 8_500_000;
 
 /** Before the pilot measures them (spec §29.4): micro-dollars per item. */
 export const DEFAULT_COSTS = { liveAnswer: 4_400, replayAnswer: 2_000, judge: 1_000, generate: 1_000 };

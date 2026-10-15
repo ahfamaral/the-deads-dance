@@ -13,7 +13,7 @@ const EXTRA_CALL_CONTENT = "Tool failed: No more results.";
 /** The live MCP descriptions (mcp-server/server.ts), copied so a replay offers the model the same tools; a test pins them. */
 const DESCRIPTIONS: Record<string, string> = {
   search_biography:
-    "Search the persona's biography for passages relevant to a question. Returns passages with their section headings. Use it before stating any fact about the persona's life.",
+    "Search the persona's biography for passages relevant to a question. Returns passages with their section headings. When no passage comes close and the topic is widely recorded elsewhere, also returns what happened in recalled. Use it before stating any fact about the persona's life.",
   fact_check_claim:
     "Check a claim the user made about the persona's life against the biography. Returns supported, contradicted or not_mentioned, with the passage it judged from, or known_elsewhere when the biography doesn't cover the claim but it is widely recorded elsewhere, with what happened in recalled. Use it before agreeing with a user's claim about the persona's life.",
   get_historical_context:

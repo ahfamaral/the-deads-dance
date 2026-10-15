@@ -32,10 +32,10 @@ describe("estimateMicros", () => {
 });
 
 describe("checkLimits", () => {
-  it("refuses an estimate over $1, or over what is left of $7", () => {
+  it("refuses an estimate over $1, or over what is left of $8.50", () => {
     expect(checkLimits(RUN_LIMIT_MICROS, 0)).toBeNull();
     expect(checkLimits(RUN_LIMIT_MICROS + 1, 0)).toMatch(/\$1\.00 per run/);
-    expect(checkLimits(600_000, TOTAL_LIMIT_MICROS - 500_000)).toMatch(/\$7\.00 in total/);
+    expect(checkLimits(600_000, TOTAL_LIMIT_MICROS - 500_000)).toMatch(/\$8\.50 in total/);
   });
 });
 
@@ -43,7 +43,7 @@ describe("describeEstimate", () => {
   it("shows the estimate, what's left, that the budget file will be created, and how to start", () => {
     const shown = describeEstimate({ estimate: 300_000, spent: 1_000_000, creating: true });
     expect(shown).toMatch(/\$0\.30/);
-    expect(shown).toMatch(/\$6\.00 left of \$7\.00/);
+    expect(shown).toMatch(/\$7\.50 left of \$8\.50/);
     expect(shown).toMatch(/creates eval\/budget\.json/);
     expect(shown).toMatch(/Dry run: nothing was spent/);
     expect(shown).toMatch(/--confirm/);

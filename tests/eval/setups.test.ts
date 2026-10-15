@@ -16,13 +16,13 @@ describe("setups (spec §29.2)", () => {
     vi.unstubAllEnvs();
   });
   it("measures the app as shipped: v0 is the app's prompt, and the model setups build on it (spec §30.7)", () => {
-    expect(Object.keys(SETUPS)).toEqual(["v0", "m-v4pro", "m-haiku", "m-qwen", "m-v4flash", "m-minimax", "m-mistral", "m-mimo"]);
+    expect(Object.keys(SETUPS)).toEqual(["v0", "m-v4pro", "m-haiku", "m-qwen", "m-v4flash", "m-minimax", "m-mistral", "m-mimo", "m-gpt6luna", "m-gpt56luna", "m-gptoss", "m-gpt41mini"]);
     expect(SETUPS["m-haiku"].buildPrompt).toBe(SETUPS.v0.buildPrompt);
     expect("postProcess" in SETUPS.v0).toBe(false);
   });
   it("picks a comma list, and names the known setups on an unknown one", () => {
     expect(pickSetups("v0").map((s) => s.id)).toEqual(["v0"]);
-    expect(() => pickSetups("v9")).toThrow(/Unknown setup v9; known: v0, m-v4pro, m-haiku, m-qwen, m-v4flash, m-minimax, m-mistral, m-mimo/);
+    expect(() => pickSetups("v9")).toThrow(/Unknown setup v9; known: v0, m-v4pro, m-haiku, m-qwen, m-v4flash, m-minimax, m-mistral, m-mimo, m-gpt6luna, m-gpt56luna, m-gptoss, m-gpt41mini/);
   });
 });
 
@@ -37,10 +37,11 @@ describe("the model round (spec §30.2)", () => {
     }
     vi.unstubAllEnvs();
   });
-  it("names the seven models the user chose on 2026-10-09 (Kimi dropped; v4-flash's July release; Mistral Small and MiMo added)", () => {
+  it("names the seven models the user chose on 2026-10-09, then the four OpenAI models of 2026-10-15", () => {
     expect(Object.values(MODEL_ROUND)).toEqual([
       "deepseek/deepseek-v4-pro", "anthropic/claude-haiku-5.5", "qwen/qwen3.8-flash",
       "deepseek/deepseek-v4-flash-0731", "minimax/minimax-m3", "mistralai/mistral-small-2603", "xiaomi/mimo-v2.6-flash",
+      "openai/gpt-6-luna", "openai/gpt-5.6-luna", "openai/gpt-oss-120b", "openai/gpt-4.1-mini",
     ]);
   });
 });

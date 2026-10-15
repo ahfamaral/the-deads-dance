@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:setup": "tsx --env-file=.env scripts/db-setup.ts",
+    "db:setup:deploy": "tsx scripts/db-setup-deploy.ts",
+    "vercel-build": "npm run db:setup:deploy && next build",
     "ingest": "echo 'npm run ingest is disabled for now (2026-10-07). To bring it back, set this script to: tsx --env-file=.env scripts/ingest.ts' && exit 1",
     "profiles:draft": "tsx --env-file=.env scripts/draft-profiles.ts",
     "mcp": "tsx --env-file=.env mcp-server/index.ts",

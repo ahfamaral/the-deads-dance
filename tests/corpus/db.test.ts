@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeDbError, toVectorLiteral } from "../../corpus/db";
+import { deployDatabaseUrl, describeDbError, toVectorLiteral } from "../../corpus/db";
 
 describe("toVectorLiteral", () => {
   it("formats a vector as pgvector text", () => {
@@ -20,5 +20,20 @@ describe("describeDbError", () => {
 
   it("returns null for anything else", () => {
     expect(describeDbError(new Error("boom"))).toBeNull();
+  });
+});
+
+describe("deployDatabaseUrl", () => {
+  it("prefers the direct (unpooled) URL", () => {
+    expect(deployDatabaseUrl({ DATABASE_URL_UNPOOLED: "postgres://direct", DATABASE_URL: "postgres://pooled" })).toBe("postgres://direct");
+  });
+
+  it("falls back to DATABASE_URL", () => {
+    expect(deployDatabaseUrl({ DATABASE_URL: "postgres://pooled" })).toBe("postgres://pooled");
+    expect(deployDatabaseUrl({ DATABASE_URL_UNPOOLED: "", DATABASE_URL: "postgres://pooled" })).toBe("postgres://pooled");
+  });
+
+  it("fails clearly when neither is set", () => {
+    expect(() => deployDatabaseUrl({})).toThrow("Neither DATABASE_URL_UNPOOLED nor DATABASE_URL is set.");
   });
 });

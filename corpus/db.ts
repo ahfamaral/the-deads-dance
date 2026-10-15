@@ -20,6 +20,13 @@ export async function closePool(): Promise<void> {
   await pool?.end();
 }
 
+/** Spec §31.4: the schema step on Vercel uses Neon's direct URL; the pooled one is for the app. */
+export function deployDatabaseUrl(env: Record<string, string | undefined> = process.env): string {
+  const url = env.DATABASE_URL_UNPOOLED || env.DATABASE_URL;
+  if (!url) throw new Error("Neither DATABASE_URL_UNPOOLED nor DATABASE_URL is set.");
+  return url;
+}
+
 /** pgvector's text input format. Pass it as a parameter and cast with `::vector`. */
 export function toVectorLiteral(vector: number[]): string {
   return `[${vector.join(",")}]`;

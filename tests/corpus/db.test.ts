@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { deployDatabaseUrl, describeDbError, poolMax, toVectorLiteral } from "../../corpus/db";
+import { describe, expect, it, vi } from "vitest";
+import { closePool, deployDatabaseUrl, describeDbError, getPool, poolMax, toVectorLiteral } from "../../corpus/db";
 
 describe("toVectorLiteral", () => {
   it("formats a vector as pgvector text", () => {
@@ -49,5 +49,18 @@ describe("poolMax", () => {
     for (const value of [undefined, "", "0", "-3", "5.5", "abc", "1e3"]) {
       expect(poolMax({ DATABASE_POOL_MAX: value })).toBeUndefined();
     }
+  });
+});
+
+// Neon drops idle connections (compute suspends); pg then emits 'error' on the pool. With no
+// listener Node treats it as an uncaught exception and the serverless instance dies.
+describe("getPool", () => {
+  it("logs an idle client's error instead of crashing the process", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const pool = getPool();
+    expect(() => pool.emit("error", new Error("Connection terminated unexpectedly"))).not.toThrow();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+    await closePool();
   });
 });

@@ -18,7 +18,11 @@ export function getPool(): Pool {
       throw new Error("DATABASE_URL is not set. Add it to .env.");
     }
     const max = poolMax();
-    holder.personaPool = new Pool({ connectionString, ...(max ? { max } : {}) });
+    const pool = new Pool({ connectionString, ...(max ? { max } : {}) });
+    // An idle client whose connection drops (Neon suspends when idle) emits 'error' here. Unhandled,
+    // it would crash the process; pg removes the client and the next query connects afresh.
+    pool.on("error", (err) => console.error("Database idle client error:", err));
+    holder.personaPool = pool;
   }
   return holder.personaPool;
 }

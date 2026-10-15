@@ -90,6 +90,14 @@ In production (`npm run start`), every auth variable is required, or the server 
 
 `AUTH_IP_HEADER` names the header your proxy sets to the real client IP (e.g. `cf-connecting-ip` for Cloudflare, `x-real-ip` for nginx). It is required in production: without it, clients could spoof `x-forwarded-for` to dodge the rate limits, or everyone would share one bucket.
 
+## Staging (Vercel + Neon)
+
+Staging runs on Vercel (Hobby) with a Neon (Free) Postgres. Pushing the `staging` branch deploys it; no other branch builds (`vercel.json`). Each build runs `npm run vercel-build`: it applies `db/schema.sql` on `DATABASE_URL_UNPOOLED` (Neon's direct URL), then `next build`. A schema failure stops the deploy. The app itself uses `DATABASE_URL` (Neon's pooled URL) with `DATABASE_POOL_MAX=5`.
+
+The MCP server runs inside the app (in-memory transport), so nothing else needs to be hosted. `npm run mcp` still starts it over stdio for MCP Inspector.
+
+Staging env: everything in "Accounts (staging)" above, plus `OPENROUTER_API_KEY` (a staging-only key with its own credit limit), `EMAIL_FROM='Do the deads dance <no-reply@mail.freitasdoamaral.com>'` and `AUTH_IP_HEADER=x-real-ip` (Vercel sets it). First-time setup, including loading the seed into Neon, is a checklist in the design spec (§31.5). Neon's Free plan restores to any point in the last 6 hours; there are no other backups.
+
 ## Make targets
 
 | Target | Does |

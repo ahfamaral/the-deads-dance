@@ -28,6 +28,14 @@ describe("embeddingModel", () => {
     process.env.OPENROUTER_API_KEY = "test-key";
     expect(embeddingModel().timeout).toBe(EMBEDDING_TIMEOUT_MS);
   });
+
+  it("takes a shorter timeout and fewer retries for live queries", () => {
+    process.env.OPENROUTER_API_KEY = "test-key";
+    const model = embeddingModel({ timeout: 4_000, maxRetries: 1 });
+    expect(model.timeout).toBe(4_000);
+    // AsyncCaller keeps maxRetries protected; it is what retries each embedding request.
+    expect((model.caller as unknown as { maxRetries: number }).maxRetries).toBe(1);
+  });
 });
 
 describe("assertDimensions", () => {

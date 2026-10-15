@@ -4,10 +4,10 @@ import { CostLedger, type ModelCallRecord } from "../corpus/cost-ledger";
 import { describeDbError } from "../corpus/db";
 import type { Unavailable } from "../corpus/tool-results";
 import { factCheckClaim, type FactCheckDeps } from "./biography/fact-check";
-import { searchBiography } from "./biography/search-biography";
+import { searchBiography, type SearchDeps } from "./biography/search-biography";
 import { getHistoricalContext, type WorldDeps } from "./world/historical-context";
 
-export type ServerDeps = FactCheckDeps & WorldDeps;
+export type ServerDeps = FactCheckDeps & SearchDeps & WorldDeps;
 
 type ToolOutput = { content: { type: "text"; text: string }[]; structuredContent: Record<string, unknown> };
 
@@ -45,14 +45,15 @@ export function createServer(depsFor: DepsFor): McpServer {
     "search_biography",
     {
       description:
-        "Search the persona's biography for passages relevant to a question. Returns passages with their section headings. Use it before stating any fact about the persona's life.",
+        "Search the persona's biography for passages relevant to a question. Returns passages with their section headings. When no passage comes close and the topic is widely recorded elsewhere, also returns what happened in recalled. Use it before stating any fact about the persona's life.",
       inputSchema: {
         query: z.string().min(1).max(1000).describe("What to look up, in plain words"),
         persona_id: z.string().min(1).max(200),
         top_k: z.number().int().min(1).max(10).optional().describe("How many passages to return; default 3"),
       },
     },
-    (input) => safely(depsFor, (deps) => searchBiography(deps, input)),
+    // extra.signal: Stop or a closed tab cancels the recall fallback too.
+    (input, extra) => safely(depsFor, (deps) => searchBiography(deps, input, extra.signal)),
   );
 
   server.registerTool(

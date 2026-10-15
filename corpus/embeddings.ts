@@ -13,8 +13,11 @@ export const EMBEDDING_DIMENSIONS = 1536;
 // Keeps worst-case retries (maxRetries 3) well under the 10-minute stale-ingest rule.
 export const EMBEDDING_TIMEOUT_MS = 60_000;
 
-/** One instance serves ingest (embedDocuments) and queries (embedQuery), so both use the same model. */
-export function embeddingModel(): OpenAIEmbeddings {
+/**
+ * Ingest and queries embed with the same model. Ingest keeps the patient defaults; live tool
+ * calls pass shorter limits to fit the 30 s tool timeout.
+ */
+export function embeddingModel(options: { timeout?: number; maxRetries?: number } = {}): OpenAIEmbeddings {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     throw new Error("OPENROUTER_API_KEY is not set. Add it to .env.");
@@ -23,8 +26,8 @@ export function embeddingModel(): OpenAIEmbeddings {
     model: EMBEDDING_MODEL,
     apiKey,
     configuration: { baseURL: OPENROUTER_BASE_URL },
-    maxRetries: 3,
-    timeout: EMBEDDING_TIMEOUT_MS,
+    maxRetries: options.maxRetries ?? 3,
+    timeout: options.timeout ?? EMBEDDING_TIMEOUT_MS,
   });
 }
 

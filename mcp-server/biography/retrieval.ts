@@ -96,9 +96,21 @@ export async function retrieve(
   deps: RetrievalDeps,
   params: { query: string; personaSlug: string; topK: number; coverEachQuery?: boolean },
 ): Promise<SearchBiographyResult> {
+  return (await retrieveScored(deps, params)).result;
+}
+
+/**
+ * retrieve, plus the original query's best cosine similarity: how close the biography comes to
+ * what was asked. Variants are left out, as the helper's guesses can match what wasn't asked.
+ * null when nothing was searched or found.
+ */
+export async function retrieveScored(
+  deps: RetrievalDeps,
+  params: { query: string; personaSlug: string; topK: number; coverEachQuery?: boolean },
+): Promise<{ result: SearchBiographyResult; topScore: number | null }> {
   const persona = await findPersona(deps.pool, params.personaSlug);
   if (!persona || persona.status !== "ready") {
-    return { status: "unavailable", reason: `No ready persona "${params.personaSlug}".` };
+    return { result: { status: "unavailable", reason: `No ready persona "${params.personaSlug}".` }, topScore: null };
   }
 
   const queries = await queriesFor(params.query, deps.expandQuery);
@@ -107,13 +119,17 @@ export async function retrieve(
   const lists = await Promise.all(
     vectors.map((embedding) => searchChunks(deps.pool, { personaSlug: params.personaSlug, embedding, topK: depth })),
   );
+  const topScore = lists[0][0]?.score ?? null;
 
   const top = params.coverEachQuery ? coverEachQuery(lists, params.topK) : fuseRankings(lists).slice(0, params.topK);
-  if (top.length === 0) return { status: "empty", queries };
+  if (top.length === 0) return { result: { status: "empty", queries }, topScore };
   return {
-    status: "ok",
-    queries,
-    passages: top.map((h) => ({ chunk_id: h.chunkId, section_heading: h.sectionHeading, content: h.content })),
+    result: {
+      status: "ok",
+      queries,
+      passages: top.map((h) => ({ chunk_id: h.chunkId, section_heading: h.sectionHeading, content: h.content })),
+    },
+    topScore,
   };
 }
 

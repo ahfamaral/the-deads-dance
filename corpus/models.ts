@@ -10,14 +10,15 @@ import { OPENROUTER_BASE_URL } from "./embeddings";
  */
 /**
  * The agent on Claude Haiku 5.5 since 2026-10-11: Phase 5's winner (spec §30, round 4), the most faithful and
- * best-behaved persona model tested, at about half v4-pro's cost per answer. The helper and recall stay on DeepSeek
- * v4.1-flash (fast, for the 10 s classifier and recall budgets). Recall needs a model that knows well-documented
- * episodes (spec §19.2): gpt-5-mini didn't, gemini-3.8-flash did.
+ * best-behaved persona model tested, at about half v4-pro's cost per answer. The helper stays on DeepSeek
+ * v4.1-flash (fast, for the 10 s classifier budget). Recall needs a model that knows well-documented episodes
+ * (spec §19.2): on gpt-6-luna since 2026-10-15, the recall check's winner (7/8 real facts kept, 10/10 fakes
+ * rejected, ~3 s; v4.1-flash kept 3/8 and didn't know the MMDC students that Vargas's visitors asked about).
  */
 export const DEFAULT_MODELS = {
   agent: "anthropic/claude-haiku-5.5",
   helper: "deepseek/deepseek-v4.1-flash",
-  recall: "deepseek/deepseek-v4.1-flash",
+  recall: "openai/gpt-6-luna",
 } as const;
 
 export type ModelRole = keyof typeof DEFAULT_MODELS;
@@ -25,9 +26,8 @@ export type ModelRole = keyof typeof DEFAULT_MODELS;
 const ENV_VARS: Record<ModelRole, string> = { agent: "AGENT_MODEL", helper: "HELPER_MODEL", recall: "RECALL_MODEL" };
 
 /**
- * F6: the MCP tool call times out client-side at 30s, but fact-check makes two sequential
- * helper calls. A slower, more patient agent model must not let the helper outlast that
- * 30s budget, so the helper gets a shorter timeout and fewer retries than the agent.
+ * F6: the helper gets a shorter timeout and fewer retries than the agent. The MCP tools tighten
+ * it further per step (STEP_LIMITS in mcp-server/deps.ts) to fit the 30 s tool timeout.
  */
 const MODEL_SETTINGS: Record<ModelRole, { timeout: number; maxRetries: number }> = {
   agent: { timeout: 60_000, maxRetries: 2 },

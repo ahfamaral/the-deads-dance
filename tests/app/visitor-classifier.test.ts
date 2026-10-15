@@ -4,7 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { CharacterProfile } from "@corpus/profile";
 import { VisitorActSchema } from "@/lib/visitor-act";
 import { CostLedger } from "@corpus/cost-ledger";
-import { CLASSIFIER_PROMPT, classifyVisitorWith, cleanVisitorAct } from "@/lib/server/visitor-classifier";
+import { chatModel } from "@corpus/models";
+import { CLASSIFIER_PROMPT, CLASSIFIER_TIMEOUT_MS, classifyVisitorWith, cleanVisitorAct, visitorClassifier } from "@/lib/server/visitor-classifier";
+
+vi.mock("@corpus/models", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@corpus/models")>();
+  return { ...actual, chatModel: vi.fn(actual.chatModel) };
+});
 
 const PROFILE: CharacterProfile = {
   temperament: "Exacting",
@@ -161,4 +167,14 @@ it("passes the turn's callbacks to the model call (spec §26.3)", async () => {
   const handler = new CostLedger().handler("classifier");
   await classifyVisitorWith(model)({ personaMessage: null, visitorMessage: "hi", profile: null, callbacks: [handler] });
   expect((seen[0] as { callbacks?: unknown[] }).callbacks).toEqual([handler]);
+});
+
+describe("visitorClassifier", () => {
+  // Live, 2026-10-15: on DeepSeek v4.1 flash, "minimal" took 2–6 s and "none" 0.8–2.4 s, with the same tags.
+  it("runs the helper with no reasoning, 10 s and no retry", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "k");
+    visitorClassifier();
+    expect(chatModel).toHaveBeenCalledWith("helper", { timeout: CLASSIFIER_TIMEOUT_MS, maxRetries: 0, reasoningEffort: "none" });
+    vi.unstubAllEnvs();
+  });
 });

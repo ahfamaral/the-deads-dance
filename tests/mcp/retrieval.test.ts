@@ -12,6 +12,7 @@ import {
   fuseRankings,
   ORIGINAL_QUERY_WEIGHT,
   retrieve,
+  retrieveScored,
   type RetrievalDeps,
 } from "../../mcp-server/biography/retrieval";
 import { insertChunks, insertPersona, resetDb } from "../helpers/db";
@@ -160,6 +161,32 @@ describe("retrieve", () => {
     // twice), so it scores 3/61 + 2/62 against chunk 0's 2/61 + 3/62.
     expect(single).toMatchObject({ passages: [{ content: "chunk 0" }] });
     expect(multi).toMatchObject({ passages: [{ content: "chunk 1" }] });
+  });
+});
+
+/** A unit vector along one axis: two different axes score 0, the same axis 1. */
+const axis = (i: number) => Array.from({ length: 1536 }, (_, j) => (j === i ? 1 : 0));
+
+describe("retrieveScored", () => {
+  it("reports the original query's best similarity, ignoring the variants", async () => {
+    const id = await insertPersona({ slug: "wu" });
+    await insertChunks(id, [axis(0), axis(1)]);
+    const embeddings = new TableEmbeddings({ q: axis(0), v: axis(1) });
+    const near = await retrieveScored(deps({ embeddings, expandQuery: async () => ["v"] }), { query: "q", personaSlug: "wu", topK: 3 });
+    expect(near.topScore).toBeCloseTo(1);
+    const far = await retrieveScored(deps({ embeddings: new TableEmbeddings({ q: axis(2), v: axis(1) }), expandQuery: async () => ["v"] }), {
+      query: "q",
+      personaSlug: "wu",
+      topK: 3,
+    });
+    expect(far.topScore).toBeCloseTo(0);
+    expect(far.result.status).toBe("ok");
+  });
+
+  it("has no score when nothing was searched or found", async () => {
+    await insertPersona({ slug: "wu" });
+    expect((await retrieveScored(deps(), { query: "q", personaSlug: "wu", topK: 3 })).topScore).toBeNull();
+    expect((await retrieveScored(deps(), { query: "q", personaSlug: "nobody", topK: 3 })).topScore).toBeNull();
   });
 });
 

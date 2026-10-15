@@ -15,6 +15,7 @@ function fakeDeps(overrides: Partial<ServerDeps> = {}): ServerDeps {
     expandClaim: async () => [],
     judgeClaim: async () => ({ verdict: "supported", chunk_id: 1, explanation: "Passage 1 says so." }),
     recall: async () => ({ known: false, account: null, year: null, confidence: "low" }),
+    recallTopic: async () => ({ known: false, account: null, year: null, confidence: "low" }),
     sparql: async (query) => (query.includes("wdt:P585") ? [{ itemLabel: { value: "Battle of Tsushima" }, date: { value: "1905-05-28T00:00:00Z" } }] : []),
     ...overrides,
   };

@@ -17,6 +17,7 @@ function serverDeps(overrides: Partial<ServerDeps> = {}): ServerDeps {
     expandClaim: async () => [],
     judgeClaim: async () => ({ verdict: "supported", chunk_id: 1, explanation: "Passage 1 says so." }),
     recall: async () => ({ known: false, account: null, year: null, confidence: "low" }),
+    recallTopic: async () => ({ known: false, account: null, year: null, confidence: "low" }),
     sparql: async (query) => (query.includes("wdt:P585") ? [{ itemLabel: { value: "Battle of Tsushima" }, date: { value: "1905-05-28T00:00:00Z" } }] : []),
     ...overrides,
   };
@@ -74,6 +75,16 @@ describe("MCP server", () => {
     const tool = (await c.listTools()).tools.find((t) => t.name === "fact_check_claim");
     expect(tool?.description).toMatch(/known_elsewhere/);
     expect(tool?.description).toMatch(/recalled/);
+  });
+
+  it("adds what recall knows to a search the biography can't answer, and says so in the description", async () => {
+    await insertPersona({ slug: "wu", lifespan: "1912–1997" });
+    const recallTopic = async () => ({ known: true, account: "Worked on the Manhattan Project at Columbia.", year: 1944, confidence: "high" });
+    const c = await connect(serverDeps({ recallTopic }));
+    const tool = (await c.listTools()).tools.find((t) => t.name === "search_biography");
+    expect(tool?.description).toMatch(/recalled/);
+    const result = await c.callTool({ name: "search_biography", arguments: { query: "Manhattan Project", persona_id: "wu" } });
+    expect(result.structuredContent).toMatchObject({ status: "empty", recalled: { account: "Worked on the Manhattan Project at Columbia.", year: 1944 } });
   });
 
   it("returns passages as structured content, with the same JSON as text", async () => {

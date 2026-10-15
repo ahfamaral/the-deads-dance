@@ -77,6 +77,14 @@ describe("tool display helpers", () => {
     expect(recalledOf({ ...withRecalled({ account: "x", year: 1980 }), status: "error" })).toBeNull();
   });
 
+  it("shows what the search fallback recalled, with or without passages", () => {
+    const recalled = { account: "Students killed in São Paulo in May 1932.", year: 1932 };
+    expect(recalledOf(call({ result: { status: "ok", passages: [passage(1)], queries: ["q"], recalled } }))).toEqual(recalled);
+    expect(recalledOf(call({ result: { status: "empty", queries: ["q"], recalled } }))).toEqual(recalled);
+    expect(recalledOf(call({ result: { status: "ok", passages: [passage(1)], queries: ["q"] } }))).toBeNull();
+    expect(recalledOf(call({ result: { status: "ok", passages: [], queries: ["q"], recalled: { account: 3 } } }))).toBeNull();
+  });
+
   // Deferred minor: a malformed result must not show an account next to another verdict's badge.
   it("shows no recalled account under a verdict other than known_elsewhere", () => {
     const recalled = { account: "Played a match in Rio.", year: 1980 };

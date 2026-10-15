@@ -70,10 +70,15 @@ export function verdictOf(call: ToolCall): Verdict | null {
   return VERDICTS.find((v) => v === r.verdict) ?? null;
 }
 
-/** What a known_elsewhere fact check recalled, or null. Any other verdict never shows an account. */
+/**
+ * What a known_elsewhere fact check, or a search's fallback, recalled; null otherwise. A fact check
+ * under any other verdict never shows an account.
+ */
 export function recalledOf(call: ToolCall): Recalled | null {
   const r = call.result;
-  if (verdictOf(call) !== "known_elsewhere" || !isRecord(r) || !isRecord(r.recalled)) return null;
+  if (call.status !== "ok" || !isRecord(r) || !isRecord(r.recalled)) return null;
+  const searched = call.toolName === "search_biography" && (r.status === "ok" || r.status === "empty");
+  if (!searched && verdictOf(call) !== "known_elsewhere") return null;
   const { account, year } = r.recalled;
   return typeof account === "string" && (typeof year === "number" || year === null) ? { account, year } : null;
 }

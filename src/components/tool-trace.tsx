@@ -54,7 +54,13 @@ function ToolRow({ call }: { call: ToolCall }) {
               {VERDICT_LABELS[verdict]}
             </span>
           )}
-          {problem && (
+          {/* A search's fallback recall gets the same chip as a known_elsewhere fact check. */}
+          {!verdict && recalled && (
+            <span className={`shrink-0 rounded-full px-2 py-0.5 ${VERDICT_CLASSES.known_elsewhere}`}>
+              {VERDICT_LABELS.known_elsewhere}
+            </span>
+          )}
+          {problem && !recalled && (
             <span className="shrink-0 text-amber-300/80">· {call.status === "error" ? "failed" : "no result"}</span>
           )}
           <span className="ml-auto shrink-0 tabular-nums">

@@ -111,9 +111,9 @@ export function classifyVisitorWith(model: BaseChatModel, options: { timeoutMs?:
   };
 }
 
-/** The real classifier: the helper model, 10 s, no retry (spec §18.1), minimal reasoning (spec §20.1). */
+/** The real classifier: the helper model, 10 s, no retry (spec §18.1), no reasoning: "minimal" took 2–6 s on DeepSeek flash, "none" about 1 s (2026-10-15). */
 export function visitorClassifier(): ClassifyVisitor {
   return classifyVisitorWith(
-    chatModel("helper", { timeout: CLASSIFIER_TIMEOUT_MS, maxRetries: 0, reasoningEffort: "minimal" }),
+    chatModel("helper", { timeout: CLASSIFIER_TIMEOUT_MS, maxRetries: 0, reasoningEffort: "none" }),
   );
 }

@@ -109,7 +109,7 @@ describe("buildPersonaPrompt", () => {
   it("caps the lookups and says what to do when they run out or fail", () => {
     const prompt = buildPersonaPrompt(wu, on);
     expect(prompt).toContain("You can look things up at most 4 times per answer, so choose your searches well.");
-    expect(prompt).toContain("If a search fails or you run out of searches, answer with what you did find");
+    expect(prompt).toContain("If that fails too or you run out of searches, answer with what you did find");
     expect(prompt).toContain("For the rest, never confirm or deny it: say in your own words that it's hard to remember");
     expect(prompt).toContain("asking another way might help");
   });
@@ -217,14 +217,24 @@ describe("buildPersonaPrompt: recall beyond the biography (spec §19.4)", () => 
     );
   });
 
-  it("fact-checks a specific event search_biography holds nothing on", () => {
+  it("fact-checks a person, place or event the visitor names that memory says nothing about", () => {
     expect(prompt).toContain(
-      "When search_biography holds nothing on a specific event the visitor asks about, check it with fact_check_claim before saying you don't remember.",
+      "When your memory says nothing about a specific person, place or event the visitor names or asks about, and the search brought back no recalled, check it with fact_check_claim before saying you don't remember.",
     );
   });
 
+  it("turns names into one claim about the persona's life, so recall can place them", () => {
+    expect(prompt).toContain(
+      'For names, make it one claim about your life that covers them all, such as "Anna Weber and Karl Brandt played a part in my life".',
+    );
+  });
+
+  it("fact-checks a name or event even when a search for it failed", () => {
+    expect(prompt).toMatch(/If a search fails, try fact_check_claim before giving up/);
+  });
+
   it("treats known_elsewhere as a faint memory with no added details", () => {
-    expect(prompt).toMatch(/known_elsewhere result is memory, but a faint one/);
+    expect(prompt).toMatch(/A known_elsewhere result, or recalled in a search result, is memory, but a faint one/);
     expect(prompt).toMatch(/use only the details in recalled/);
   });
 

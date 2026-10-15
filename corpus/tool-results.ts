@@ -8,15 +8,16 @@ export type Passage = { chunk_id: number; section_heading: string; content: stri
 /** A typed failure: tools return this instead of throwing (spec §9). */
 export type Unavailable = { status: "unavailable"; reason: string };
 
+/** Spec §19: what the helper model recalled when the biography was silent. year is negative for BC, null when undated (§28.9). */
+export type Recalled = { account: string; year: number | null };
+
+/** recalled: the search fallback, when no passage comes close to the query. */
 export type SearchBiographyResult =
-  | { status: "ok"; passages: Passage[]; queries: string[] }
-  | { status: "empty"; queries: string[] }
+  | { status: "ok"; passages: Passage[]; queries: string[]; recalled?: Recalled }
+  | { status: "empty"; queries: string[]; recalled?: Recalled }
   | Unavailable;
 
 export type Verdict = "supported" | "contradicted" | "not_mentioned" | "known_elsewhere";
-
-/** Spec §19: what the helper model recalled when the biography was silent. year is negative for BC, null when undated (§28.9). */
-export type Recalled = { account: string; year: number | null };
 
 export type FactCheckResult =
   | { status: "ok"; verdict: Verdict; passage?: Passage; explanation: string; recalled?: Recalled }

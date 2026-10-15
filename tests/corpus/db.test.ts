@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deployDatabaseUrl, describeDbError, toVectorLiteral } from "../../corpus/db";
+import { deployDatabaseUrl, describeDbError, poolMax, toVectorLiteral } from "../../corpus/db";
 
 describe("toVectorLiteral", () => {
   it("formats a vector as pgvector text", () => {
@@ -35,5 +35,19 @@ describe("deployDatabaseUrl", () => {
 
   it("fails clearly when neither is set", () => {
     expect(() => deployDatabaseUrl({})).toThrow("Neither DATABASE_URL_UNPOOLED nor DATABASE_URL is set.");
+  });
+});
+
+// Review Focus 5: only a positive integer overrides pg's default.
+describe("poolMax", () => {
+  it("reads a positive integer", () => {
+    expect(poolMax({ DATABASE_POOL_MAX: "5" })).toBe(5);
+    expect(poolMax({ DATABASE_POOL_MAX: " 5 " })).toBe(5);
+  });
+
+  it("keeps pg's default for anything else", () => {
+    for (const value of [undefined, "", "0", "-3", "5.5", "abc", "1e3"]) {
+      expect(poolMax({ DATABASE_POOL_MAX: value })).toBeUndefined();
+    }
   });
 });

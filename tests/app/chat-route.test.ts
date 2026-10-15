@@ -21,7 +21,7 @@ vi.mock("@/lib/server/chat-deps", () => ({
   },
 }));
 
-const { POST } = await import("@/app/api/chat/route");
+const { POST, maxDuration } = await import("@/app/api/chat/route");
 
 async function events(res: Response): Promise<ChatStreamEvent[]> {
   const out: ChatStreamEvent[] = [];
@@ -545,5 +545,12 @@ describe("energy (spec §26.4)", () => {
     expect(Number(rows[0].energyBalance)).toBe(950_000);
     const logged = await getPool().query(`SELECT count(*)::int AS n FROM model_calls WHERE user_id = $1 AND conversation_id IS NULL`, [userId]);
     expect(logged.rows[0].n).toBeGreaterThan(0);
+  });
+});
+
+// Spec §31.4: twice Haiku's slowest measured answer, and within the 2-minute running-turn lock.
+describe("chat route config", () => {
+  it("allows 120 s per answer", () => {
+    expect(maxDuration).toBe(120);
   });
 });

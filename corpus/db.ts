@@ -3,13 +3,22 @@ import { Pool } from "pg";
 // Kept on globalThis so Next.js dev reloads reuse one pool instead of leaking one per reload.
 const holder = globalThis as unknown as { personaPool?: Pool };
 
+/** Spec §31.4: DATABASE_POOL_MAX caps connections per instance; anything but a positive integer keeps pg's default (10). */
+export function poolMax(env: Record<string, string | undefined> = process.env): number | undefined {
+  const raw = env.DATABASE_POOL_MAX?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return undefined;
+  const max = Number(raw);
+  return max > 0 ? max : undefined;
+}
+
 export function getPool(): Pool {
   if (!holder.personaPool) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) {
       throw new Error("DATABASE_URL is not set. Add it to .env.");
     }
-    holder.personaPool = new Pool({ connectionString });
+    const max = poolMax();
+    holder.personaPool = new Pool({ connectionString, ...(max ? { max } : {}) });
   }
   return holder.personaPool;
 }

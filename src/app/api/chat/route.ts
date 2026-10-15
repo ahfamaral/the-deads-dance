@@ -16,6 +16,9 @@ import { lockPersona } from "@/lib/server/persona-tools";
 import { applyChatEvent, replyToStore, startTurn } from "@/lib/turn-state";
 import { foldVisit } from "@/lib/visit";
 
+/** Spec §31.4: Vercel's limit for one answer. Twice Haiku's slowest measured (55 s); within the 2-minute running-turn lock. */
+export const maxDuration = 120;
+
 function invalid(error: string, status = 400): Response {
   return Response.json({ error, code: "invalid_request" }, { status });
 }

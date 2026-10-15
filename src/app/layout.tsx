@@ -20,7 +20,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: "Do the deads dance",
-  description: "Ask a science or engineering pioneer, in their own voice.",
+  description: "Ask a historical figure, in their own voice. They might charm you, correct you or show you the door.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

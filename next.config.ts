@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // The chat route spawns the MCP server as a child process; keep these as plain Node requires.
+  // Loaded as plain Node requires (traced into the deployment), not bundled. The MCP server runs in-process (spec §31.4).
   serverExternalPackages: ["@langchain/mcp-adapters", "@modelcontextprotocol/sdk"],
 };
 

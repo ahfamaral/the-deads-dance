@@ -1,59 +1,62 @@
-import path from "node:path";
 import type { DynamicStructuredTool } from "@langchain/core/tools";
-import { MultiServerMCPClient } from "@langchain/mcp-adapters";
+import { loadMcpTools } from "@langchain/mcp-adapters";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { liveDepsFor } from "../../../mcp-server/deps";
+import { createServer, type DepsFor } from "../../../mcp-server/server";
 
-// Kept on globalThis so Next.js dev reloads reuse one child process instead of spawning one per reload.
-const holder = globalThis as unknown as { personaMcp?: MultiServerMCPClient };
+/** Each tool call's limit (spec §9). */
+export const TOOL_TIMEOUT_MS = 30_000;
 
-/** The stdio child gets only a safe default env (PATH, HOME…), not ours: pass what it needs. */
-function childEnv(): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const key of ["DATABASE_URL", "OPENROUTER_API_KEY", "HELPER_MODEL", "RECALL_MODEL"]) {
-    const value = process.env[key];
-    if (value) env[key] = value;
+export type McpConnection = { tools: DynamicStructuredTool[]; close: () => Promise<void> };
+
+/**
+ * Spec §31.4: the MCP server runs in this process, linked to a real MCP client in memory.
+ * Same protocol, tools and results as over stdio; no child process, so it runs on serverless.
+ */
+export async function connectInMemory(depsFor: DepsFor): Promise<McpConnection> {
+  const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
+  const server = createServer(depsFor);
+  const client = new Client({ name: "persona-app", version: "0.1.0" });
+  const close = async () => {
+    await client.close().catch(() => {});
+    await server.close().catch(() => {});
+  };
+  try {
+    await server.connect(serverSide);
+    await client.connect(clientSide);
+    const tools = await loadMcpTools("biography", client, { throwOnLoadError: true, defaultToolTimeout: TOOL_TIMEOUT_MS });
+    return { tools, close };
+  } catch (err) {
+    await close();
+    throw err;
   }
-  return env;
 }
 
-function createClient(): MultiServerMCPClient {
-  const root = process.cwd();
-  return new MultiServerMCPClient({
-    mcpServers: {
-      biography: {
-        transport: "stdio",
-        command: path.join(root, "node_modules", ".bin", "tsx"),
-        args: [path.join(root, "mcp-server", "index.ts")],
-        env: childEnv(),
-        stderr: "inherit",
-        // A crashed child is respawned; getTools() afterwards returns connected tools.
-        restart: { enabled: true, maxAttempts: 3, delayMs: 500 },
-      },
-    },
-    defaultToolTimeout: 30_000,
-  });
-}
+// Kept on globalThis so Next.js dev reloads reuse one server. A promise, so concurrent first
+// requests on a cold instance share one connection.
+const holder = globalThis as unknown as { personaMcp?: Promise<McpConnection> };
 
 /**
  * The biography tools, or null when the MCP server can't be started. The app still runs
- * then, with a banner (spec §9). Tools are fetched on every call, because tools obtained
- * before a child restart stay disconnected.
+ * then, with a banner (spec §9); the next call tries again.
  */
 export async function getMcpTools(): Promise<DynamicStructuredTool[] | null> {
-  holder.personaMcp ??= createClient();
-  const client = holder.personaMcp;
+  // .then() so a synchronous throw in liveDepsFor() becomes a rejection handled below.
+  const pending = (holder.personaMcp ??= Promise.resolve().then(() => connectInMemory(liveDepsFor())));
   try {
-    return await client.getTools();
+    return (await pending).tools;
   } catch (err) {
     console.error("MCP server unavailable:", err);
-    if (holder.personaMcp === client) holder.personaMcp = undefined; // the next request starts afresh
-    await client.close().catch(() => {});
+    if (holder.personaMcp === pending) holder.personaMcp = undefined;
     return null;
   }
 }
 
-/** For tests and scripts: stop the child process. */
+/** For tests and scripts: close the in-process server. */
 export async function closeMcpClient(): Promise<void> {
-  const client = holder.personaMcp;
+  const pending = holder.personaMcp;
   holder.personaMcp = undefined;
-  await client?.close();
+  const connection = await pending?.catch(() => undefined);
+  await connection?.close();
 }

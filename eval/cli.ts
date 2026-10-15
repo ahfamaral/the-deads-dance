@@ -176,7 +176,6 @@ if (process.argv[1]?.endsWith("cli.ts")) {
       console.error(err instanceof Error ? err.message : err);
       process.exitCode = 1;
     })
-    // closeMcpClient() returns but the tsx-wrapped MCP child stays alive and holds the process open;
-    // everything is saved by now, so exit (the child ends with its stdin).
+    // Everything is saved by now; exit so no stray handle (an HTTP agent, the pool) keeps the process open.
     .finally(() => process.exit(process.exitCode ?? 0));
 }

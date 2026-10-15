@@ -16,6 +16,8 @@ describe("deploy config", () => {
     const config = read("vercel.json");
     expect(config.buildCommand).toBe("npm run vercel-build");
     expect(config.regions).toEqual(["iad1"]);
+    // Spec §31.4: the chat route's maxDuration of 120 s needs Fluid compute on Hobby (60 s without it).
+    expect(config.fluid).toBe(true);
     expect(config.git.deploymentEnabled).toEqual({ "**": false, staging: true });
   });
 });

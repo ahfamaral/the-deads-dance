@@ -150,7 +150,11 @@ export default function VoicePanel({ persona, open, onClose, onChanged }: VoiceP
       if (state.voiceLanguages.length === 0) return setLoad({ kind: "none" });
       setLoad({ kind: "creating" });
       const result = await createVoice(persona.id);
-      if (cancelled) return;
+      if (cancelled) {
+        // Closed mid-draft: the voice exists now, so the picker must hear about it.
+        if (result.ok) onChangedRef.current({ status: result.voice.status, voiceLanguages: [] });
+        return;
+      }
       if (result.ok) show(result.voice, state.voiceLanguages);
       else {
         setLoad({ kind: "none" });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import AddPersonaForm from "@/components/add-persona-form";
 import GearIcon from "@/components/gear-icon";
 import VoiceIcon from "@/components/voice-icon";
@@ -32,6 +32,8 @@ type PersonaPickerProps = {
   voiceSupported?: boolean;
 };
 
+const subscribeNoop = () => () => {};
+
 /**
  * Lets the user choose who to talk to. Selecting a persona reveals a
  * "Talk to" button on its row, which confirms the choice. The gear toggles a
@@ -46,8 +48,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   // Spec §33.4: false until mounted, so the server markup never has the voice icon.
-  const [speechOk, setSpeechOk] = useState(false);
-  useEffect(() => setSpeechOk(speechSupported()), []);
+  const speechOk = useSyncExternalStore(subscribeNoop, speechSupported, () => false);
   const showVoiceIcon = voiceSupported ?? speechOk;
   const listFade = useScrollFade();
   const banner = meter?.kind === "energy" ? dueBanner(meter.left, meter.warningRead) : null;

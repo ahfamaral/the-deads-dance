@@ -17,7 +17,7 @@ const render = (personas: Persona[], canManage = true, voiceSupported?: boolean)
       notice: null,
       onConfirm: noop,
       onDelete: noop,
-      onToggleHidden: noop,
+      onToggleHidden: noop, onEditVoice: noop,
       onAdd: noop,
       onBack: noop,
       meter: null,

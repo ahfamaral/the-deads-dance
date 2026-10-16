@@ -13,6 +13,10 @@ type AddPersonaFormProps = {
   onCancel: () => void;
   /** Told when adding starts and ends, so the surrounding panel can lock itself meanwhile. */
   onWorkingChange: (working: boolean) => void;
+  /** Spec §33.3: the admin chose to create a voice for the persona just added; the form is done. */
+  onCreateVoice: (persona: Persona) => void;
+  /** Tests only: starts the form in this phase. */
+  initialPhase?: Phase;
 };
 
 type Phase =
@@ -22,9 +26,9 @@ type Phase =
   | { kind: "error"; message: string };
 
 /** Adds a persona from an English Wikipedia title, showing the ingest stages as a segmented bar (spec §17.5). */
-export default function AddPersonaForm({ onAdded, onCancel, onWorkingChange }: AddPersonaFormProps) {
+export default function AddPersonaForm({ onAdded, onCancel, onWorkingChange, onCreateVoice, initialPhase }: AddPersonaFormProps) {
   const [title, setTitle] = useState("");
-  const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  const [phase, setPhase] = useState<Phase>(initialPhase ?? { kind: "idle" });
   const working = phase.kind === "working";
 
   async function submit(event: FormEvent) {
@@ -88,6 +92,28 @@ export default function AddPersonaForm({ onAdded, onCancel, onWorkingChange }: A
             </tr>
           </tbody>
         </table>
+        <div className="flex flex-col gap-2 border-t border-white/10 pt-2">
+          <p className="text-neutral-300">Create a voice for {phase.persona.name}?</p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => onAdded(phase.persona)}
+              className="min-h-11 rounded-full px-4 py-1.5 text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground"
+            >
+              Not now
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onAdded(phase.persona);
+                onCreateVoice(phase.persona);
+              }}
+              className="min-h-11 rounded-full bg-neutral-100 px-4 py-1.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
+            >
+              Create voice
+            </button>
+          </div>
+        </div>
         <div className="flex justify-end">
           <button
             type="button"

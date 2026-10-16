@@ -21,6 +21,8 @@ type PersonaPickerProps = {
   onDelete: (persona: Persona) => void;
   /** 2026-10-16: hide a persona from testers' picker, or show it again (admin). */
   onToggleHidden: (persona: Persona) => void;
+  /** Spec §33.3: open the admin's Voice panel for a persona. */
+  onEditVoice: (persona: Persona) => void;
   onAdd: (persona: Persona) => void;
   onBack: () => void;
   /** Spec §26.5: the tester's energy, or the admin's spend today; null if it couldn't be read. */
@@ -38,7 +40,7 @@ type PersonaPickerProps = {
  * persona from a Wikipedia title. Built-in personas show a disabled trash icon.
  * While a persona is being added, every other button in the panel is disabled.
  */
-export default function PersonaPicker({ personas, canManage, notice, onConfirm, onDelete, onToggleHidden, onAdd, onBack, meter, onDismissBanner, voiceSupported }: PersonaPickerProps) {
+export default function PersonaPicker({ personas, canManage, notice, onConfirm, onDelete, onToggleHidden, onEditVoice, onAdd, onBack, meter, onDismissBanner, voiceSupported }: PersonaPickerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -146,6 +148,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
               onAdd(persona);
               setAdding(false);
             }}
+            onCreateVoice={onEditVoice}
             onCancel={() => setAdding(false)}
             onWorkingChange={setBusy}
           />
@@ -251,6 +254,22 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                         ) : (
                           <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
                         )}
+                      </svg>
+                    </button>
+                  )}
+                  {canManage && (
+                    <button
+                      type="button"
+                      aria-label={`Voice for ${persona.name}`}
+                      title="Design the voice"
+                      disabled={busy}
+                      onClick={() => onEditVoice(persona)}
+                      className="flex size-9 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="size-5" aria-hidden="true">
+                        <path d="M11 5 6 9H2v6h4l5 4z" />
+                        <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                        <path d="M19 5a10 10 0 0 1 0 14" />
                       </svg>
                     </button>
                   )}

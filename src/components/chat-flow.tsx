@@ -7,6 +7,7 @@ import ConversationHistory from "@/components/conversation-history";
 import PersonaPicker from "@/components/persona-picker";
 import RatingSheet from "@/components/rating-sheet";
 import SignOutButton from "@/components/sign-out-button";
+import VoicePanel from "@/components/voice-panel";
 import type { ChatStreamEvent, Message, Spend } from "@/lib/chat-types";
 import type { StoredConversation } from "@/lib/conversation-types";
 import { fetchConversation, sendFeedback } from "@/lib/conversations-api";
@@ -55,6 +56,8 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
   const [step, setStep] = useState<Step>({ name: "start" });
   // Held here rather than in the picker so changes survive a trip to the chat and back.
   const [personas, setPersonas] = useState<Persona[]>(initialPersonas);
+  // Spec §33.3: the persona whose Voice panel is open (admin).
+  const [voicePanelFor, setVoicePanelFor] = useState<Persona | null>(null);
   const [pickerNotice, setPickerNotice] = useState<string | null>(
     personasUnavailable ? "Personas unavailable: database not reachable." : null,
   );
@@ -269,6 +272,18 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
 
   if (step.name === "select") {
     return withSheet(
+      <>
+      {voicePanelFor && (
+        <VoicePanel
+          key={voicePanelFor.id}
+          persona={voicePanelFor}
+          open
+          onClose={() => setVoicePanelFor(null)}
+          onChanged={({ status, voiceLanguages }) =>
+            setPersonas((current) => current.map((p) => (p.id === voicePanelFor.id ? { ...p, voiceStatus: status, voiceLanguages } : p)))
+          }
+        />
+      )}
       <PersonaPicker
         personas={personas}
         canManage={isAdmin}
@@ -277,10 +292,12 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
         onBack={() => setStep({ name: "start" })}
         onDelete={removePersona}
         onToggleHidden={(persona) => void toggleHidden(persona)}
+        onEditVoice={setVoicePanelFor}
         onAdd={(persona) => setPersonas((current) => [...current, persona])}
         meter={meter}
         onDismissBanner={dismissBanner}
       />
+      </>
     );
   }
 

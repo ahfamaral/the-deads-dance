@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import RatingSheet from "@/components/rating-sheet";
+import { describe, expect, it, vi } from "vitest";
+import RatingSheet, { isBackdropClick, trySave } from "@/components/rating-sheet";
 import type { Feedback } from "@/lib/feedback";
 
 const noop = () => {};
@@ -30,5 +30,35 @@ describe("RatingSheet (spec §32.5)", () => {
     expect(html).toMatch(/aria-label="4 of 5 stars"[^>]*checked=""|checked=""[^>]*aria-label="4 of 5 stars"/);
     expect(html).toContain("Very kind</textarea>");
     expect(html).toMatch(/<button(?![^>]*disabled="")[^>]*>Save<\/button>/);
+  });
+});
+
+// Final review, Important 1: the close and save rules, without a DOM.
+describe("isBackdropClick (spec §32.5)", () => {
+  it("counts only a click on the dialog itself, not on its content", () => {
+    const dialog = {} as EventTarget;
+    const star = {} as EventTarget;
+    expect(isBackdropClick(dialog, dialog)).toBe(true);
+    expect(isBackdropClick(star, dialog)).toBe(false);
+    expect(isBackdropClick(null, dialog)).toBe(false);
+  });
+});
+
+describe("trySave (spec §32.5)", () => {
+  it("saves the trimmed comment and returns what the server kept", async () => {
+    const onSave = vi.fn(async () => ({ stars: 4, comment: "Good" }));
+    expect(await trySave(onSave, 4, "  Good  ")).toEqual({ stars: 4, comment: "Good" });
+    expect(onSave).toHaveBeenCalledWith({ stars: 4, comment: "Good" });
+  });
+
+  it("never calls onSave without a star or with an over-long comment", async () => {
+    const onSave = vi.fn(async () => ({ stars: 4, comment: "" }));
+    expect(await trySave(onSave, null, "")).toBeNull();
+    expect(await trySave(onSave, 4, "x".repeat(2001))).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("gives null when the save fails, so the sheet shows its error", async () => {
+    expect(await trySave(async () => null, 3, "")).toBeNull();
   });
 });

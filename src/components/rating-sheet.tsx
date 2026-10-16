@@ -16,6 +16,21 @@ type RatingSheetProps = {
 };
 
 const STARS = [1, 2, 3, 4, 5];
+
+/** A click that lands on the <dialog> itself, not its content, is on the backdrop. */
+export function isBackdropClick(target: EventTarget | null, dialog: EventTarget): boolean {
+  return target === dialog;
+}
+
+/** Spec §32.5: saves only a valid rating, comment trimmed. The saved rating, or null (nothing sent, or it failed). */
+export async function trySave(
+  onSave: (feedback: Feedback) => Promise<Feedback | null>,
+  stars: number | null,
+  comment: string,
+): Promise<Feedback | null> {
+  if (stars === null || !canSend(stars, comment)) return null;
+  return onSave({ stars, comment: comment.trim() });
+}
 const BUTTON = "min-h-11 flex-1 whitespace-nowrap rounded-full px-4 py-1.5 text-sm sm:flex-none";
 
 /**
@@ -40,10 +55,10 @@ export default function RatingSheet({ open, personaName, initial, onSave, onSave
   }, [open]);
 
   async function send() {
-    if (stars === null || !canSend(stars, comment) || busy) return;
+    if (!canSend(stars, comment) || busy) return;
     setBusy(true);
     setFailed(false);
-    const saved = await onSave({ stars, comment: comment.trim() });
+    const saved = await trySave(onSave, stars, comment);
     setBusy(false);
     if (saved) onSaved(saved);
     else setFailed(true);
@@ -55,9 +70,8 @@ export default function RatingSheet({ open, personaName, initial, onSave, onSave
       aria-labelledby={headingId}
       // Escape closes the dialog, which counts as Skip.
       onClose={onClose}
-      // A click that lands on the <dialog> itself, not its content, is on the backdrop.
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (isBackdropClick(event.target, event.currentTarget)) onClose();
       }}
       className="mx-0 mt-auto mb-0 w-full max-w-full rounded-t-3xl border border-white/10 bg-neutral-900 p-0 text-foreground shadow-lg shadow-black/40 backdrop:bg-black/60 backdrop:backdrop-blur-sm sm:m-auto sm:w-[calc(100%-2rem)] sm:max-w-sm sm:rounded-3xl"
     >

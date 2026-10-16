@@ -1,20 +1,22 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { isMenuShowing, onMenuShowingChange, shouldAnimate } from "@/lib/background-motion";
-import { createScene, type Scene } from "@/lib/threshold/scene";
+import { createScene, STILL_TIME, type Scene } from "@/lib/threshold/scene";
 
-/** Frozen frame shown when motion is reduced — mid-breath, so it reads well. */
-const STILL_TIME = 4.2;
 /** The composition moves slowly, so 30 frames a second look the same as 60 or 120 at a fraction of the work. */
 const FRAME_INTERVAL = 1000 / 30;
 
+/** The live background, for a mouse or trackpad. Touch devices play a video instead (BackgroundVideo). */
 export default function BackgroundCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      canvas.style.display = "none";
+      return;
+    }
 
     let scene: Scene | null = null;
     try {
@@ -31,11 +33,10 @@ export default function BackgroundCanvas() {
 
     const active = scene;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const touch = window.matchMedia("(pointer: coarse)");
 
     let frame = 0;
     // Animation seconds elapsed, accumulated from frame deltas so a hidden
-    // tab or a still screen doesn't jump the composition forward on return.
+    // tab doesn't jump the composition forward on return.
     let elapsed = 0;
     let lastTimestamp: number | null = null;
     let lastDrawn = -Infinity;
@@ -52,8 +53,6 @@ export default function BackgroundCanvas() {
       active.render(elapsed);
     };
 
-    const stillTime = () => (reduceMotion.matches ? STILL_TIME : elapsed);
-
     const stop = () => {
       cancelAnimationFrame(frame);
       frame = 0;
@@ -61,44 +60,42 @@ export default function BackgroundCanvas() {
       lastDrawn = -Infinity;
     };
 
-    // Starts or stops the loop to match the screen; a stopped canvas keeps its last frame.
-    const update = () => {
-      const animate = shouldAnimate({
-        touch: touch.matches,
-        menuShowing: isMenuShowing(),
-        reduceMotion: reduceMotion.matches,
-        hidden: document.hidden,
-      });
-      if (animate && !frame) frame = requestAnimationFrame(tick);
-      else if (!animate && frame) stop();
+    const start = () => {
+      if (frame || reduceMotion.matches || document.hidden) return;
+      frame = requestAnimationFrame(tick);
     };
 
     const onResize = () => {
       active.resize();
-      if (!frame) active.render(stillTime());
+      if (!frame) active.render(reduceMotion.matches ? STILL_TIME : elapsed);
     };
 
     const onMotionPreferenceChange = () => {
-      update();
-      if (reduceMotion.matches) active.render(STILL_TIME);
+      if (reduceMotion.matches) {
+        stop();
+        active.render(STILL_TIME);
+      } else {
+        start();
+      }
     };
 
-    active.render(stillTime());
-    update();
+    const onVisibilityChange = () => {
+      if (document.hidden) stop();
+      else start();
+    };
+
+    active.render(reduceMotion.matches ? STILL_TIME : 0);
+    start();
 
     window.addEventListener("resize", onResize);
-    document.addEventListener("visibilitychange", update);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     reduceMotion.addEventListener("change", onMotionPreferenceChange);
-    touch.addEventListener("change", update);
-    const stopListening = onMenuShowingChange(update);
 
     return () => {
       stop();
       window.removeEventListener("resize", onResize);
-      document.removeEventListener("visibilitychange", update);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       reduceMotion.removeEventListener("change", onMotionPreferenceChange);
-      touch.removeEventListener("change", update);
-      stopListening();
     };
   }, []);
 

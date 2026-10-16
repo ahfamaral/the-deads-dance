@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import BackgroundCanvas from "@/components/background-canvas";
+import BackgroundVideo from "@/components/background-video";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <BackgroundCanvas />
+        <BackgroundVideo />
         <div className="relative z-10 flex flex-1 flex-col">{children}</div>
       </body>
     </html>

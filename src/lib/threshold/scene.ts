@@ -19,6 +19,15 @@ const SAMPLES = 72;
 const SPREAD_MIN = 0.3;
 const SPREAD_MAX = 0.86;
 const BREATH_SPEED = 0.16;
+/**
+ * One breath, in seconds. Every motion's speed is a whole multiple of BREATH_SPEED, so the whole
+ * composition repeats after one breath and the phones' video loops without a seam.
+ */
+export const LOOP_SECONDS = (2 * Math.PI) / BREATH_SPEED;
+/** The frame shown when the background doesn't move — mid-breath, so it reads well. */
+export const STILL_TIME = 4.2;
+/** Speed of a motion that repeats `times` per breath. */
+const perBreath = (times: number) => BREATH_SPEED * times;
 /** Right side lags the left so the two never pulse in lockstep. */
 const BREATH_OFFSET = 1.1;
 /** How strongly the strands wave: the left side's ripple and the right ribbon's weave. Both are zero at the seam. */
@@ -39,8 +48,7 @@ const WARM: [number, number, number] = [255, 176, 92];
 const COOL: [number, number, number] = [104, 176, 255];
 
 const SPARKLES = 220;
-/** 1×: the background sits behind the panels, and 2× was four times the pixels to paint (2026-10-16, phones got warm). */
-const MAX_DPR = 1;
+const MAX_DPR = 2;
 /** The bar sprite's width; it's stretched to the bar's width each frame. */
 const BAR_SPRITE_WIDTH = 64;
 /** Half the seam bar's width at full intensity, in px. */
@@ -78,7 +86,18 @@ export type Scene = {
   render: (time: number) => void;
 };
 
-export function createScene(canvas: HTMLCanvasElement): Scene | null {
+/** Where the scene gets its size and spare canvases; the browser's by default. The video script passes its own. */
+export type SceneEnvironment = {
+  viewport: () => { width: number; height: number; dpr: number };
+  createCanvas: () => HTMLCanvasElement;
+};
+
+const browserEnvironment: SceneEnvironment = {
+  viewport: () => ({ width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio || 1 }),
+  createCanvas: () => document.createElement("canvas"),
+};
+
+export function createScene(canvas: HTMLCanvasElement, env: SceneEnvironment = browserEnvironment): Scene | null {
   const ctx = canvas.getContext("2d", { alpha: false });
   if (!ctx) return null;
 
@@ -95,20 +114,24 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
   let lastChurn: number | null = null;
   // The seam's bar, faded toward the top and bottom, drawn once per size. Fading it on its own
   // canvas keeps the fade from erasing what's under the bar (it used to leave a dark band).
-  const barSprite = document.createElement("canvas");
+  const barSprite = env.createCanvas();
   // Its shadow: the inverse fade, so none at the waist and darkest toward the top and bottom,
   // with soft sides.
-  const shadowSprite = document.createElement("canvas");
+  const shadowSprite = env.createCanvas();
 
   const resize = () => {
-    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-    width = window.innerWidth;
-    height = window.innerHeight;
+    const viewport = env.viewport();
+    const dpr = Math.min(viewport.dpr, MAX_DPR);
+    width = viewport.width;
+    height = viewport.height;
 
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
+    // The video script's canvas isn't on a page, so it has no style.
+    if (canvas.style) {
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+    }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     seamX = width * SEAM_X;
@@ -188,7 +211,7 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
         const d = j / SAMPLES;
         const x = seamX - d * seamX;
         const env = envelope(d, spread, 0.72);
-        const wave = Math.sin(d * 3.1 + phase - time * 0.5) * env * drift * WAVE_AMPLITUDE;
+        const wave = Math.sin(d * 3.1 + phase - time * perBreath(3)) * env * drift * WAVE_AMPLITUDE;
         const y = midY + s * env + wave;
         if (j === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
@@ -226,7 +249,7 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
       const reach = (1 - d) ** 1.25;
       // The column rides the strands' ripple (the same wave, without each strand's own phase),
       // so the characters move with the beam instead of sitting on a fixed grid.
-      const ride = Math.sin(d * 3.1 - time * 0.5) * env * GLYPH_RIDE * WAVE_AMPLITUDE;
+      const ride = Math.sin(d * 3.1 - time * perBreath(3)) * env * GLYPH_RIDE * WAVE_AMPLITUDE;
 
       for (let row = 0; row < glyphRows; row += 1) {
         const y = row * GLYPH_CELL + GLYPH_CELL * 0.5 + ride;
@@ -261,11 +284,11 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
         const env = envelope(d, spread, 0.85);
         // Two out-of-phase families; where they cross, the weave appears.
         const weave =
-          (Math.sin(d * 4.4 + s * Math.PI * 1.35 - time * 0.42) * 0.42 +
-            Math.sin(d * 2.1 - s * Math.PI * 0.6 + time * 0.23) * 0.2) *
+          (Math.sin(d * 4.4 + s * Math.PI * 1.35 - time * perBreath(3)) * 0.42 +
+            Math.sin(d * 2.1 - s * Math.PI * 0.6 + time * perBreath(2)) * 0.2) *
           WAVE_AMPLITUDE;
         // The slow sway eases in from the seam, so the ribbon's source stays pinned to the centre.
-        const sway = Math.sin(time * 0.13) * 6 * smoothstep(Math.min(1, d / SWAY_RAMP));
+        const sway = Math.sin(time * perBreath(1)) * 6 * smoothstep(Math.min(1, d / SWAY_RAMP));
         const y = midY + env * (s * 0.72 + weave) + sway;
         if (j === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
@@ -281,7 +304,7 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
   const drawSparkles = (time: number) => {
     ctx.globalCompositeOperation = "lighter";
     for (const sparkle of sparkles) {
-      const twinkle = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(time * 1.7 + sparkle.phase));
+      const twinkle = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(time * perBreath(11) + sparkle.phase));
       ctx.fillStyle = `rgba(255, 255, 255, ${twinkle * 0.5})`;
       ctx.beginPath();
       ctx.arc(sparkle.x, sparkle.y, sparkle.size, 0, Math.PI * 2);
@@ -292,7 +315,7 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
 
   /** The seam's strength this frame: a slow pulse, and a tighter pinch concentrates it. */
   const seamIntensity = (time: number, spread: number) =>
-    (0.85 + 0.15 * Math.sin(time * 0.6)) * lerp(1.15, 0.8, smoothstep(spread));
+    (0.85 + 0.15 * Math.sin(time * perBreath(4))) * lerp(1.15, 0.8, smoothstep(spread));
 
   /**
    * Under everything else: the seam's broad halo, then the shadow along the bar, so the beam

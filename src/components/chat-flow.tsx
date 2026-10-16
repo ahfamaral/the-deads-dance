@@ -7,7 +7,6 @@ import ConversationHistory from "@/components/conversation-history";
 import PersonaPicker from "@/components/persona-picker";
 import RatingSheet from "@/components/rating-sheet";
 import SignOutButton from "@/components/sign-out-button";
-import { setMenuShowing } from "@/lib/background-motion";
 import type { ChatStreamEvent, Message, Spend } from "@/lib/chat-types";
 import type { StoredConversation } from "@/lib/conversation-types";
 import { fetchConversation, sendFeedback } from "@/lib/conversations-api";
@@ -141,13 +140,6 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
-
-  // On a phone the background moves only on the main menu (2026-10-16).
-  const onMenu = step.name === "start";
-  useEffect(() => {
-    setMenuShowing(onMenu);
-    return () => setMenuShowing(false);
-  }, [onMenu]);
 
   // A blocked or rejected tester is sent back to sign-in on their next screen change, or when they
   // return to the tab, even without chatting. The page itself just checked, so the first screen doesn't.

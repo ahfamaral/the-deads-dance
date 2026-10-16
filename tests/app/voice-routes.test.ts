@@ -146,8 +146,7 @@ describe("admin voice routes (spec §33.3)", () => {
     expect(rendered.status).toBe(200);
     expect(speakFake).toHaveBeenCalledTimes(2);
     expect(speakFake.mock.calls[1][0].instructions).toContain("A gruff old man.");
-    // A failed speech call returns no record, so only the first render's rows are logged.
-    expect((await loggedRoles()).map((r) => r.role)).toEqual(["helper", "tts"]);
+    expect((await loggedRoles()).map((r) => r.role)).toEqual(["helper", "tts", "tts"]);
   });
 
   it("an edit drops the stale sample, so approving needs a new render", async () => {
@@ -189,7 +188,8 @@ describe("admin voice routes (spec §33.3)", () => {
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "Couldn't render the sample. Try again." });
     expect(await findVoice(getPool(), "wu")).toMatchObject({ description: "A gruff old man.", status: "draft", sampleAudio: null });
-    expect((await loggedRoles()).map((r) => r.role)).toEqual(["helper", "tts", "tts"]);
+    // A failed speech call returns no record, so only the first render's rows are logged.
+    expect((await loggedRoles()).map((r) => r.role)).toEqual(["helper", "tts"]);
   });
 
   it("PATCH render with nothing changed keeps an approved status", async () => {

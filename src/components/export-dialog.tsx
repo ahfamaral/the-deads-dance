@@ -33,7 +33,7 @@ export default function ExportDialog({ conversation, onClose }: ExportDialogProp
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-3xl border border-white/10 bg-neutral-900 p-0 text-foreground shadow-lg shadow-black/40 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+      className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-3xl border border-white/10 bg-neutral-900 p-0 text-foreground shadow-lg shadow-black/40 backdrop:bg-black/60 pointer-fine:backdrop:backdrop-blur-sm"
     >
       {/* Keyed so a new conversation starts without the previous one's error. */}
       {conversation && <ExportOptions key={conversation.id} conversation={conversation} onClose={onClose} />}

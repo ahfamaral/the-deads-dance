@@ -55,7 +55,7 @@ export default function Conversation({
   return (
     <section
       aria-label={`Conversation with ${personaName}`}
-      className="flex min-h-0 w-full flex-1 flex-col rounded-3xl border border-white/10 bg-neutral-900/80 shadow-lg shadow-black/40 backdrop-blur-md"
+      className="flex min-h-0 w-full flex-1 flex-col rounded-3xl border border-white/10 bg-neutral-900/80 shadow-lg shadow-black/40 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-md"
     >
       <header className="grid grid-cols-[1fr_minmax(0,auto)_1fr] items-center gap-3 border-b border-white/10 p-3">
         <button

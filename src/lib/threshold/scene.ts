@@ -39,7 +39,8 @@ const WARM: [number, number, number] = [255, 176, 92];
 const COOL: [number, number, number] = [104, 176, 255];
 
 const SPARKLES = 220;
-const MAX_DPR = 2;
+/** 1×: the background sits behind the panels, and 2× was four times the pixels to paint (2026-10-16, phones got warm). */
+const MAX_DPR = 1;
 /** The bar sprite's width; it's stretched to the bar's width each frame. */
 const BAR_SPRITE_WIDTH = 64;
 /** Half the seam bar's width at full intensity, in px. */
@@ -90,6 +91,8 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
   let glyphRows = 0;
   let glyphs = new Uint8Array(0);
   let sparkles: Sparkle[] = [];
+  /** When the glyphs last re-rolled, so the churn follows time, not the frame rate. */
+  let lastChurn: number | null = null;
   // The seam's bar, faded toward the top and bottom, drawn once per size. Fading it on its own
   // canvas keeps the fade from erasing what's under the bar (it used to leave a dark band).
   const barSprite = document.createElement("canvas");
@@ -202,7 +205,10 @@ export function createScene(canvas: HTMLCanvasElement): Scene | null {
   /** The data field riding on the left-hand strands. */
   const drawGlyphs = (time: number, spread: number) => {
     // Re-roll a slice of the field each frame for a live, flickering read.
-    const churn = Math.max(1, Math.round((glyphs.length * GLYPH_CHURN) / 60));
+    // A still frame (no time passed) or a jump back in time re-rolls nothing.
+    const passed = lastChurn === null ? 0 : Math.min(0.25, Math.max(0, time - lastChurn));
+    lastChurn = time;
+    const churn = Math.round(glyphs.length * GLYPH_CHURN * passed);
     for (let i = 0; i < churn; i += 1) {
       const cell = Math.floor(Math.random() * glyphs.length);
       glyphs[cell] = Math.floor(Math.random() * GLYPH_CHARS.length);

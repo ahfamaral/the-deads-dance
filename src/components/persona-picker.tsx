@@ -55,7 +55,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
     <div className="flex min-h-0 flex-1 items-center justify-center">
       <section
         aria-labelledby="persona-picker-heading"
-        className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/10 bg-neutral-900/80 p-5 shadow-lg shadow-black/40 backdrop-blur-md"
+        className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/10 bg-neutral-900/80 p-5 shadow-lg shadow-black/40 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-md"
       >
         <div className="-ml-2 mb-3 flex items-center justify-between gap-3">
         <button

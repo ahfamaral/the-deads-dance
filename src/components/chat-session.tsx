@@ -285,7 +285,7 @@ export default function ChatSession({
       {showEndBar({ ended, streaming: turn !== null }) ? (
         <div
           role="status"
-          className="flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/10 bg-neutral-900/80 px-5 py-3 text-sm text-neutral-300 shadow-lg shadow-black/40 backdrop-blur-md"
+          className="flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/10 bg-neutral-900/80 px-5 py-3 text-sm text-neutral-300 shadow-lg shadow-black/40 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-md"
         >
           <span>{personaName} has ended the visit.</span>
           <div className="flex w-full gap-1.5 sm:w-auto sm:gap-2">
@@ -308,7 +308,7 @@ export default function ChatSession({
       ) : readOnly ? null : gone ? (
         <p
           role="status"
-          className="w-full max-w-3xl rounded-3xl border border-white/10 bg-neutral-900/80 px-5 py-3 text-sm text-neutral-300 shadow-lg shadow-black/40 backdrop-blur-md"
+          className="w-full max-w-3xl rounded-3xl border border-white/10 bg-neutral-900/80 px-5 py-3 text-sm text-neutral-300 shadow-lg shadow-black/40 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-md"
         >
           This conversation is no longer available.
         </p>

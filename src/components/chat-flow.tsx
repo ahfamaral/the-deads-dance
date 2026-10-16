@@ -7,6 +7,7 @@ import ConversationHistory from "@/components/conversation-history";
 import PersonaPicker from "@/components/persona-picker";
 import RatingSheet from "@/components/rating-sheet";
 import SignOutButton from "@/components/sign-out-button";
+import { setMenuShowing } from "@/lib/background-motion";
 import type { ChatStreamEvent, Message, Spend } from "@/lib/chat-types";
 import type { StoredConversation } from "@/lib/conversation-types";
 import { fetchConversation, sendFeedback } from "@/lib/conversations-api";
@@ -141,6 +142,13 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
 
+  // On a phone the background moves only on the main menu (2026-10-16).
+  const onMenu = step.name === "start";
+  useEffect(() => {
+    setMenuShowing(onMenu);
+    return () => setMenuShowing(false);
+  }, [onMenu]);
+
   // A blocked or rejected tester is sent back to sign-in on their next screen change, or when they
   // return to the tab, even without chatting. The page itself just checked, so the first screen doesn't.
   const firstStep = useRef(true);
@@ -214,7 +222,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
   if (step.name === "start") {
     // A lighter backdrop than the other panels, so the menu reads as secondary.
     const menuSurface =
-      "w-full rounded-3xl border border-white/10 bg-neutral-900/50 px-5 shadow-lg shadow-black/30 backdrop-blur-md";
+      "w-full rounded-3xl border border-white/10 bg-neutral-900/50 px-5 shadow-lg shadow-black/30 pointer-coarse:bg-neutral-900/85 pointer-fine:backdrop-blur-md";
     const menuButton = `${menuSurface} py-3 text-sm font-medium transition-colors hover:border-white/40 hover:bg-neutral-700/70 hover:text-foreground focus-visible:border-white/40 focus-visible:outline-none`;
     return withSheet(
       <div className="flex flex-1 items-center justify-center">

@@ -73,7 +73,7 @@ export default function RatingSheet({ open, personaName, initial, onSave, onSave
       onClick={(event) => {
         if (isBackdropClick(event.target, event.currentTarget)) onClose();
       }}
-      className="mx-0 mt-auto mb-0 w-full max-w-full rounded-t-3xl border border-white/10 bg-neutral-900 p-0 text-foreground shadow-lg shadow-black/40 backdrop:bg-black/60 backdrop:backdrop-blur-sm sm:m-auto sm:w-[calc(100%-2rem)] sm:max-w-sm sm:rounded-3xl"
+      className="mx-0 mt-auto mb-0 w-full max-w-full rounded-t-3xl border border-white/10 bg-neutral-900 p-0 text-foreground shadow-lg shadow-black/40 backdrop:bg-black/60 pointer-fine:backdrop:backdrop-blur-sm sm:m-auto sm:w-[calc(100%-2rem)] sm:max-w-sm sm:rounded-3xl"
     >
       <div className="flex flex-col gap-4 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5">
         <div className="flex items-start gap-2">

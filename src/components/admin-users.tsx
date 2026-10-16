@@ -192,7 +192,7 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
             role="tab"
             aria-selected={tab === t.status}
             onClick={() => setTab(t.status)}
-            className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${tab === t.status ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 bg-neutral-900/70 text-neutral-300 backdrop-blur-sm"
+            className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${tab === t.status ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 bg-neutral-900/70 text-neutral-300 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-sm"
               }`}
           >
             {t.label}{" "}
@@ -205,7 +205,7 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
           role="tab"
           aria-selected={tab === "feedback"}
           onClick={() => setTab("feedback")}
-          className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${tab === "feedback" ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 bg-neutral-900/70 text-neutral-300 backdrop-blur-sm"}`}
+          className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${tab === "feedback" ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 bg-neutral-900/70 text-neutral-300 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-sm"}`}
         >
           Feedback
         </button>

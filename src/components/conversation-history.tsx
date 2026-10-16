@@ -62,7 +62,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
     <div className="flex min-h-0 flex-1 items-center justify-center">
       <section
         aria-labelledby="conversation-history-heading"
-        className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/10 bg-neutral-900/80 shadow-lg shadow-black/40 backdrop-blur-md"
+        className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/10 bg-neutral-900/80 shadow-lg shadow-black/40 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-md"
       >
         <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-white/10 p-3">
           <button

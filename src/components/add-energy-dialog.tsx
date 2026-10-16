@@ -32,7 +32,7 @@ export default function AddEnergyDialog({ open, email, balance, defaultAmount, o
       onClick={(event) => {
         if (event.target === event.currentTarget) onCancel();
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-3xl border border-white/10 bg-neutral-900 p-0 text-foreground shadow-lg shadow-black/40 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+      className="m-auto w-[calc(100%-2rem)] max-w-sm rounded-3xl border border-white/10 bg-neutral-900 p-0 text-foreground shadow-lg shadow-black/40 backdrop:bg-black/60 pointer-fine:backdrop:backdrop-blur-sm"
     >
       <form
         className="flex flex-col gap-4 p-4 sm:p-5"

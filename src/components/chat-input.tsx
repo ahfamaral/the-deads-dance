@@ -39,7 +39,7 @@ export default function ChatInput({
   }
 
   return (
-    <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-neutral-900/80 p-3 shadow-lg shadow-black/40 backdrop-blur-md focus-within:border-white/20">
+    <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-neutral-900/80 p-3 shadow-lg shadow-black/40 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-md focus-within:border-white/20">
       <textarea
         aria-label="Message"
         placeholder={disabledReason ?? "Your message goes here"}

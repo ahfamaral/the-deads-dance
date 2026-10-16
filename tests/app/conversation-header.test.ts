@@ -25,3 +25,22 @@ describe("Conversation header (spec §27)", () => {
     expect(html()).not.toContain("@");
   });
 });
+
+// 2026-10-16: a record from History can't be continued, so it has no language switch.
+describe("the language switch (spec §18.4)", () => {
+  const render = (live: boolean) =>
+    renderToStaticMarkup(
+      createElement(Conversation, {
+        personaName: "Wu",
+        messages: [],
+        onBack: () => {},
+        ...(live ? { languageMode: "realistic" as const, onLanguageModeChange: () => {} } : {}),
+      }),
+    );
+  it("shows in a live conversation", () => {
+    expect(render(true)).toContain("Always answer in my language");
+  });
+  it("is left out of a record from History", () => {
+    expect(render(false)).not.toContain("Always answer in my language");
+  });
+});

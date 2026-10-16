@@ -16,9 +16,9 @@ type ConversationProps = {
   onRetry?: () => void;
   /** Spec §9: the MCP server is down, so answers aren't grounded. */
   toolsUnavailable?: boolean;
-  /** Spec §18.4: the "Always answer in my language" switch. */
-  languageMode: LanguageMode;
-  onLanguageModeChange: (mode: LanguageMode) => void;
+  /** Spec §18.4: the "Always answer in my language" switch. Left out of a record from History, which can't be continued. */
+  languageMode?: LanguageMode;
+  onLanguageModeChange?: (mode: LanguageMode) => void;
   /** The header's right cell: the energy bar, or the admin's spend badge. */
   meterSlot?: ReactNode;
   /** Shown under the tools banner (the energy notice). */
@@ -84,17 +84,19 @@ export default function Conversation({
         {/* The right cell also keeps the name centred (spec §26.5). */}
         <div className="flex justify-self-end">{meterSlot}</div>
       </header>
-      <div className="flex justify-end border-b border-white/10 px-4 py-1.5">
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
-          <input
-            type="checkbox"
-            checked={languageMode === "visitor"}
-            onChange={(event) => onLanguageModeChange(event.target.checked ? "visitor" : "realistic")}
-            className="accent-neutral-300"
-          />
-          Always answer in my language
-        </label>
-      </div>
+      {onLanguageModeChange && (
+        <div className="flex justify-end border-b border-white/10 px-4 py-1.5">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
+            <input
+              type="checkbox"
+              checked={languageMode === "visitor"}
+              onChange={(event) => onLanguageModeChange(event.target.checked ? "visitor" : "realistic")}
+              className="accent-neutral-300"
+            />
+            Always answer in my language
+          </label>
+        </div>
+      )}
       {toolsUnavailable && (
         <p role="status" className="border-b border-white/10 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-200">
           Biography tools unavailable: answers won&apos;t be grounded.

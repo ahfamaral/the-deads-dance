@@ -275,7 +275,7 @@ export default function ChatSession({
           confirmBeforeLeaving({ readOnly, ended, gone, hasMessages: messages.length > 0 }) ? setConfirmingLeave(true) : onBack(askRating())
         }
         languageMode={languageMode}
-        onLanguageModeChange={changeLanguageMode}
+        onLanguageModeChange={readOnly ? undefined : changeLanguageMode}
         meterSlot={meterSlot}
         notice={banner !== null ? <EnergyNotice threshold={banner} onDismiss={() => onDismissBanner(banner)} /> : null}
         waiting={waiting}

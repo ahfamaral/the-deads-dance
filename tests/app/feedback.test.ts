@@ -23,6 +23,13 @@ describe("FeedbackInputSchema (spec §32.3)", () => {
   });
 });
 
+describe("COMMENT_MAX", () => {
+  // 2026-10-16: the user set the comment limit to 200 characters.
+  it("is 200 characters", () => {
+    expect(COMMENT_MAX).toBe(200);
+  });
+});
+
 describe("canSend", () => {
   it("needs a star, and a comment within the limit", () => {
     expect(canSend(null, "")).toBe(false);

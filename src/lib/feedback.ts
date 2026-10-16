@@ -6,7 +6,7 @@ import { z } from "zod";
  */
 
 /** Spec §32.2: the longest comment the server accepts, after trimming. */
-export const COMMENT_MAX = 2000;
+export const COMMENT_MAX = 200;
 
 /** Spec §32.3: the PUT body. A missing comment is ''; one longer than COMMENT_MAX is refused, not cut. */
 export const FeedbackInputSchema = z.object({

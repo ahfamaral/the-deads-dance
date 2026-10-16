@@ -17,7 +17,7 @@ describe("RatingSheet (spec §32.5)", () => {
     for (const n of [1, 2, 3, 4, 5]) expect(html).toContain(`aria-label="${n} of 5 stars"`);
     expect(html).toContain('aria-label="Close"');
     expect(html).toContain('placeholder="Anything to add? (optional)"');
-    expect(html).toMatch(/maxlength="2000"/i);
+    expect(html).toMatch(/maxlength="200"/i);
     expect(html).toContain(">Skip</button>");
   });
 
@@ -30,6 +30,13 @@ describe("RatingSheet (spec §32.5)", () => {
     expect(html).toMatch(/aria-label="4 of 5 stars"[^>]*checked=""|checked=""[^>]*aria-label="4 of 5 stars"/);
     expect(html).toContain("Very kind</textarea>");
     expect(html).toMatch(/<button(?![^>]*disabled="")[^>]*>Save<\/button>/);
+  });
+
+  // 2026-10-16: editing from History has no Skip; ✕ still closes.
+  it("leaves Skip out when editing, keeping the close button", () => {
+    const html = render({ stars: 4, comment: "Very kind" });
+    expect(html).not.toContain(">Skip</button>");
+    expect(html).toContain('aria-label="Close"');
   });
 });
 
@@ -54,7 +61,7 @@ describe("trySave (spec §32.5)", () => {
   it("never calls onSave without a star or with an over-long comment", async () => {
     const onSave = vi.fn(async () => ({ stars: 4, comment: "" }));
     expect(await trySave(onSave, null, "")).toBeNull();
-    expect(await trySave(onSave, 4, "x".repeat(2001))).toBeNull();
+    expect(await trySave(onSave, 4, "x".repeat(201))).toBeNull();
     expect(onSave).not.toHaveBeenCalled();
   });
 

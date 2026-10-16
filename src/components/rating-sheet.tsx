@@ -131,9 +131,12 @@ export default function RatingSheet({ open, personaName, initial, onSave, onSave
           </p>
         )}
         <div className="flex justify-end gap-1.5 sm:gap-2">
-          <button type="button" onClick={onClose} className={`${BUTTON} text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground`}>
-            Skip
-          </button>
+          {/* Editing from History has no Skip (2026-10-16); ✕ still closes. */}
+          {!initial && (
+            <button type="button" onClick={onClose} className={`${BUTTON} text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground`}>
+              Skip
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void send()}

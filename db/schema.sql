@@ -226,7 +226,7 @@ CREATE TABLE IF NOT EXISTS conversation_feedback (
   conversation_id uuid PRIMARY KEY REFERENCES conversations (id) ON DELETE CASCADE,
   user_id    text NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
   stars      smallint NOT NULL CHECK (stars BETWEEN 1 AND 5),
-  comment    text NOT NULL DEFAULT '' CHECK (length(comment) <= 2000),
+  comment    text NOT NULL DEFAULT '' CHECK (length(comment) <= 200),
   model      text NOT NULL,
   commit_sha text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),

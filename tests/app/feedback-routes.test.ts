@@ -53,7 +53,7 @@ describe("PUT /api/conversations/:id/feedback (spec §32.3)", () => {
   });
 
   it("refuses bad input with 400 and stores nothing", async () => {
-    for (const body of [{ stars: 0 }, { stars: 4, comment: "x".repeat(2001) }, {}]) {
+    for (const body of [{ stars: 0 }, { stars: 4, comment: "x".repeat(201) }, {}]) {
       const res = await put(ana.cookie, conv, body);
       expect(res.status).toBe(400);
       expect((await res.json()).code).toBe("invalid_feedback");

@@ -23,7 +23,7 @@ export async function PUT(request: Request, ctx: RouteContext<"/api/conversation
     const parsed = FeedbackInputSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) {
       return Response.json(
-        { error: "Pick 1 to 5 stars; the comment can be up to 2,000 characters.", code: "invalid_feedback" },
+        { error: "Pick 1 to 5 stars; the comment can be up to 200 characters.", code: "invalid_feedback" },
         { status: 400 },
       );
     }

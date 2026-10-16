@@ -193,7 +193,7 @@ CREATE TABLE IF NOT EXISTS model_calls (
   conversation_id uuid REFERENCES conversations (id) ON DELETE SET NULL,
   message_id      bigint REFERENCES messages (id) ON DELETE SET NULL,
   persona_slug    text,
-  role            text NOT NULL CHECK (role IN ('agent', 'classifier', 'helper', 'recall', 'embedding', 'ingest')),
+  role            text NOT NULL CHECK (role IN ('agent', 'classifier', 'helper', 'recall', 'embedding', 'ingest', 'tts')),
   model           text NOT NULL,
   input_tokens    integer NOT NULL DEFAULT 0,
   output_tokens   integer NOT NULL DEFAULT 0,
@@ -236,3 +236,26 @@ CREATE TABLE IF NOT EXISTS conversation_feedback (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS conversation_feedback_created ON conversation_feedback (created_at DESC);
+
+-- Spec §33.2: model_calls.role gains 'tts'. The inline CHECK above is named model_calls_role_check;
+-- databases created before this keep the old list, so replace it (idempotent).
+ALTER TABLE model_calls DROP CONSTRAINT IF EXISTS model_calls_role_check;
+ALTER TABLE model_calls ADD CONSTRAINT model_calls_role_check
+  CHECK (role IN ('agent', 'classifier', 'helper', 'recall', 'embedding', 'ingest', 'tts'));
+
+-- Spec §33.2: one designed voice per persona. No voice row = no voice.
+CREATE TABLE IF NOT EXISTS persona_voices (
+  persona_slug text PRIMARY KEY REFERENCES personas (slug) ON DELETE CASCADE,
+  base_voice   text NOT NULL,             -- a Gemini voice name, e.g. 'Algenib'
+  description  text NOT NULL CHECK (length(description) BETWEEN 1 AND 600),
+  sample_text  text NOT NULL,             -- what the sample says, in the native language
+  sample_audio bytea,                     -- the last generated sample (WAV); null until generated
+  status       text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','approved')),
+  approved_at  timestamptz,
+  updated_at   timestamptz NOT NULL DEFAULT now()
+);
+
+-- Spec §33.2: how a conversation is held; set by its first turn, never changed.
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'text'
+  CHECK (mode IN ('text','voice'));
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS voice_language text; -- ISO 639-1, voice only

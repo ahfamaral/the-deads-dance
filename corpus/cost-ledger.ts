@@ -7,7 +7,7 @@ import { z } from "zod";
  * Spec §26.3: every model call a turn (or an ingest) makes, with its real cost. Shared by the app
  * and the MCP child, so no "@/" imports. One ledger per turn or tool call, never a shared one.
  */
-export const MODEL_CALL_ROLES = ["agent", "classifier", "helper", "recall", "embedding", "ingest"] as const;
+export const MODEL_CALL_ROLES = ["agent", "classifier", "helper", "recall", "embedding", "ingest", "tts"] as const;
 export type ModelCallRole = (typeof MODEL_CALL_ROLES)[number];
 
 export const ModelCallSchema = z.object({

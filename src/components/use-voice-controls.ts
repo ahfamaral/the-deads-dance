@@ -25,13 +25,19 @@ type Listening = {
  * non-empty transcript to its `onTranscript`; the mic's level comes from a getUserMedia analyser, or
  * pulses on recognition results when the stream can't open. Audio chunks play back to back. All of
  * it stops when the screen goes away, and the mic stream is released as soon as listening ends.
+ * Audio that stops moving (a suspended context) is stopped and reported to `onStall`, so the answer
+ * can show as a lost voice instead of "Speaking…" forever; the tab coming back tries to resume first.
  */
-export function useVoiceControls(language: string) {
+export function useVoiceControls(language: string, onStall?: () => void) {
   const [listening, setListening] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const current = useRef<Listening | null>(null);
   const player = useRef<PcmPlayer | null>(null);
+  const stallHandler = useRef(onStall);
+  useEffect(() => {
+    stallHandler.current = onStall;
+  });
 
   const release = (l: Listening) => {
     for (const track of l.stream?.getTracks() ?? []) track.stop();
@@ -51,6 +57,14 @@ export function useVoiceControls(language: string) {
     },
     [],
   );
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && player.current?.playing()) player.current.resume();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
 
   function startListening(onTranscript: (text: string) => void) {
     if (current.current) return;
@@ -121,6 +135,10 @@ export function useVoiceControls(language: string) {
       if (!ctx) return;
       player.current = createPcmPlayer(ctx);
       player.current.onIdle(() => setPlaying(false));
+      player.current.onStall(() => {
+        setPlaying(false);
+        stallHandler.current?.();
+      });
     }
     player.current.enqueue(data, sampleRate);
     setPlaying(true);

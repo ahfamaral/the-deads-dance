@@ -10,8 +10,9 @@ export async function GET(request: Request, ctx: RouteContext<"/api/personas/[sl
     const { slug } = await ctx.params;
     const voice = await findVoice(voiceDeps().pool, slug);
     if (!voice?.sampleAudio) return Response.json({ error: "No sample yet." }, { status: 404 });
-    return new Response(new Uint8Array(voice.sampleAudio), {
-      headers: { "Content-Type": "audio/wav", "Cache-Control": "no-store" },
+    const bytes = new Uint8Array(voice.sampleAudio);
+    return new Response(bytes, {
+      headers: { "Content-Type": "audio/wav", "Content-Length": String(bytes.byteLength), "Cache-Control": "no-store" },
     });
   } catch (err) {
     return unavailable(err);

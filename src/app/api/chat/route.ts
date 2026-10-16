@@ -15,7 +15,7 @@ import { findVoice, type StoredVoice } from "@/lib/server/persona-voices";
 import { recordCalls } from "@/lib/server/spend";
 import { lockPersona } from "@/lib/server/persona-tools";
 import { turnInstructions } from "@/lib/server/voice-draft";
-import { speakReply } from "@/lib/server/voice-turn";
+import { SPEECH_DEADLINE_MS, speakReply } from "@/lib/server/voice-turn";
 import { applyChatEvent, replyToStore, startTurn } from "@/lib/turn-state";
 import { foldVisit } from "@/lib/visit";
 import { voiceLanguages } from "@/lib/voice";
@@ -48,6 +48,7 @@ const NOTHING_STORED: TurnContext = { history: [], acts: [], unanswered: false }
  * spoken as it streams (spec §33.5).
  */
 export async function POST(request: Request) {
+  const startedAt = Date.now(); // spec §33.5: no speech call starts within the last 25 s of maxDuration
   // Spec §24.5: approved users only, before reading the body or touching any dependency.
   let user: Awaited<ReturnType<typeof requireApproved>>;
   try {
@@ -190,6 +191,7 @@ export async function POST(request: Request) {
         speak: deps.speak,
         ledger,
         listening: () => browser.open,
+        deadlineMs: SPEECH_DEADLINE_MS - (Date.now() - startedAt),
       })
     : textEvents;
 

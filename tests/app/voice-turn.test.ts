@@ -131,4 +131,20 @@ describe("speakReply (spec §33.5)", () => {
     expect(ledger.calls).toEqual([ttsCall]);
     expect(all.filter((e) => e.type !== "audio")).toEqual(TWO_CHUNKS);
   });
+
+  it("starts no speech call after the deadline, and loses the voice once", async () => {
+    let t = 1_000;
+    const speak = vi.fn<Speak>(async () => {
+      t += 95_000;
+      return { pcm: PCM, call: ttsCall };
+    });
+    const ledger = new CostLedger();
+    const all = await collect(
+      speakReply(upstream(TWO_CHUNKS), { voice: VOICE, speak, ledger, listening: () => true, now: () => t, deadlineMs: 95_000 }),
+    );
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(ledger.calls).toEqual([ttsCall]); // the call made is still charged
+    expect(all.filter((e) => e.type === "audio_error")).toHaveLength(1);
+    expect(all.filter((e) => e.type !== "audio" && e.type !== "audio_error")).toEqual(TWO_CHUNKS);
+  });
 });

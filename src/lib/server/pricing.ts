@@ -1,12 +1,19 @@
 import { z } from "zod";
 import type { ModelCallRecord } from "@corpus/cost-ledger";
 import { EMBEDDING_MICROS_PER_TOKEN, EMBEDDING_MODEL, OPENROUTER_BASE_URL } from "@corpus/embeddings";
+import { TTS_MODEL } from "./tts";
 
 /** A call ready to store: always a cost, and where it came from (spec §26.3). */
 export type ResolvedCall = Omit<ModelCallRecord, "cost"> & { cost: number; costSource: "reported" | "estimated" };
 
 /** Micro-dollars per token. */
 type Price = { prompt: number; completion: number };
+
+/** Prices the list doesn't carry: OpenRouter's default /models omits embeddings and the TTS model (spec §33.5: $0.50 / $9.00 per 1M tokens). */
+const FIXED_PRICES = new Map<string, Price>([
+  [EMBEDDING_MODEL, { prompt: EMBEDDING_MICROS_PER_TOKEN, completion: 0 }],
+  [TTS_MODEL, { prompt: 0.5, completion: 9 }],
+]);
 
 const DAY_MS = 86_400_000;
 const RETRY_MS = 5 * 60_000;
@@ -24,6 +31,7 @@ const perToken = (dollars: string | undefined) => {
 /** Spec §26.3: a missing usage.cost is tokens × the model's price from OpenRouter's list, cached a day. */
 export function pricingWith(fetchImpl: typeof fetch = fetch, now: () => number = Date.now, timeoutMs: number = PRICES_TIMEOUT_MS) {
   let cache: { until: number; prices: Map<string, Price> } | null = null;
+  const warned = new Set<string>();
 
   async function prices(): Promise<Map<string, Price>> {
     if (cache && now() < cache.until) return cache.prices;
@@ -43,11 +51,15 @@ export function pricingWith(fetchImpl: typeof fetch = fetch, now: () => number =
   }
 
   return async function resolveCosts(calls: readonly ModelCallRecord[]): Promise<ResolvedCall[]> {
-    const needList = calls.some((c) => c.cost === null && c.model !== EMBEDDING_MODEL);
+    const needList = calls.some((c) => c.cost === null && !FIXED_PRICES.has(c.model));
     const table = needList ? await prices() : new Map<string, Price>();
     return calls.map((c): ResolvedCall => {
       if (c.cost !== null) return { ...c, cost: c.cost, costSource: "reported" };
-      const price = c.model === EMBEDDING_MODEL ? { prompt: EMBEDDING_MICROS_PER_TOKEN, completion: 0 } : table.get(c.model);
+      const price = FIXED_PRICES.get(c.model) ?? table.get(c.model);
+      if (!price && !warned.has(c.model)) {
+        warned.add(c.model);
+        console.warn(`No price for ${c.model}; its unpriced calls are logged at 0.`);
+      }
       const cost = price ? Math.round(c.inputTokens * price.prompt + c.outputTokens * price.completion) : 0;
       return { ...c, cost, costSource: "estimated" };
     });

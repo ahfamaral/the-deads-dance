@@ -4,10 +4,16 @@ import { languageName } from "@corpus/languages";
 import { useEffect, useId, useRef, useState } from "react";
 import BaseVoicePicker from "@/components/base-voice-picker";
 import ConfirmDialog from "@/components/confirm-dialog";
+import SamplePlayer from "@/components/sample-player";
 import { approveVoice, createVoice, fetchVoice, removeVoice, sampleUrl, saveVoice, type VoiceResult } from "@/lib/voice-api";
 import { type VoiceDto, type VoiceStatus } from "@/lib/voice";
 
 export const DESCRIPTION_MAX = 600;
+
+/** Closes the panel once an action has succeeded; a failed one leaves it open. */
+export async function closeAfter(done: Promise<boolean>, onClose: () => void) {
+  if (await done) onClose();
+}
 const BUTTON = "min-h-11 whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors disabled:opacity-40";
 const FIELD =
   "w-full rounded-2xl border border-white/10 bg-neutral-950/60 px-3 py-2 text-base text-foreground focus-visible:outline focus-visible:outline-white/40 sm:text-sm";
@@ -60,7 +66,7 @@ export function VoiceForm({ slug, voice, baseVoice, description, busy, error, on
       <div className="flex flex-col gap-1">
         <p className="text-sm text-neutral-400">Sample ({languageName(voice.sampleLanguage)})</p>
         {voice.hasSample ? (
-          <audio controls src={sampleUrl(slug, voice.updatedAt)} className="w-full" />
+          <SamplePlayer key={voice.updatedAt} src={sampleUrl(slug, voice.updatedAt)} />
         ) : (
           <p className="text-sm text-neutral-500">No sample yet. Try again to hear this voice.</p>
         )}
@@ -163,14 +169,15 @@ export default function VoicePanel({ persona, open, onClose, onChanged }: VoiceP
     };
   }, [open, persona.id]);
 
-  async function run(action: () => Promise<VoiceResult>) {
-    if (busy) return;
+  async function run(action: () => Promise<VoiceResult>): Promise<boolean> {
+    if (busy) return false;
     setBusy(true);
     setError(null);
     const result = await action();
     setBusy(false);
     if (result.ok) show(result.voice, languages);
     else setError(result.error);
+    return result.ok;
   }
 
   async function turnOff() {
@@ -204,7 +211,7 @@ export default function VoicePanel({ persona, open, onClose, onChanged }: VoiceP
               type="button"
               aria-label="Close"
               onClick={onClose}
-              className="-mt-1 -mr-2 inline-flex size-11 shrink-0 items-center justify-center text-neutral-400 transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
+              className="-mt-1 -mr-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="size-5" aria-hidden="true">
                 <path d="M6 6l12 12M18 6L6 18" />
@@ -229,7 +236,7 @@ export default function VoicePanel({ persona, open, onClose, onChanged }: VoiceP
               onBaseVoice={setBaseVoice}
               onDescription={setDescription}
               onTryAgain={() => void run(() => saveVoice(persona.id, { baseVoice, description, render: true }))}
-              onApprove={() => void run(() => approveVoice(persona.id))}
+              onApprove={() => void closeAfter(run(() => approveVoice(persona.id)), onClose)}
               onTurnOff={() => setConfirmingOff(true)}
             />
           )}

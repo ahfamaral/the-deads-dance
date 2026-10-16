@@ -263,6 +263,8 @@ describe("admin voice routes (spec §33.3)", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("audio/wav");
     expect(res.headers.get("Cache-Control")).toBe("no-store");
-    expect(Buffer.from(await res.arrayBuffer()).subarray(0, 4).toString()).toBe("RIFF");
+    const bytes = Buffer.from(await res.arrayBuffer());
+    expect(res.headers.get("Content-Length")).toBe(String(bytes.byteLength));
+    expect(bytes.subarray(0, 4).toString()).toBe("RIFF");
   });
 });

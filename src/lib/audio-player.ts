@@ -31,6 +31,10 @@ export type PcmPlayer = {
   level(): number;
   /** Called each time the last scheduled buffer has finished playing. */
   onIdle(cb: () => void): void;
+  /** Called when the scheduled audio stopped moving for 2 s (the player has stopped itself). */
+  onStall(cb: () => void): void;
+  /** Resumes the context, e.g. when the tab is visible again, and gives it 2 s more. */
+  resume(): void;
   stop(): void;
   /** Stops and disconnects the analyser; the player is not used again. */
   dispose(): void;
@@ -39,6 +43,9 @@ export type PcmPlayer = {
 
 /** Speech RMS rarely passes ~0.3, so it is scaled up to fill the ring's range. */
 const LEVEL_GAIN = 3;
+const WATCHDOG_TICK_MS = 500;
+/** A context that isn't running (an iOS tab in the background, an interruption) never ends its buffers. */
+const STALL_MS = 2_000;
 
 /** Spec §33.4: plays the answer's audio chunks back to back through one context and analyser. */
 export function createPcmPlayer(ctx: AudioContext): PcmPlayer {
@@ -48,9 +55,47 @@ export function createPcmPlayer(ctx: AudioContext): PcmPlayer {
   const frame = new Float32Array(analyser.fftSize);
   const sources = new Set<AudioBufferSourceNode>();
   const idle: (() => void)[] = [];
+  const stalled: (() => void)[] = [];
   let endOfLast = 0;
+  // Counted in ticks, so time the tab spent frozen doesn't count towards a stall.
+  let watchdog: ReturnType<typeof setInterval> | null = null;
+  let lastTime = 0;
+  let stillFor = 0;
+
+  const resumeContext = () => {
+    if (ctx.state !== "running") void ctx.resume().catch(() => {});
+  };
+
+  const stopWatchdog = () => {
+    if (watchdog !== null) clearInterval(watchdog);
+    watchdog = null;
+  };
+
+  const startWatchdog = () => {
+    lastTime = ctx.currentTime;
+    stillFor = 0;
+    if (watchdog !== null) return;
+    watchdog = setInterval(() => {
+      // A hidden tab may have its context interrupted (iOS); the tab's visibility handler resumes it on return.
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        lastTime = ctx.currentTime;
+        stillFor = 0;
+        return;
+      }
+      if (ctx.currentTime !== lastTime) {
+        lastTime = ctx.currentTime;
+        stillFor = 0;
+        return;
+      }
+      stillFor += WATCHDOG_TICK_MS;
+      if (stillFor < STALL_MS) return;
+      stop();
+      for (const cb of stalled) cb();
+    }, WATCHDOG_TICK_MS);
+  };
 
   const stop = () => {
+    stopWatchdog();
     for (const source of sources) {
       source.onended = null;
       try {
@@ -68,6 +113,7 @@ export function createPcmPlayer(ctx: AudioContext): PcmPlayer {
     enqueue(data, sampleRate) {
       const samples = pcm16ToFloat32(data);
       if (samples.length === 0) return;
+      resumeContext();
       const buffer = ctx.createBuffer(1, samples.length, sampleRate);
       buffer.getChannelData(0).set(samples);
       const source = ctx.createBufferSource();
@@ -76,11 +122,14 @@ export function createPcmPlayer(ctx: AudioContext): PcmPlayer {
       const at = Math.max(ctx.currentTime, endOfLast);
       source.start(at);
       endOfLast = at + buffer.duration;
+      if (sources.size === 0) startWatchdog();
       sources.add(source);
       source.onended = () => {
         sources.delete(source);
         source.disconnect();
-        if (sources.size === 0) for (const cb of idle) cb();
+        if (sources.size > 0) return;
+        stopWatchdog();
+        for (const cb of idle) cb();
       };
     },
     level() {
@@ -93,10 +142,18 @@ export function createPcmPlayer(ctx: AudioContext): PcmPlayer {
     onIdle(cb) {
       idle.push(cb);
     },
+    onStall(cb) {
+      stalled.push(cb);
+    },
+    resume() {
+      resumeContext();
+      if (sources.size > 0) startWatchdog();
+    },
     stop,
     dispose() {
       stop();
       idle.length = 0;
+      stalled.length = 0;
       analyser.disconnect();
     },
     playing: () => sources.size > 0,

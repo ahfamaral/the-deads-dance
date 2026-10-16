@@ -35,7 +35,7 @@ export default function VoiceStartDialog({ persona, defaultLanguage, onStart, on
   function start() {
     if (mode === "voice") {
       // Inside the tap: unlocks audio playback on iOS.
-      void getAudioContext()?.resume();
+      void getAudioContext()?.resume().catch(() => {});
       onStart({ mode: "voice", language });
     } else onStart({ mode: "text" });
   }

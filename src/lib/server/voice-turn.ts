@@ -5,6 +5,8 @@ import { PCM_SAMPLE_RATE, type Speak } from "./tts";
 
 /** Spec §33.5: speech calls running at once for one reply. */
 const MAX_IN_FLIGHT = 2;
+/** Spec §33.5: no speech call starts this long after the request began (the route may run 120 s). */
+export const SPEECH_DEADLINE_MS = 95_000;
 
 export type SpeakReplyOptions = {
   /** The conversation's stored voice; null when it was deleted since the first turn. */
@@ -14,6 +16,10 @@ export type SpeakReplyOptions = {
   ledger: CostLedger;
   /** False once the browser is gone: no new speech call starts (calls already made are charged). */
   listening: () => boolean;
+  /** The clock, for tests. */
+  now?: () => number;
+  /** Time left for new speech calls, counted from the first event read; the rest of the reply then loses its voice. */
+  deadlineMs?: number;
 };
 
 /**
@@ -21,10 +27,11 @@ export type SpeakReplyOptions = {
  * cut into chunks (first sentence first); each chunk is one speech call, at most two at a time,
  * and their audio goes out in seq order as it is ready, between the other events. The last chunk
  * goes at `done`, which passes through when it arrives; the stream ends once every call settles.
- * After a failed call (or with no voice) one `audio_error` is sent and nothing more is spoken.
+ * After a failed call (or with no voice, or past the deadline) one `audio_error` is sent and nothing more is spoken.
  */
 export async function* speakReply(events: AsyncIterable<ChatStreamEvent>, opts: SpeakReplyOptions): AsyncGenerator<ChatStreamEvent> {
-  const { voice, speak, ledger, listening } = opts;
+  const { voice, speak, ledger, listening, now = Date.now, deadlineMs = SPEECH_DEADLINE_MS } = opts;
+  const deadline = now() + deadlineMs;
   const chunker = createChunker();
   const out: ChatStreamEvent[] = [];
   const waiting: string[] = [];
@@ -60,6 +67,10 @@ export async function* speakReply(events: AsyncIterable<ChatStreamEvent>, opts: 
 
   const startCalls = () => {
     while (voice && !lost && inFlight < MAX_IN_FLIGHT && waiting.length > 0 && listening()) {
+      if (now() >= deadline) {
+        loseVoice();
+        return;
+      }
       const text = waiting.shift()!;
       const seq = nextSeq++;
       inFlight++;

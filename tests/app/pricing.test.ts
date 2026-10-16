@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ModelCallRecord } from "@corpus/cost-ledger";
 import { pricingWith } from "@/lib/server/pricing";
+import { TTS_MODEL } from "@/lib/server/tts";
 
 const call = (extra: Partial<ModelCallRecord> = {}): ModelCallRecord => ({
   role: "helper", model: "openai/gpt-5-mini", inputTokens: 1_000, outputTokens: 100, cost: null, generationId: null, latencyMs: 5, ...extra,
@@ -31,6 +32,27 @@ describe("resolveCosts", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("prices speech from the fixed TTS price, without fetching", async () => {
+    const fetchImpl = models();
+    const [r] = await pricingWith(fetchImpl)([call({ role: "tts", model: TTS_MODEL, inputTokens: 100, outputTokens: 960 })]);
+    // 100 × 0.5 + 960 × 9 micro-dollars per token
+    expect(r).toMatchObject({ cost: 8_690, costSource: "estimated" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("warns once per model missing from the price list", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const resolve = pricingWith(models());
+      await resolve([call({ model: "someone/else" }), call({ model: "someone/else" })]);
+      await resolve([call({ model: "someone/else" }), call()]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.join(" ")).toContain("someone/else");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("fetches the price list once a day", async () => {
     const fetchImpl = models();
     let t = 0;
@@ -46,6 +68,7 @@ describe("resolveCosts", () => {
 
   it("logs an unknown model or a failed price list at 0, estimated, without throwing", async () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const quietWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const [unknown] = await pricingWith(models())([call({ model: "someone/else" })]);
       expect(unknown).toMatchObject({ cost: 0, costSource: "estimated" });
@@ -53,11 +76,13 @@ describe("resolveCosts", () => {
       expect(failed).toMatchObject({ cost: 0, costSource: "estimated" });
     } finally {
       quiet.mockRestore();
+      quietWarn.mockRestore();
     }
   });
 
   it("handles fetch timeout, returning 0 estimated cost", async () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const quietWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       let capturedSignal: AbortSignal | null | undefined;
       const timingOutFetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
@@ -74,6 +99,7 @@ describe("resolveCosts", () => {
       expect(capturedSignal).toBeInstanceOf(AbortSignal);
     } finally {
       quiet.mockRestore();
+      quietWarn.mockRestore();
     }
   });
 });

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import AddPersonaForm from "@/components/add-persona-form";
 import PersonaPicker from "@/components/persona-picker";
 import BaseVoicePicker from "@/components/base-voice-picker";
-import VoicePanel, { VoiceForm } from "@/components/voice-panel";
+import VoicePanel, { closeAfter, VoiceForm } from "@/components/voice-panel";
 import type { Persona } from "@/lib/personas";
 import { GEMINI_VOICES, type VoiceDto } from "@/lib/voice";
 
@@ -44,8 +44,8 @@ describe("VoiceForm", () => {
     expect(html).toContain("Kore · Firm");
     expect(html).not.toContain("<select");
     expect(html).toContain('maxLength="600"');
-    expect(html).toContain('<audio controls=""');
-    expect(html).toContain("/api/personas/wu/voice/sample?v=");
+    expect(html).not.toContain("<audio controls");
+    expect(html).toContain('aria-label="Play sample"');
     expect(html).toContain("Sample (Portuguese)");
     for (const label of ["Try again", "Turn voice off", "Approve", "Status: Draft"]) expect(html).toContain(label);
   });
@@ -55,7 +55,8 @@ describe("VoiceForm", () => {
     const close = html.match(/<button[^>]*aria-label="Close"[^>]*>/)?.[0] ?? "";
     expect(close).toContain("size-11");
     expect(close).not.toMatch(/\bborder/);
-    expect(close).not.toContain("rounded-full");
+    expect(close).toContain("rounded-full"); // the focus ring follows it
+    expect(close).not.toMatch(/\bbg-/);
   });
 
   it("shows the base voice in a picker with a chevron", () => {
@@ -111,7 +112,8 @@ describe("add-persona report", () => {
     expect(html).toContain("Create a voice for Chien-Shiung Wu?");
     expect(html).toContain("Create voice");
     expect(html).toContain("Not now");
-    expect(html.indexOf("Not now")).toBeLessThan(html.indexOf("Done"));
+    expect(html.indexOf("Not now")).toBeLessThan(html.indexOf("Create voice"));
+    expect(html).not.toContain(">Done<"); // the two answers are the only way out
   });
 });
 
@@ -122,5 +124,18 @@ describe("PersonaPicker voice button", () => {
       createElement(PersonaPicker, { personas: [p], canManage: true, notice: null, onConfirm: noop, onDelete: noop, onToggleHidden: noop, onEditVoice: noop, onAdd: noop, onBack: noop, meter: null, onDismissBanner: noop }),
     );
     expect(html).toContain('aria-label="Voice for Chien-Shiung Wu"');
+  });
+});
+
+describe("closeAfter", () => {
+  it("closes the panel when the action succeeded", async () => {
+    let closed = 0;
+    await closeAfter(Promise.resolve(true), () => void closed++);
+    expect(closed).toBe(1);
+  });
+  it("keeps the panel open when the action failed", async () => {
+    let closed = 0;
+    await closeAfter(Promise.resolve(false), () => void closed++);
+    expect(closed).toBe(0);
   });
 });

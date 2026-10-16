@@ -114,15 +114,6 @@ export default function AddPersonaForm({ onAdded, onCancel, onWorkingChange, onC
             </button>
           </div>
         </div>
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => onAdded(phase.persona)}
-            className="min-h-11 rounded-full bg-neutral-100 px-4 py-1.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
-          >
-            Done
-          </button>
-        </div>
       </div>
     );
   }

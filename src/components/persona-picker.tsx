@@ -201,7 +201,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                 {/* Fixed-width slot reserved on every row, so selecting a persona
                     never reflows its text. "Talk to" and the delete button share
                     the slot, stacked in one grid cell, and cross-fade within it. */}
-                <div className="grid w-32 shrink-0 items-center justify-items-end pr-3">
+                <div className="grid min-w-32 shrink-0 items-center justify-items-end pr-2">
                   <button
                     type="button"
                     inert={!showTalkTo}
@@ -228,7 +228,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                   {/* Config mode: hide (2026-10-16) left of delete; both fade in together. */}
                   <div
                     inert={!configuring}
-                    className={`col-start-1 row-start-1 flex items-center gap-1 transition-[opacity,translate] duration-300 ease-out motion-reduce:transition-none ${configuring ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"}`}
+                    className={`col-start-1 row-start-1 flex items-center gap-0 transition-[opacity,translate] duration-300 ease-out motion-reduce:transition-none ${configuring ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"}`}
                   >
                   {canManage && (
                     <button
@@ -238,7 +238,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                       title={persona.hidden ? "Hidden from testers. Show again" : "Hide from testers"}
                       disabled={busy}
                       onClick={() => onToggleHidden(persona)}
-                      className="flex size-9 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
+                      className="flex size-11 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
                     >
                       <svg
                         viewBox="0 0 24 24"
@@ -265,7 +265,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                       title="Design the voice"
                       disabled={busy}
                       onClick={() => onEditVoice(persona)}
-                      className="flex size-9 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
+                      className="flex size-11 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
                     >
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="size-5" aria-hidden="true">
                         <path d="M11 5 6 9H2v6h4l5 4z" />
@@ -281,7 +281,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                     title={removable ? undefined : "Built-in personas can't be removed"}
                     disabled={busy}
                     onClick={() => removable && onDelete(persona)}
-                    className={`flex size-9 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 ${removable
+                    className={`flex size-11 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 ${removable
                         ? "text-red-500 hover:bg-red-500/15 focus-visible:outline-red-500/60"
                         : "cursor-not-allowed text-neutral-600 focus-visible:outline-white/40"
                       } disabled:pointer-events-none disabled:opacity-40`}

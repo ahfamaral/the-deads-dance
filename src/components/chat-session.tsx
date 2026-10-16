@@ -119,7 +119,6 @@ export default function ChatSession({
   const [rating, setRating] = useState(false);
   // Spec §33.4: a live voice chat shows the voice screen; a record from History is the normal text view (§33.6).
   const voiceScreen = voice !== null && !readOnly;
-  const voiceControls = useVoiceControls(voice?.language ?? "");
   // Spec §33.5: a reloaded voice chat waits for a tap, which unlocks audio on iOS.
   const [resumeNeeded, setResumeNeeded] = useState(resume && voiceScreen);
   // Spec §33.5: the answer whose voice was lost is shown as text until the next turn starts.
@@ -127,10 +126,22 @@ export default function ChatSession({
   const [lostText, setLostText] = useState<string | null>(() =>
     resume && voiceScreen ? (unheardReply(initialMessages, readHeardReply(conversationId))?.text ?? null) : null,
   );
-  // The position of the reply being spoken, written as heard once its playback ends (spec §33.5).
-  const speaking = useRef<number | null>(null);
+  // The reply being spoken (its position and text); the position is written as heard once its playback ends (spec §33.5).
+  const speaking = useRef<{ position: number; text: string } | null>(null);
+  // This turn's audio stalled (a suspended audio context): the rest of it isn't played.
+  const voiceStalled = useRef(false);
   // This turn's audio has begun: "Speaking…" holds between chunks that arrive late.
   const [audioStarted, setAudioStarted] = useState(false);
+  // Spec §33.5: audio that stopped playing is a lost voice. Mid-turn, the answer shows once it is done;
+  // after it, the reply being spoken shows now and is not marked as heard.
+  const loseStalledVoice = () => {
+    voiceStalled.current = true;
+    setAudioStarted(false);
+    const reply = speaking.current;
+    speaking.current = null;
+    if (reply) setLostText(reply.text);
+  };
+  const voiceControls = useVoiceControls(voice?.language ?? "", loseStalledVoice);
   // Spec §25.3: true once the server has the conversation. Only a first message may create it.
   const confirmed = useRef(initialMessages.length > 0);
   // Whether the last failed turn's visitor message reached the server: Retry answers it there;
@@ -158,7 +169,7 @@ export default function ChatSession({
 
   useEffect(() => {
     if (speaking.current !== null && turn === null && !voiceControls.playing) {
-      writeHeardReply(conversationId, speaking.current);
+      writeHeardReply(conversationId, speaking.current.position);
       speaking.current = null;
     }
   }, [turn, voiceControls.playing, conversationId]);
@@ -198,6 +209,7 @@ export default function ChatSession({
     const controller = new AbortController();
     abortRef.current = controller;
     speaking.current = null;
+    voiceStalled.current = false;
     let state = startTurn(newId());
     let stored = false;
     let resynced = false;
@@ -231,7 +243,7 @@ export default function ChatSession({
         confirmed.current = true;
         state = applyChatEvent(state, event);
         if (event.type === "energy" || event.type === "cost") onMeterEvent(event);
-        if (event.type === "audio" && voiceScreen) {
+        if (event.type === "audio" && voiceScreen && !voiceStalled.current) {
           voiceControls.enqueue(event.data, event.sampleRate);
           setAudioStarted(true);
           spoken = true;
@@ -248,8 +260,8 @@ export default function ChatSession({
       setToolsUnavailable(state.toolsUnavailable);
       if (state.status === "done") {
         setMessages([...withAct(history), state.message]);
-        if (voiceScreen && state.voiceLost) setLostText(state.message.text);
-        else if (spoken) speaking.current = withAct(history).length + 1;
+        if (voiceScreen && (state.voiceLost || voiceStalled.current)) setLostText(state.message.text);
+        else if (spoken) speaking.current = { position: withAct(history).length + 1, text: state.message.text };
       } else {
         setMessages(withAct(history));
         setTurnError(state.error ?? { reason: "The reply was interrupted.", retryable: true });
@@ -319,7 +331,7 @@ export default function ChatSession({
   const voiceView = voiceStageState({
     personaName,
     thinkingLine: turn ? thinkingLine(personaName, turn.message) : null,
-    resumeNeeded,
+    resumeNeeded: resumeNeeded && !ended,
     listening: voiceControls.listening,
     turnRunning: turn !== null || waiting,
     playing: voiceControls.playing || (turn !== null && audioStarted),
@@ -382,7 +394,7 @@ export default function ChatSession({
         }
       />
       {readOnly && !gone && <FeedbackRow feedback={feedback} editable={!ownerEmail} onRate={() => setRating(true)} />}
-      {showEndBar({ ended, streaming: turn !== null }) ? (
+      {showEndBar({ ended, streaming: turn !== null || voiceControls.playing }) ? (
         <div
           role="status"
           className="flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/10 bg-neutral-900/80 px-5 py-3 text-sm text-neutral-300 shadow-lg shadow-black/40 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-md"

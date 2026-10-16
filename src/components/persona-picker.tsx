@@ -161,7 +161,8 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
             return (
               <li
                 key={persona.id}
-                className={`flex items-center rounded-2xl border transition-colors ${selected
+                // The keyboard focus ring sits on the card, not on the inner row button (a second border inside the card).
+                className={`flex items-center rounded-2xl border transition-colors has-[>button:focus-visible]:outline has-[>button:focus-visible]:outline-white/40 ${selected
                     ? "border-white/25 bg-white/10"
                     : `border-white/5 bg-white/5 ${configuring ? "" : "hover:border-white/20 hover:bg-white/10"
                     }`
@@ -172,7 +173,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                   type="button"
                   aria-pressed={selected}
                   disabled={configuring}
-                  className="flex min-w-0 flex-1 flex-col items-start gap-0.5 self-stretch rounded-2xl px-4 py-3 text-left focus-visible:outline focus-visible:outline-white/40"
+                  className="flex min-w-0 flex-1 flex-col items-start gap-0.5 self-stretch rounded-2xl px-4 py-3 text-left outline-none"
                 >
                   <span className="font-medium text-foreground">{persona.name}</span>
                   <span className="text-sm text-neutral-500">{persona.description}</span>

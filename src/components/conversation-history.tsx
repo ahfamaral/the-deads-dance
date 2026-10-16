@@ -5,7 +5,7 @@ import ConfirmDialog from "@/components/confirm-dialog";
 import ExportDialog from "@/components/export-dialog";
 import { canDelete, ownerLine, type ConversationSummary, type StoredConversation } from "@/lib/conversation-types";
 import { fetchConversation, fetchConversationList, removeConversation } from "@/lib/conversations-api";
-import { starsBadge } from "@/lib/feedback";
+import { starsText } from "@/lib/feedback";
 import { ensureAccess } from "@/lib/ensure-access";
 import { useScrollFade } from "@/lib/use-scroll-fade";
 
@@ -123,10 +123,10 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                   >
                     <span className="flex max-w-full items-baseline gap-2">
                       <span className="truncate font-medium text-foreground">{conversation.personaName}</span>
-                      {starsBadge(conversation.stars) && (
-                        <span className="shrink-0 text-xs text-amber-400">
+                      {conversation.stars !== null && (
+                        <span className="shrink-0 text-sm text-amber-400">
                           <span className="sr-only">Rated {conversation.stars} of 5</span>
-                          <span aria-hidden="true">{starsBadge(conversation.stars)}</span>
+                          <span aria-hidden="true">{starsText(conversation.stars)}</span>
                         </span>
                       )}
                     </span>

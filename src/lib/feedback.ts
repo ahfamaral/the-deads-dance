@@ -44,11 +44,6 @@ export function starsText(stars: number): string {
   return "★".repeat(stars) + "☆".repeat(5 - stars);
 }
 
-/** Spec §32.6: the short form on History rows, "★ 4"; null when unrated. */
-export function starsBadge(stars: number | null): string | null {
-  return stars === null ? null : `★ ${stars}`;
-}
-
 const oneDecimal = (n: number) => Math.round(n * 10) / 10;
 const mean = (xs: number[]) => oneDecimal(xs.reduce((a, b) => a + b, 0) / xs.length);
 

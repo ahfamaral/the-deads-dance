@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canSend, COMMENT_MAX, FeedbackInputSchema, starsBadge, starsText, summarizeFeedback } from "@/lib/feedback";
+import { canSend, COMMENT_MAX, FeedbackInputSchema, starsText, summarizeFeedback } from "@/lib/feedback";
 
 describe("FeedbackInputSchema (spec §32.3)", () => {
   const parse = (v: unknown) => FeedbackInputSchema.safeParse(v);
@@ -31,12 +31,10 @@ describe("canSend", () => {
   });
 });
 
-describe("starsText and starsBadge", () => {
-  it("draws filled and empty stars, and a short badge", () => {
+describe("starsText", () => {
+  it("draws filled and empty stars", () => {
     expect(starsText(4)).toBe("★★★★☆");
     expect(starsText(1)).toBe("★☆☆☆☆");
-    expect(starsBadge(4)).toBe("★ 4");
-    expect(starsBadge(null)).toBeNull();
   });
 });
 

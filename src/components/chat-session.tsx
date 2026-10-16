@@ -9,6 +9,10 @@ import EnergyNotice from "@/components/energy-notice";
 import FeedbackRow from "@/components/feedback-row";
 import RatingSheet from "@/components/rating-sheet";
 import SpendBadge from "@/components/spend-badge";
+import { useVoiceControls } from "@/components/use-voice-controls";
+import VoiceStage from "@/components/voice-stage";
+import { languageName } from "@corpus/languages";
+import { getAudioContext } from "@/lib/audio-player";
 import { fetchConversation, sendFeedback } from "@/lib/conversations-api";
 import { ChatRequestError, streamChat } from "@/lib/chat-client";
 import { applyChatEvent, startTurn, type TurnState } from "@/lib/turn-state";
@@ -19,7 +23,9 @@ import { loadLanguageMode, saveLanguageMode } from "@/lib/language-mode";
 import { confirmBeforeLeaving, shouldAskForRating, showEndBar } from "@/lib/leave-guard";
 import { isOutOfEnergy, type Meter } from "@/lib/meter";
 import { newId } from "@/lib/new-id";
+import { thinkingLine } from "@/lib/thinking";
 import { foldVisit, isEnded } from "@/lib/visit";
+import { voiceStageState } from "@/lib/voice-stage-state";
 import { waitForReply } from "@/lib/wait-for-reply";
 
 // On phones the buttons share one row: same height, same width, no wrapping, smaller text.
@@ -79,6 +85,7 @@ export default function ChatSession({
   initialTurnRunning,
   initialFeedback,
   voice = null,
+  resume = false,
 }: ChatSessionProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [turn, setTurn] = useState<TurnState | null>(null);
@@ -109,6 +116,15 @@ export default function ChatSession({
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(initialFeedback ?? null);
   const [rating, setRating] = useState(false);
+  // Spec §33.4: a live voice chat shows the voice screen; a record from History is the normal text view (§33.6).
+  const voiceScreen = voice !== null && !readOnly;
+  const voiceControls = useVoiceControls(voice?.language ?? "");
+  // Spec §33.5: a reloaded voice chat waits for a tap, which unlocks audio on iOS.
+  const [resumeNeeded, setResumeNeeded] = useState(resume && voiceScreen);
+  // Spec §33.5: the answer whose voice was lost is shown as text until the next turn starts.
+  const [lostText, setLostText] = useState<string | null>(null);
+  // This turn's audio has begun: "Speaking…" holds between chunks that arrive late.
+  const [audioStarted, setAudioStarted] = useState(false);
   // Spec §25.3: true once the server has the conversation. Only a first message may create it.
   const confirmed = useRef(initialMessages.length > 0);
   // Whether the last failed turn's visitor message reached the server: Retry answers it there;
@@ -142,13 +158,16 @@ export default function ChatSession({
       }
       setMessages(conversation.messages);
       if (conversation.spend) setSpend(conversation.spend);
-      if (conversation.messages.at(-1)?.role === "user") {
+      const last = conversation.messages.at(-1);
+      // Spec §33.5: a reply written while this tab was away is not spoken; it shows like a lost voice.
+      if (voiceScreen && last?.role === "persona") setLostText(last.text);
+      if (last?.role === "user") {
         setTurnError({ reason: "The reply was interrupted.", retryable: true });
         lastTurnStored.current = true;
       }
     });
     return () => controller.abort();
-  }, [waiting, conversationId]);
+  }, [waiting, conversationId, voiceScreen]);
 
   function changeLanguageMode(mode: LanguageMode) {
     setLanguageMode(mode);
@@ -165,6 +184,8 @@ export default function ChatSession({
     setMessages(history);
     setTurn(state);
     setTurnError(null);
+    setLostText(null);
+    setAudioStarted(false);
 
     // Store the act on the user message this turn answers, once the server sent it (spec §18.1).
     const withAct = (list: Message[]): Message[] => {
@@ -189,6 +210,10 @@ export default function ChatSession({
         confirmed.current = true;
         state = applyChatEvent(state, event);
         if (event.type === "energy" || event.type === "cost") onMeterEvent(event);
+        if (event.type === "audio" && voiceScreen) {
+          voiceControls.enqueue(event.data, event.sampleRate);
+          setAudioStarted(true);
+        }
         if (event.type === "cost") {
           setSpend(event.conversation);
           setLastTurn(event.turn);
@@ -199,8 +224,10 @@ export default function ChatSession({
         if (event.type === "notice") setToolsUnavailable(true);
       }
       setToolsUnavailable(state.toolsUnavailable);
-      if (state.status === "done") setMessages([...withAct(history), state.message]);
-      else {
+      if (state.status === "done") {
+        setMessages([...withAct(history), state.message]);
+        if (voiceScreen && state.voiceLost) setLostText(state.message.text);
+      } else {
         setMessages(withAct(history));
         setTurnError(state.error ?? { reason: "The reply was interrupted.", retryable: true });
       }
@@ -259,6 +286,26 @@ export default function ChatSession({
     if (!readOnly && !gone && !waiting) void run(messages, { retry: lastTurnStored.current });
   };
 
+  // Spec §33.4: a tap on the mic starts the next turn, so a lost answer's text goes away.
+  function listen() {
+    if (turn || waiting || outOfEnergy || ended || gone) return;
+    setLostText(null);
+    voiceControls.startListening(send);
+  }
+
+  const voiceView = voiceStageState({
+    personaName,
+    thinkingLine: turn ? thinkingLine(personaName, turn.message) : null,
+    resumeNeeded,
+    listening: voiceControls.listening,
+    turnRunning: turn !== null || waiting,
+    playing: voiceControls.playing || (turn !== null && audioStarted),
+    ended,
+    turnError: turnError ?? (voiceControls.speechError ? { reason: voiceControls.speechError, retryable: false } : null),
+    lostText,
+    outOfEnergy,
+  });
+
   const banner = meter?.kind === "energy" && !readOnly ? dueBanner(meter.left, meter.warningRead) : null;
   const meterSlot =
     meter?.kind === "spend" ? (
@@ -281,11 +328,30 @@ export default function ChatSession({
           confirmBeforeLeaving({ readOnly, ended, gone, hasMessages: messages.length > 0 }) ? setConfirmingLeave(true) : onBack(askRating())
         }
         languageMode={languageMode}
-        onLanguageModeChange={readOnly ? undefined : changeLanguageMode}
+        onLanguageModeChange={readOnly || voiceScreen ? undefined : changeLanguageMode}
         meterSlot={meterSlot}
         notice={banner !== null ? <EnergyNotice threshold={banner} onDismiss={() => onDismissBanner(banner)} /> : null}
         waiting={waiting}
         showCost={isAdmin}
+        stage={
+          voiceScreen && voice ? (
+            <VoiceStage
+              personaName={personaName}
+              voiceLanguageName={languageName(voice.language)}
+              state={voiceView}
+              lostText={lostText}
+              level={voiceControls.level}
+              listen={voiceControls}
+              onMic={listen}
+              onStop={voiceControls.stopListening}
+              onRetry={retry}
+              onResume={() => {
+                void getAudioContext()?.resume().catch(() => {});
+                setResumeNeeded(false);
+              }}
+            />
+          ) : undefined
+        }
       />
       {readOnly && !gone && <FeedbackRow feedback={feedback} editable={!ownerEmail} onRate={() => setRating(true)} />}
       {showEndBar({ ended, streaming: turn !== null }) ? (
@@ -318,7 +384,7 @@ export default function ChatSession({
         >
           This conversation is no longer available.
         </p>
-      ) : (
+      ) : voiceScreen ? null : (
         <ChatInput onSend={send} busy={turn !== null || waiting} disabledReason={outOfEnergy ? "Out of energy" : undefined} />
       )}
       <ConfirmDialog

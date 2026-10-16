@@ -60,8 +60,11 @@ export default function BackgroundCanvas() {
       lastDrawn = -Infinity;
     };
 
+    // Spec §33.7: the voice screen draws the scene inside its circle instead.
+    const voiceOn = () => document.body.dataset.voice === "on";
+
     const start = () => {
-      if (frame || reduceMotion.matches || document.hidden) return;
+      if (frame || reduceMotion.matches || document.hidden || voiceOn()) return;
       frame = requestAnimationFrame(tick);
     };
 
@@ -84,8 +87,16 @@ export default function BackgroundCanvas() {
       else start();
     };
 
+    const onVoiceChange = () => {
+      canvas.style.display = voiceOn() ? "none" : "";
+      if (voiceOn()) stop();
+      else start();
+    };
+
     active.render(reduceMotion.matches ? STILL_TIME : 0);
-    start();
+    onVoiceChange();
+    const voiceObserver = new MutationObserver(onVoiceChange);
+    voiceObserver.observe(document.body, { attributes: true, attributeFilter: ["data-voice"] });
 
     window.addEventListener("resize", onResize);
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -93,6 +104,7 @@ export default function BackgroundCanvas() {
 
     return () => {
       stop();
+      voiceObserver.disconnect();
       window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       reduceMotion.removeEventListener("change", onMotionPreferenceChange);

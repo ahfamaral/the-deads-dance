@@ -27,6 +27,8 @@ type ConversationProps = {
   waiting?: boolean;
   /** Admin only: each reply shows its cost line. */
   showCost?: boolean;
+  /** Spec §33.4: the voice screen, in place of the message list. */
+  stage?: ReactNode;
 };
 
 /** Transcript of the exchange between the user and the persona, including the reply that is still streaming. */
@@ -45,6 +47,7 @@ export default function Conversation({
   notice,
   waiting = false,
   showCost = false,
+  stage,
 }: ConversationProps) {
   const endRef = useRef<HTMLDivElement>(null);
   // Keep the newest content in view as the reply streams in.
@@ -103,6 +106,7 @@ export default function Conversation({
         </p>
       )}
       {notice}
+      {stage ?? (
       <div className="relative flex min-h-0 flex-1 flex-col">
         {/* Inner shadow along the top edge; an overlay so messages scroll beneath it rather than over it. */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-linear-to-b from-black/40 to-transparent" />
@@ -152,6 +156,7 @@ export default function Conversation({
           <div ref={endRef} />
         </div>
       </div>
+      )}
     </section>
   );
 }

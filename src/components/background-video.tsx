@@ -36,8 +36,11 @@ export default function BackgroundVideo() {
     video.muted = true;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
+    // Spec §33.7: the voice screen plays the video inside its circle instead.
     const update = () => {
-      if (!reduceMotion.matches && !document.hidden) {
+      const voiceOn = document.body.dataset.voice === "on";
+      video.style.display = voiceOn ? "none" : "";
+      if (!voiceOn && !reduceMotion.matches && !document.hidden) {
         // Refused in Low Power Mode, for example: the frame on screen stays.
         video.play().catch(() => {});
       } else {
@@ -50,10 +53,14 @@ export default function BackgroundVideo() {
     };
 
     video.addEventListener("loadedmetadata", onLoaded);
+    if (document.body.dataset.voice === "on") video.style.display = "none";
+    const voiceObserver = new MutationObserver(update);
+    voiceObserver.observe(document.body, { attributes: true, attributeFilter: ["data-voice"] });
     document.addEventListener("visibilitychange", update);
     reduceMotion.addEventListener("change", update);
     return () => {
       video.removeEventListener("loadedmetadata", onLoaded);
+      voiceObserver.disconnect();
       document.removeEventListener("visibilitychange", update);
       reduceMotion.removeEventListener("change", update);
     };

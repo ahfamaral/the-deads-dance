@@ -82,8 +82,13 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
   // Spec §33.4: the persona the Start dialog is open for.
   const [choosing, setChoosing] = useState<Persona | null>(null);
   const [startNotice, setStartNotice] = useState<string | null>(null);
-  // Spec §32.4: the conversation just left, rated over the next screen.
-  const [rating, setRating] = useState<{ conversationId: string; personaName: string } | null>(null);
+  // Spec §32.4: the conversation just left, rated over the next screen. `thenChoose`: "Start a new
+  // visit" from a voice chat opens the Start dialog once the sheet has closed, never both at once.
+  const [rating, setRating] = useState<{ conversationId: string; personaName: string; thenChoose?: Persona } | null>(null);
+  const closeRating = () => {
+    if (rating?.thenChoose) setChoosing(rating.thenChoose);
+    setRating(null);
+  };
 
   /** A record from History (spec §22), or from the admin's Feedback list (spec §32.7). */
   const recordStep = (c: StoredConversation): ChatStep => ({
@@ -210,8 +215,8 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
       personaName={rating.personaName}
       initial={null}
       onSave={(f) => sendFeedback(rating.conversationId, f)}
-      onSaved={() => setRating(null)}
-      onClose={() => setRating(null)}
+      onSaved={closeRating}
+      onClose={closeRating}
     />
   );
   // Every screen carries the sheet, so it stays open across the screen change that follows an exit.
@@ -345,14 +350,19 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
         setStep(step.backTo === "history" ? { name: "history" } : { name: "select" });
       }}
       onNewVisit={(askRating) => {
-        if (askRating) setRating({ conversationId: step.conversationId, personaName: step.personaName });
+        const rated = { conversationId: step.conversationId, personaName: step.personaName };
         const persona = personas.find((p) => p.id === step.personaId);
-        // From a voice conversation the Start dialog opens again, over the picker (spec §33.4).
+        // From a voice conversation the Start dialog opens again, over the picker (spec §33.4),
+        // after the rating sheet when there is one.
         if (step.voice && persona && canAskVoice(persona)) {
           writeOpenChat(null);
           setStep({ name: "select" });
-          setChoosing(persona);
-        } else startChat({ id: step.personaId, name: step.personaName });
+          if (askRating) setRating({ ...rated, thenChoose: persona });
+          else setChoosing(persona);
+        } else {
+          if (askRating) setRating(rated);
+          startChat({ id: step.personaId, name: step.personaName });
+        }
       }}
       meter={meter}
       onMeterEvent={onMeterEvent}

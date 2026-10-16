@@ -1,6 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ZodType } from "zod";
+
+const wrapped = vi.hoisted(() => ({ schema: null as unknown }));
+vi.mock("@corpus/models", () => ({
+  chatModel: () => ({
+    withStructuredOutput: (schema: unknown) => {
+      wrapped.schema = schema;
+      return { invoke: async () => ({}) };
+    },
+  }),
+}));
 import type { PersonaRow } from "@corpus/personas";
-import { draftVoice, sampleInstructions, turnInstructions } from "@/lib/server/voice-draft";
+import { draftVoice, helperDraftModel, sampleInstructions, turnInstructions } from "@/lib/server/voice-draft";
 
 const einstein = {
   displayName: "Albert Einstein",
@@ -46,7 +57,7 @@ describe("draftVoice", () => {
     const draft = await draftVoice(einstein, model);
     expect(model).toHaveBeenCalledTimes(2);
     expect(model.mock.calls[1][0].user).toContain("einstein");
-    expect(draft.warning).toBe("The description mentions the persona's name. Edit it before approving.");
+    expect(draft.warning).toBe("The description or sample mentions the persona's name. Edit it before approving.");
     expect(draft.description).toBe(bad.description);
   });
 
@@ -85,5 +96,13 @@ describe("instructions", () => {
     expect(turnInstructions({ description: "Old man." }, "en", einstein)).toBe(
       "Old man. Speaks English as a second language, with a noticeable German accent. Talking with a guest; relaxed and natural, not narrating.",
     );
+  });
+});
+
+describe("helperDraftModel", () => {
+  it("gives the model wrapper a loose schema, so invalid values reach the retry", () => {
+    helperDraftModel();
+    const schema = wrapped.schema as ZodType;
+    expect(schema.safeParse({ description: "a".repeat(700), baseVoice: "Nope", sampleText: "Hi." }).success).toBe(true);
   });
 });

@@ -13,7 +13,7 @@ const LEAD_CHARS = 1500;
 /** Spec §33.3: a draft is slow to wait for; the admin can retry by hand. */
 const DRAFT_TIMEOUT_MS = 30_000;
 
-export const NAME_WARNING = "The description mentions the persona's name. Edit it before approving.";
+export const NAME_WARNING = "The description or sample mentions the persona's name. Edit it before approving.";
 
 export type VoiceDraft = { description: string; baseVoice: string; sampleText: string; warning: string | null };
 export type DraftModel = (input: { system: string; user: string }) => Promise<unknown>;
@@ -25,6 +25,9 @@ const DraftSchema = z.object({
   baseVoice: z.enum(voiceNames as [string, ...string[]]),
   sampleText: z.string().trim().min(1),
 });
+
+/** What the model wrapper validates: loose, so a bad value reaches `attempt` and gets its retry instead of throwing out of LangChain. */
+const LooseDraftSchema = z.object({ description: z.string(), baseVoice: z.string(), sampleText: z.string() });
 
 const VOICE_LIST = GEMINI_VOICES.map((v) => `${v.name} (${v.character}, ${v.gender})`).join("; ");
 
@@ -61,7 +64,7 @@ async function attempt(model: DraftModel, persona: PersonaRow, user: string): Pr
   const parsed = DraftSchema.safeParse(await model({ system: SYSTEM, user }));
   if (!parsed.success) {
     const voiceWrong = parsed.error.issues.some((i) => i.path[0] === "baseVoice");
-    return { problem: voiceWrong ? "baseVoice must be one of the listed names." : "Your answer did not match the format; the description is at most 600 characters." };
+    return { problem: voiceWrong ? "baseVoice must be one of the listed names." : `Your answer did not match the format; the description is at most ${MAX_DESCRIPTION} characters.` };
   }
   const { description, sampleText } = parsed.data;
   const hits = [...new Set([...nameWordsIn(description, persona.displayName), ...nameWordsIn(sampleText, persona.displayName)])];
@@ -90,7 +93,7 @@ export function helperDraftModel(callbacks?: BaseCallbackHandler[]): DraftModel 
     maxRetries: 0,
     reasoningEffort: "none",
     callbacks,
-  }).withStructuredOutput(DraftSchema, { name: "voice_draft" });
+  }).withStructuredOutput(LooseDraftSchema, { name: "voice_draft" });
   return ({ system, user }) =>
     structured.invoke([
       { role: "system", content: system },

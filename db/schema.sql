@@ -219,3 +219,17 @@ CREATE TABLE IF NOT EXISTS settings (
   value jsonb NOT NULL
 );
 INSERT INTO settings (key, value) VALUES ('default_starting_energy', '1000000') ON CONFLICT (key) DO NOTHING;
+
+-- Spec §32.2: one rating per conversation, deleted with it (hard delete, §25.2). model and
+-- commit_sha are the config at the first save; an edit changes only stars, comment and updated_at.
+CREATE TABLE IF NOT EXISTS conversation_feedback (
+  conversation_id uuid PRIMARY KEY REFERENCES conversations (id) ON DELETE CASCADE,
+  user_id    text NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
+  stars      smallint NOT NULL CHECK (stars BETWEEN 1 AND 5),
+  comment    text NOT NULL DEFAULT '' CHECK (length(comment) <= 2000),
+  model      text NOT NULL,
+  commit_sha text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS conversation_feedback_created ON conversation_feedback (created_at DESC);

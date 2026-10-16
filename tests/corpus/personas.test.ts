@@ -86,10 +86,11 @@ describe("persona languages", () => {
     expect(row?.languages).toEqual([{ code: "en", name: "English", native: true }]);
   });
 
-  it("keeps languages off the summaries the persona selection screen reads", async () => {
+  // Spec §33.4: the picker's voice icon is derived from the languages, so summaries carry them.
+  it("gives the summaries the persona selection screen reads their languages, English when none are stored", async () => {
     await insertPersona({ slug: "plain" });
     const [summary] = await listReadyPersonas(getPool());
-    expect(summary).not.toHaveProperty("languages");
+    expect(summary.languages).toEqual([{ code: "en", name: "English", native: true }]);
   });
 });
 

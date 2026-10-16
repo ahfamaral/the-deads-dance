@@ -14,6 +14,8 @@ export type PersonaSummary = {
   origin: PersonaOrigin;
   /** Hidden by the admin: out of testers' picker, and no new visits for them. */
   hidden: boolean;
+  /** Spec §18.4: never empty, English when none are known. Voice offers are derived from these (spec §33.4). */
+  languages: PersonaLanguage[];
 };
 
 export type PersonaRow = PersonaSummary & {
@@ -27,8 +29,6 @@ export type PersonaRow = PersonaSummary & {
   status: PersonaStatus;
   buildStamp: string | null;
   updatedAt: Date;
-  /** Spec §18.4: never empty, English when none are known. Read by the chat route. */
-  languages: PersonaLanguage[];
   /** The stored value: null until fetched (or after a failed lookup). Ingest compares this one. */
   storedLanguages: PersonaLanguage[] | null;
 };
@@ -77,8 +77,8 @@ function fromDb(row: DbRow): PersonaRow {
 }
 
 export function toSummary(row: PersonaRow): PersonaSummary {
-  const { slug, displayName, description, lifespan, origin, hidden } = row;
-  return { slug, displayName, description, lifespan, origin, hidden };
+  const { slug, displayName, description, lifespan, origin, hidden, languages } = row;
+  return { slug, displayName, description, lifespan, origin, hidden, languages };
 }
 
 export async function findPersona(db: Queryable, slug: string): Promise<PersonaRow | null> {

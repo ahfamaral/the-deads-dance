@@ -4,12 +4,15 @@ import { describe, expect, it } from "vitest";
 import PersonaPicker from "@/components/persona-picker";
 import type { Persona } from "@/lib/personas";
 
-const persona = (id: string, name: string, hidden: boolean): Persona => ({ id, name, description: "", lifespan: "", origin: "curated", hidden });
+const persona = (id: string, name: string, hidden: boolean, voiceLanguages: string[] = []): Persona => ({
+  id, name, description: "", lifespan: "", origin: "curated", hidden, voiceLanguages, voiceStatus: null,
+});
 const noop = () => {};
-const render = (personas: Persona[], canManage = true) =>
+const render = (personas: Persona[], canManage = true, voiceSupported?: boolean) =>
   renderToStaticMarkup(
     createElement(PersonaPicker, {
       personas,
+      voiceSupported,
       canManage,
       notice: null,
       onConfirm: noop,
@@ -40,5 +43,25 @@ describe("PersonaPicker hide button", () => {
 
   it("has no hide button for someone who can't manage personas", () => {
     expect(render([persona("wu", "Chien-Shiung Wu", false)], false)).not.toContain('aria-label="Hide');
+  });
+});
+
+// Spec §33.4: a small icon marks personas that can be talked to by voice.
+describe("PersonaPicker voice icon", () => {
+  it("shows the icon after the name when the voice is approved and speech is supported", () => {
+    const html = render([persona("wu", "Chien-Shiung Wu", true, ["en"])], true, true);
+    const icon = html.indexOf('aria-label="Voice available"');
+    expect(icon).toBeGreaterThan(html.indexOf("Chien-Shiung Wu"));
+    expect(icon).toBeLessThan(html.indexOf(">Hidden<"));
+  });
+
+  it("shows no icon without voice languages", () => {
+    expect(render([persona("wu", "Chien-Shiung Wu", false)], true, true)).not.toContain("Voice available");
+  });
+
+  it("shows no icon where speech is not supported, and none in the server markup", () => {
+    const wu = [persona("wu", "Chien-Shiung Wu", false, ["en"])];
+    expect(render(wu, true, false)).not.toContain("Voice available");
+    expect(render(wu)).not.toContain("Voice available");
   });
 });

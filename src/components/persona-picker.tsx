@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AddPersonaForm from "@/components/add-persona-form";
 import GearIcon from "@/components/gear-icon";
+import VoiceIcon from "@/components/voice-icon";
 import EnergyBar from "@/components/energy-bar";
 import EnergyNotice from "@/components/energy-notice";
 import SpendBadge from "@/components/spend-badge";
 import { dueBanner, type BannerThreshold } from "@/lib/energy";
 import { isOutOfEnergy, type Meter } from "@/lib/meter";
 import type { Persona } from "@/lib/personas";
+import { speechSupported } from "@/lib/speech-input";
 import { useScrollFade } from "@/lib/use-scroll-fade";
 
 type PersonaPickerProps = {
@@ -24,6 +26,8 @@ type PersonaPickerProps = {
   /** Spec §26.5: the tester's energy, or the admin's spend today; null if it couldn't be read. */
   meter: Meter | null;
   onDismissBanner: (threshold: BannerThreshold) => void;
+  /** Tests only: stands in for the browser check, which otherwise runs after mount. */
+  voiceSupported?: boolean;
 };
 
 /**
@@ -34,11 +38,15 @@ type PersonaPickerProps = {
  * persona from a Wikipedia title. Built-in personas show a disabled trash icon.
  * While a persona is being added, every other button in the panel is disabled.
  */
-export default function PersonaPicker({ personas, canManage, notice, onConfirm, onDelete, onToggleHidden, onAdd, onBack, meter, onDismissBanner }: PersonaPickerProps) {
+export default function PersonaPicker({ personas, canManage, notice, onConfirm, onDelete, onToggleHidden, onAdd, onBack, meter, onDismissBanner, voiceSupported }: PersonaPickerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState(false);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Spec §33.4: false until mounted, so the server markup never has the voice icon.
+  const [speechOk, setSpeechOk] = useState(false);
+  useEffect(() => setSpeechOk(speechSupported()), []);
+  const showVoiceIcon = voiceSupported ?? speechOk;
   const listFade = useScrollFade();
   const banner = meter?.kind === "energy" ? dueBanner(meter.left, meter.warningRead) : null;
   const outOfEnergy = isOutOfEnergy(meter);
@@ -179,6 +187,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                 >
                   <span className={`font-medium text-foreground ${persona.hidden ? "opacity-60" : ""}`}>
                     {persona.name}
+                    {showVoiceIcon && persona.voiceLanguages.length > 0 && <VoiceIcon />}
                     {persona.hidden && (
                       <span className="ml-2 rounded-full border border-white/15 px-2 py-0.5 align-middle text-xs font-normal text-neutral-400">Hidden</span>
                     )}

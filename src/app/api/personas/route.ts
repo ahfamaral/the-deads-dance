@@ -12,7 +12,7 @@ import { toSummary } from "@corpus/personas";
 import { WikipediaError } from "@corpus/wikipedia";
 import type { AddPersonaEvent } from "@/lib/add-persona-events";
 import { ingestReport } from "@/lib/ingest-report";
-import { toPersona } from "@/lib/personas";
+import { NO_VOICE, toPersona } from "@/lib/personas";
 import { requireAdmin, unavailable } from "@/lib/server/access";
 import { corpusDeps } from "@/lib/server/corpus-deps";
 import { resolveCosts } from "@/lib/server/pricing";
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
   } catch (err) {
     if (err instanceof AddPersonaError) {
       return Response.json(
-        { error: err.message, code: err.code, persona: err.existing ? toPersona(err.existing) : undefined },
+        { error: err.message, code: err.code, persona: err.existing ? toPersona(err.existing, NO_VOICE) : undefined },
         { status: STATUS[err.code] },
       );
     }
@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       ingestPersona(prepared.entry, deps, { article: prepared.article, onProgress: (p) => send({ type: "progress", ...p }) })
         .then(async (result) => {
           await report();
-          send({ type: "done", persona: toPersona(toSummary(result.persona)) });
+          send({ type: "done", persona: toPersona(toSummary(result.persona), NO_VOICE) });
         })
         .catch(async (err) => {
           console.error(err);

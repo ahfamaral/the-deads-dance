@@ -146,7 +146,8 @@ describe("admin voice routes (spec §33.3)", () => {
     expect(rendered.status).toBe(200);
     expect(speakFake).toHaveBeenCalledTimes(2);
     expect(speakFake.mock.calls[1][0].instructions).toContain("A gruff old man.");
-    expect((await loggedRoles()).map((r) => r.role)).toEqual(["helper", "tts", "tts"]);
+    // A failed speech call returns no record, so only the first render's rows are logged.
+    expect((await loggedRoles()).map((r) => r.role)).toEqual(["helper", "tts"]);
   });
 
   it("an edit drops the stale sample, so approving needs a new render", async () => {
@@ -180,13 +181,10 @@ describe("admin voice routes (spec §33.3)", () => {
     expect(speakFake).not.toHaveBeenCalled();
   });
 
-  it("PATCH render: a TTS failure is 502, keeps the edit and logs the spend", async () => {
+  it("PATCH render: a TTS failure is 502, keeps the edit", async () => {
     await call("POST");
     vi.spyOn(console, "error").mockImplementation(() => {});
-    speakFake.mockImplementationOnce(async () => {
-      ledgerSeen?.record(ttsCall);
-      throw new Error("boom");
-    });
+    speakFake.mockRejectedValueOnce(new Error("boom"));
     const res = await call("PATCH", { description: "A gruff old man.", render: true });
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ error: "Couldn't render the sample. Try again." });

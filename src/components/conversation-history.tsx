@@ -122,7 +122,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                     className="flex min-w-0 flex-1 flex-col items-start gap-0.5 self-stretch rounded-2xl px-4 py-3 text-left focus-visible:outline focus-visible:outline-white/40"
                   >
                     <span className="flex max-w-full items-baseline gap-2">
-                      <span className="truncate font-medium text-foreground">{conversation.personaName}</span>
+                      <span className="min-w-0 truncate font-medium text-foreground">{conversation.personaName}</span>
                       {conversation.stars !== null && (
                         <span className="shrink-0 text-sm text-amber-400">
                           <span className="sr-only">Rated {conversation.stars} of 5</span>

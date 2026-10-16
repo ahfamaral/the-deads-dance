@@ -12,6 +12,8 @@ export type PersonaSummary = {
   description: string;
   lifespan: string;
   origin: PersonaOrigin;
+  /** Hidden by the admin: out of testers' picker, and no new visits for them. */
+  hidden: boolean;
 };
 
 export type PersonaRow = PersonaSummary & {
@@ -48,6 +50,7 @@ type DbRow = {
   build_stamp: string | null;
   updated_at: Date;
   languages: unknown;
+  hidden: boolean;
 };
 
 function fromDb(row: DbRow): PersonaRow {
@@ -58,6 +61,7 @@ function fromDb(row: DbRow): PersonaRow {
     description: row.description,
     lifespan: row.lifespan,
     origin: row.origin,
+    hidden: row.hidden,
     wikipediaTitle: row.wikipedia_title,
     wikipediaRevid: row.wikipedia_revid === null ? null : Number(row.wikipedia_revid),
     wikidataQid: row.wikidata_qid,
@@ -73,8 +77,8 @@ function fromDb(row: DbRow): PersonaRow {
 }
 
 export function toSummary(row: PersonaRow): PersonaSummary {
-  const { slug, displayName, description, lifespan, origin } = row;
-  return { slug, displayName, description, lifespan, origin };
+  const { slug, displayName, description, lifespan, origin, hidden } = row;
+  return { slug, displayName, description, lifespan, origin, hidden };
 }
 
 export async function findPersona(db: Queryable, slug: string): Promise<PersonaRow | null> {
@@ -95,6 +99,12 @@ export async function listReadyPersonas(db: Queryable): Promise<PersonaSummary[]
  */
 export async function storeLanguages(db: Queryable, id: number, languages: PersonaLanguage[]): Promise<void> {
   await db.query("UPDATE personas SET languages = $2::jsonb WHERE id = $1 AND languages IS NULL", [id, JSON.stringify(languages)]);
+}
+
+/** Hides or shows a persona, built-in or added. False when there's no such persona. */
+export async function setPersonaHidden(db: Queryable, slug: string, hidden: boolean): Promise<boolean> {
+  const { rowCount } = await db.query("UPDATE personas SET hidden = $2 WHERE slug = $1", [slug, hidden]);
+  return rowCount === 1;
 }
 
 /** Curated personas are never deleted; the caller turns "curated" into a 403. */

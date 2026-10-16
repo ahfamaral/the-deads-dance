@@ -16,6 +16,7 @@ import type { BannerThreshold } from "@/lib/energy";
 import { applyMeterEvent, markBannerRead, parseMeter, type Meter } from "@/lib/meter";
 import { ensureAccess } from "@/lib/ensure-access";
 import { newId } from "@/lib/new-id";
+import { requestHidden } from "@/lib/persona-hide-api";
 import type { Persona } from "@/lib/personas";
 import type { AccessBody } from "@/lib/server/access-info";
 
@@ -199,6 +200,17 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
     </>
   );
 
+  /** 2026-10-16: the admin hides a persona from testers' picker, or shows it again. */
+  async function toggleHidden(persona: Persona) {
+    setPickerNotice(null);
+    const hidden = await requestHidden(persona.id, !persona.hidden);
+    if (hidden === null) {
+      setPickerNotice(persona.hidden ? "Couldn't show the persona." : "Couldn't hide the persona.");
+      return;
+    }
+    setPersonas((current) => current.map((p) => (p.id === persona.id ? { ...p, hidden } : p)));
+  }
+
   if (step.name === "start") {
     // A lighter backdrop than the other panels, so the menu reads as secondary.
     const menuSurface =
@@ -264,6 +276,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
         onConfirm={(persona) => startChat(persona)}
         onBack={() => setStep({ name: "start" })}
         onDelete={removePersona}
+        onToggleHidden={(persona) => void toggleHidden(persona)}
         onAdd={(persona) => setPersonas((current) => [...current, persona])}
         meter={meter}
         onDismissBanner={dismissBanner}

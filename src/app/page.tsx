@@ -33,7 +33,7 @@ export default async function Home() {
   const isAdmin = user.role === "admin";
   if (!isAdmin && user.status === "pending") return main(<StatusScreen status="pending" email={user.email} />);
   if (!isAdmin && user.status !== "approved") return main(<StatusScreen status="rejected" email={user.email} />);
-  const { personas, unavailable } = await loadPersonas();
+  const { personas, unavailable } = await loadPersonas({ admin: isAdmin });
   let initialAccess: AccessBody | null = null;
   try {
     initialAccess = await accessBody(getPool(), user);

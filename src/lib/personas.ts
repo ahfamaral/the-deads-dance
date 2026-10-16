@@ -9,6 +9,8 @@ export type Persona = {
   lifespan: string;
   /** Curated personas come from personas.json and can't be removed. */
   origin: PersonaOrigin;
+  /** Hidden by the admin; only the admin's picker lists it. */
+  hidden: boolean;
 };
 
 export function toPersona(summary: PersonaSummary): Persona {
@@ -18,5 +20,6 @@ export function toPersona(summary: PersonaSummary): Persona {
     description: summary.description,
     lifespan: summary.lifespan,
     origin: summary.origin,
+    hidden: summary.hidden,
   };
 }

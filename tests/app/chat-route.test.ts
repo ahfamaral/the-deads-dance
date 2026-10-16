@@ -554,3 +554,35 @@ describe("chat route config", () => {
     expect(maxDuration).toBe(120);
   });
 });
+
+// 2026-10-16: a hidden persona takes no new visits from testers; the admin and existing visits go on.
+describe("POST /api/chat with a hidden persona", () => {
+  const hideWu = () => getPool().query("UPDATE personas SET hidden = true WHERE slug = 'wu'");
+
+  it("refuses a tester's new conversation with 404, storing nothing", async () => {
+    await hideWu();
+    const res = await post(first());
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: "unknown_persona", error: "This persona is no longer available." });
+    expect(await conversationRow(CONV)).toBeUndefined();
+  });
+
+  it("lets a tester's existing conversation continue", async () => {
+    await seedConversation({ id: CONV, userId, personaSlug: "wu", messages: exchanges(1, ACT) });
+    await hideWu();
+    const res = await post(say());
+    expect(res.status).toBe(200);
+    await events(res);
+    expect((await messagesOf(CONV)).length).toBe(4);
+  });
+
+  it("lets the admin start one", async () => {
+    await resetAuth();
+    ({ cookie, userId } = await signInAs("boss@example.com", { role: "admin" }));
+    await hideWu();
+    const res = await post(first());
+    expect(res.status).toBe(200);
+    await events(res);
+    expect(await conversationRow(CONV)).toBeDefined();
+  });
+});

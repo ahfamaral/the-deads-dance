@@ -80,7 +80,7 @@ describe("POST /api/personas", () => {
     expect(all.at(-2)).toEqual({ type: "cost", report: expect.objectContaining({ total: { tokens: 15, cost: 400 } }) });
     expect(all.at(-1)).toEqual({
       type: "done",
-      persona: { id: "chien-shiung-wu", name: "Chien-Shiung Wu", description: "Physicist", lifespan: "1912–1997", origin: "user" },
+      persona: { id: "chien-shiung-wu", name: "Chien-Shiung Wu", description: "Physicist", lifespan: "1912–1997", origin: "user", hidden: false },
     });
   });
 

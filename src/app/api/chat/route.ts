@@ -86,7 +86,9 @@ export async function POST(request: Request) {
   } catch (err) {
     return unavailable(err, { showMessage: true });
   }
-  if (!persona || persona.status !== "ready") {
+  // 2026-10-16: a hidden persona takes no new visits from testers; a visit already stored goes on, and the admin isn't blocked.
+  const hiddenFromVisitor = persona?.hidden === true && context === NOTHING_STORED && user.role !== "admin";
+  if (!persona || persona.status !== "ready" || hiddenFromVisitor) {
     return Response.json({ error: "This persona is no longer available.", code: "unknown_persona" }, { status: 404 });
   }
 

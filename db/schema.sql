@@ -29,6 +29,9 @@ ALTER TABLE personas DROP COLUMN IF EXISTS system_prompt;
 -- Spec §18.4: languages from Wikidata or a pinned list; null until fetched.
 ALTER TABLE personas ADD COLUMN IF NOT EXISTS languages jsonb;
 
+-- 2026-10-16: the admin hides a persona from testers' picker; testers can't start new visits with it.
+ALTER TABLE personas ADD COLUMN IF NOT EXISTS hidden boolean NOT NULL DEFAULT false;
+
 -- Spec §18.4 fix (2026-10-08): Wikidata lists Spanish for Max Planck with rank "deprecated", which the
 -- old reader didn't skip, so the v1 seed made him a native Spanish speaker. Only that exact value changes.
 UPDATE personas SET languages = '[{"code": "de", "name": "German", "native": true}]'::jsonb

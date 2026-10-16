@@ -17,6 +17,8 @@ type PersonaPickerProps = {
   notice: string | null;
   onConfirm: (persona: Persona) => void;
   onDelete: (persona: Persona) => void;
+  /** 2026-10-16: hide a persona from testers' picker, or show it again (admin). */
+  onToggleHidden: (persona: Persona) => void;
   onAdd: (persona: Persona) => void;
   onBack: () => void;
   /** Spec §26.5: the tester's energy, or the admin's spend today; null if it couldn't be read. */
@@ -27,12 +29,12 @@ type PersonaPickerProps = {
 /**
  * Lets the user choose who to talk to. Selecting a persona reveals a
  * "Talk to" button on its row, which confirms the choice. The gear toggles a
- * configure mode that swaps "Talk to" for a delete button and shows an
+ * configure mode that swaps "Talk to" for a hide and a delete button and shows an
  * "add persona" button under the gear, which opens a form that adds a
  * persona from a Wikipedia title. Built-in personas show a disabled trash icon.
  * While a persona is being added, every other button in the panel is disabled.
  */
-export default function PersonaPicker({ personas, canManage, notice, onConfirm, onDelete, onAdd, onBack, meter, onDismissBanner }: PersonaPickerProps) {
+export default function PersonaPicker({ personas, canManage, notice, onConfirm, onDelete, onToggleHidden, onAdd, onBack, meter, onDismissBanner }: PersonaPickerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -175,8 +177,13 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                   disabled={configuring}
                   className="flex min-w-0 flex-1 flex-col items-start gap-0.5 self-stretch rounded-2xl px-4 py-3 text-left outline-none"
                 >
-                  <span className="font-medium text-foreground">{persona.name}</span>
-                  <span className="text-sm text-neutral-500">{persona.description}</span>
+                  <span className={`font-medium text-foreground ${persona.hidden ? "opacity-60" : ""}`}>
+                    {persona.name}
+                    {persona.hidden && (
+                      <span className="ml-2 rounded-full border border-white/15 px-2 py-0.5 align-middle text-xs font-normal text-neutral-400">Hidden</span>
+                    )}
+                  </span>
+                  <span className={`text-sm text-neutral-500 ${persona.hidden ? "opacity-60" : ""}`}>{persona.description}</span>
                 </button>
                 {/* Fixed-width slot reserved on every row, so selecting a persona
                     never reflows its text. "Talk to" and the delete button share
@@ -205,18 +212,50 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                       <path d="M5 12h14M13 6l6 6-6 6" />
                     </svg>
                   </button>
+                  {/* Config mode: hide (2026-10-16) left of delete; both fade in together. */}
+                  <div
+                    inert={!configuring}
+                    className={`col-start-1 row-start-1 flex items-center gap-1 transition-[opacity,translate] duration-300 ease-out motion-reduce:transition-none ${configuring ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"}`}
+                  >
+                  {canManage && (
+                    <button
+                      type="button"
+                      aria-pressed={persona.hidden}
+                      aria-label={persona.hidden ? `Show ${persona.name}` : `Hide ${persona.name}`}
+                      title={persona.hidden ? "Hidden from testers. Show again" : "Hide from testers"}
+                      disabled={busy}
+                      onClick={() => onToggleHidden(persona)}
+                      className="flex size-9 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="size-5"
+                        aria-hidden="true"
+                      >
+                        {persona.hidden ? (
+                          <path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.1A9.8 9.8 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6" />
+                        ) : (
+                          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+                        )}
+                      </svg>
+                    </button>
+                  )}
                   <button
                     type="button"
-                    inert={!configuring}
                     aria-disabled={!removable || undefined}
                     aria-label={removable ? `Delete ${persona.name}` : `${persona.name} is built in and can't be removed`}
                     title={removable ? undefined : "Built-in personas can't be removed"}
                     disabled={busy}
                     onClick={() => removable && onDelete(persona)}
-                    className={`col-start-1 row-start-1 flex size-9 items-center justify-center rounded-full transition-[background-color,opacity,translate] duration-300 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 motion-reduce:transition-none ${removable
+                    className={`flex size-9 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 ${removable
                         ? "text-red-500 hover:bg-red-500/15 focus-visible:outline-red-500/60"
                         : "cursor-not-allowed text-neutral-600 focus-visible:outline-white/40"
-                      } ${configuring ? "translate-x-0 opacity-100" : "translate-x-3 opacity-0"} disabled:pointer-events-none disabled:opacity-40`}
+                      } disabled:pointer-events-none disabled:opacity-40`}
                   >
                     <svg
                       viewBox="0 0 24 24"
@@ -231,6 +270,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                       <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6" />
                     </svg>
                   </button>
+                  </div>
                 </div>
               </li>
             );

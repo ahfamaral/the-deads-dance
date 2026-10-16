@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closePool, getPool } from "../../corpus/db";
-import { deletePersona, findPersona, listReadyPersonas } from "../../corpus/personas";
+import { deletePersona, findPersona, listReadyPersonas, setPersonaHidden } from "../../corpus/personas";
 import { insertChunks, insertPersona, resetDb } from "../helpers/db";
 import { vectorFor } from "../helpers/fake-embeddings";
 
@@ -90,5 +90,29 @@ describe("persona languages", () => {
     await insertPersona({ slug: "plain" });
     const [summary] = await listReadyPersonas(getPool());
     expect(summary).not.toHaveProperty("languages");
+  });
+});
+
+// 2026-10-16: the admin hides a persona from testers' picker.
+describe("setPersonaHidden", () => {
+  it("hides and shows a persona, built-in or added, and the list says which", async () => {
+    await insertPersona({ slug: "albert-einstein", origin: "curated" });
+    await insertPersona({ slug: "user-one", origin: "user" });
+    expect((await listReadyPersonas(getPool())).map((p) => [p.slug, p.hidden])).toEqual([
+      ["albert-einstein", false],
+      ["user-one", false],
+    ]);
+    expect(await setPersonaHidden(getPool(), "albert-einstein", true)).toBe(true);
+    expect(await setPersonaHidden(getPool(), "user-one", true)).toBe(true);
+    expect((await findPersona(getPool(), "albert-einstein"))?.hidden).toBe(true);
+    expect(await setPersonaHidden(getPool(), "albert-einstein", false)).toBe(true);
+    expect((await listReadyPersonas(getPool())).map((p) => [p.slug, p.hidden])).toEqual([
+      ["albert-einstein", false],
+      ["user-one", true],
+    ]);
+  });
+
+  it("reports an unknown slug", async () => {
+    expect(await setPersonaHidden(getPool(), "nobody", true)).toBe(false);
   });
 });

@@ -10,13 +10,14 @@ export type StoredVoice = {
   description: string;
   sampleText: string;
   sampleAudio: Buffer | null;
+  sex: "male" | "female" | null;
   status: VoiceStatus;
   updatedAt: Date;
 };
 
 export async function findVoice(db: Queryable, slug: string): Promise<StoredVoice | null> {
   const { rows } = await db.query(
-    `SELECT persona_slug, base_voice, description, sample_text, sample_audio, status, updated_at
+    `SELECT persona_slug, base_voice, description, sample_text, sample_audio, sex, status, updated_at
      FROM persona_voices WHERE persona_slug = $1`,
     [slug],
   );
@@ -28,6 +29,7 @@ export async function findVoice(db: Queryable, slug: string): Promise<StoredVoic
     description: r.description,
     sampleText: r.sample_text,
     sampleAudio: r.sample_audio ?? null,
+    sex: r.sex ?? null,
     status: r.status,
     updatedAt: r.updated_at,
   };
@@ -36,12 +38,12 @@ export async function findVoice(db: Queryable, slug: string): Promise<StoredVoic
 /** False when the persona already has a voice. */
 export async function insertVoice(
   db: Queryable,
-  v: { personaSlug: string; baseVoice: string; description: string; sampleText: string },
+  v: { personaSlug: string; baseVoice: string; description: string; sampleText: string; sex?: "male" | "female" | null },
 ): Promise<boolean> {
   const res = await db.query(
-    `INSERT INTO persona_voices (persona_slug, base_voice, description, sample_text)
-     VALUES ($1, $2, $3, $4) ON CONFLICT (persona_slug) DO NOTHING`,
-    [v.personaSlug, v.baseVoice, v.description, v.sampleText],
+    `INSERT INTO persona_voices (persona_slug, base_voice, description, sample_text, sex)
+     VALUES ($1, $2, $3, $4, $5) ON CONFLICT (persona_slug) DO NOTHING`,
+    [v.personaSlug, v.baseVoice, v.description, v.sampleText, v.sex ?? null],
   );
   return (res.rowCount ?? 0) > 0;
 }

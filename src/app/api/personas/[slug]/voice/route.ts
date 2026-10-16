@@ -13,6 +13,17 @@ const noPersona = () => Response.json({ error: "No such persona." }, { status: 4
 const noVoice = () => Response.json({ error: "No voice yet." }, { status: 404 });
 const sampleFailed = () => Response.json({ error: "Couldn't render the sample. Try again." }, { status: 502 });
 
+const voiceGender = (name: string) => GEMINI_VOICES.find((g) => g.name === name)?.gender;
+
+/** The name warning and the gender warning, worked out from what is stored. */
+function voiceWarning(persona: PersonaRow, v: StoredVoice): string | null {
+  const parts: string[] = [];
+  if (nameWordsIn(`${v.description} ${v.sampleText}`, persona.displayName).length > 0) parts.push(NAME_WARNING);
+  const gender = voiceGender(v.baseVoice);
+  if (v.sex && gender && gender !== v.sex) parts.push(`This base voice is ${gender}; the persona is ${v.sex}.`);
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
 /** `warning` is not stored: it is worked out again from the text each time. */
 function toDto(persona: PersonaRow, v: StoredVoice, warning?: string | null): VoiceDto {
   const native = persona.languages.find((l) => l.native) ?? persona.languages[0];
@@ -24,7 +35,8 @@ function toDto(persona: PersonaRow, v: StoredVoice, warning?: string | null): Vo
     hasSample: v.sampleAudio !== null,
     updatedAt: v.updatedAt.toISOString(),
     sampleLanguage: native.code,
-    warning: warning !== undefined ? warning : nameWordsIn(`${v.description} ${v.sampleText}`, persona.displayName).length > 0 ? NAME_WARNING : null,
+    sex: v.sex,
+    warning: warning !== undefined ? warning : voiceWarning(persona, v),
   };
 }
 
@@ -103,8 +115,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/personas/[s
         console.error(err);
         return Response.json({ error: "Couldn't draft the voice. Try again." }, { status: 502 });
       }
-      const { baseVoice, description, sampleText, warning } = draft;
-      if (!(await insertVoice(deps.pool, { personaSlug: slug, baseVoice, description, sampleText }))) {
+      const { baseVoice, description, sampleText, sex, warning } = draft;
+      if (!(await insertVoice(deps.pool, { personaSlug: slug, baseVoice, description, sampleText, sex }))) {
         return Response.json({ error: "This persona already has a voice." }, { status: 409 });
       }
       const stored = await findVoice(deps.pool, slug);

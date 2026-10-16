@@ -37,7 +37,7 @@ beforeEach(async () => {
     // The real model reports through the ledger handler; the fake records on the same ledger.
     expect(callbacks).toHaveLength(1);
     ledgerSeen?.record(helperCall);
-    return { description: "An old woman, soft and precise.", baseVoice: "Algenib", sampleText: "Welcome, friend.", warning: null };
+    return { description: "An old woman, soft and precise.", baseVoice: "Algenib", sex: "male", sampleText: "Welcome, friend.", warning: null };
   });
   speakFake.mockReset().mockResolvedValue({ pcm: PCM, call: ttsCall });
   deps.current = {
@@ -95,6 +95,7 @@ describe("admin voice routes (spec §33.3)", () => {
       status: "draft",
       hasSample: true,
       sampleLanguage: "en",
+      sex: "male",
       warning: null,
     });
     expect(speakFake).toHaveBeenCalledWith(expect.objectContaining({ text: "Welcome, friend.", voice: "Algenib" }));
@@ -106,7 +107,7 @@ describe("admin voice routes (spec §33.3)", () => {
   });
 
   it("POST returns the draft's warning", async () => {
-    draftFake.mockResolvedValueOnce({ description: "d", baseVoice: "Algenib", sampleText: "Hello Chien", warning: NAME_WARNING });
+    draftFake.mockResolvedValueOnce({ description: "d", baseVoice: "Algenib", sex: "male", sampleText: "Hello Chien", warning: NAME_WARNING });
     expect((await (await call("POST")).json()).voice.warning).toBe(NAME_WARNING);
   });
 
@@ -157,6 +158,15 @@ describe("admin voice routes (spec §33.3)", () => {
     const rendered = await (await call("PATCH", { render: true })).json();
     expect(rendered.voice.hasSample).toBe(true);
     expect((await call("PATCH", { status: "approved" })).status).toBe(200);
+  });
+
+  it("PATCH to a voice of the other gender is allowed, with a gender warning", async () => {
+    await call("POST");
+    const res = await call("PATCH", { baseVoice: "Kore" });
+    expect(res.status).toBe(200);
+    expect((await res.json()).voice).toMatchObject({ baseVoice: "Kore", sex: "male", warning: "This base voice is female; the persona is male." });
+    const same = await (await call("PATCH", { baseVoice: "Iapetus" })).json();
+    expect(same.voice.warning).toBeNull();
   });
 
   it("an edit with render renders the new sample in the same request", async () => {

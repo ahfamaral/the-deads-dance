@@ -2,9 +2,10 @@
 
 import { languageName } from "@corpus/languages";
 import { useEffect, useId, useRef, useState } from "react";
+import BaseVoicePicker from "@/components/base-voice-picker";
 import ConfirmDialog from "@/components/confirm-dialog";
 import { approveVoice, createVoice, fetchVoice, removeVoice, sampleUrl, saveVoice, type VoiceResult } from "@/lib/voice-api";
-import { GEMINI_VOICES, type VoiceDto, type VoiceStatus } from "@/lib/voice";
+import { type VoiceDto, type VoiceStatus } from "@/lib/voice";
 
 export const DESCRIPTION_MAX = 600;
 const BUTTON = "min-h-11 whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors disabled:opacity-40";
@@ -24,26 +25,22 @@ type VoiceFormProps = {
   onTryAgain: () => void;
   onApprove: () => void;
   onTurnOff: () => void;
+  /** For tests: renders the base-voice list open. */
+  initialPickerOpen?: boolean;
 };
 
 /** Spec §33.3: the editable voice, its sample and the actions. Presentational, so it renders as static markup. */
-export function VoiceForm({ slug, voice, baseVoice, description, busy, error, onBaseVoice, onDescription, onTryAgain, onApprove, onTurnOff }: VoiceFormProps) {
+export function VoiceForm({ slug, voice, baseVoice, description, busy, error, onBaseVoice, onDescription, onTryAgain, onApprove, onTurnOff, initialPickerOpen }: VoiceFormProps) {
   const id = useId();
   const dirty = baseVoice !== voice.baseVoice || description !== voice.description;
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-neutral-400">Status: {voice.status === "approved" ? "Approved" : "Draft"}</p>
       <div className="flex flex-col gap-1">
-        <label htmlFor={`${id}-base`} className="text-sm text-neutral-400">
+        <label htmlFor={`${id}-base`} id={`${id}-base-label`} className="text-sm text-neutral-400">
           Base voice
         </label>
-        <select id={`${id}-base`} value={baseVoice} onChange={(e) => onBaseVoice(e.target.value)} disabled={busy} className={`${FIELD} min-h-11`}>
-          {GEMINI_VOICES.map((v) => (
-            <option key={v.name} value={v.name}>
-              {`${v.name} · ${v.character} · ${v.gender}`}
-            </option>
-          ))}
-        </select>
+        <BaseVoicePicker id={`${id}-base`} value={baseVoice} onChange={onBaseVoice} sex={voice.sex} disabled={busy} initialOpen={initialPickerOpen} />
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor={`${id}-description`} className="text-sm text-neutral-400">
@@ -207,7 +204,7 @@ export default function VoicePanel({ persona, open, onClose, onChanged }: VoiceP
               type="button"
               aria-label="Close"
               onClick={onClose}
-              className="-mt-1 -mr-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
+              className="-mt-1 -mr-2 inline-flex size-11 shrink-0 items-center justify-center text-neutral-400 transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="size-5" aria-hidden="true">
                 <path d="M6 6l12 12M18 6L6 18" />

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closePool, getPool } from "@corpus/db";
 import { MODEL_CALL_ROLES } from "@corpus/cost-ledger";
@@ -30,6 +32,21 @@ describe("persona voices (spec §33.2)", () => {
     const v = await findVoice(db(), "wu");
     expect(v).toMatchObject({ personaSlug: "wu", baseVoice: "Algenib", sampleText: "Welcome, friend.", sampleAudio: null, status: "draft" });
     expect(await findVoice(db(), "nobody")).toBeNull();
+  });
+
+  it("stores the sex, and null when none is given", async () => {
+    await insertVoice(db(), { ...V, sex: "female" });
+    expect((await findVoice(db(), "wu"))?.sex).toBe("female");
+    await deleteVoice(db(), "wu");
+    await insertVoice(db(), V);
+    expect((await findVoice(db(), "wu"))?.sex).toBeNull();
+    await expect(db().query(`UPDATE persona_voices SET sex = 'other'`)).rejects.toThrow();
+  });
+
+  it("re-running the schema is harmless", async () => {
+    const sql = readFileSync(join(process.cwd(), "db/schema.sql"), "utf8");
+    await db().query(sql);
+    await db().query(sql);
   });
 
   it("approves only with a sample, and lists approved slugs and statuses", async () => {

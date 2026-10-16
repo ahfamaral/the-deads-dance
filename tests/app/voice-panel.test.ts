@@ -3,7 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import AddPersonaForm from "@/components/add-persona-form";
 import PersonaPicker from "@/components/persona-picker";
-import { VoiceForm } from "@/components/voice-panel";
+import BaseVoicePicker from "@/components/base-voice-picker";
+import VoicePanel, { VoiceForm } from "@/components/voice-panel";
 import type { Persona } from "@/lib/personas";
 import { GEMINI_VOICES, type VoiceDto } from "@/lib/voice";
 
@@ -16,6 +17,7 @@ const draft: VoiceDto = {
   hasSample: true,
   updatedAt: "2026-10-16T10:00:00.000Z",
   sampleLanguage: "pt",
+  sex: "female",
   warning: null,
 };
 const form = (voice: VoiceDto, over: Partial<Parameters<typeof VoiceForm>[0]> = {}) =>
@@ -39,13 +41,45 @@ const form = (voice: VoiceDto, over: Partial<Parameters<typeof VoiceForm>[0]> = 
 describe("VoiceForm", () => {
   it("shows the controls for a draft", () => {
     const html = form(draft);
-    expect(html.match(/<option/g)).toHaveLength(GEMINI_VOICES.length);
-    expect(html).toContain("Kore · Firm · female");
+    expect(html).toContain("Kore · Firm");
+    expect(html).not.toContain("<select");
     expect(html).toContain('maxLength="600"');
     expect(html).toContain('<audio controls=""');
     expect(html).toContain("/api/personas/wu/voice/sample?v=");
     expect(html).toContain("Sample (Portuguese)");
     for (const label of ["Try again", "Turn voice off", "Approve", "Status: Draft"]) expect(html).toContain(label);
+  });
+
+  it("has a borderless close button in the panel", () => {
+    const html = renderToStaticMarkup(createElement(VoicePanel, { persona: { id: "wu", name: "Wu" }, open: false, onClose: noop, onChanged: noop }));
+    const close = html.match(/<button[^>]*aria-label="Close"[^>]*>/)?.[0] ?? "";
+    expect(close).toContain("size-11");
+    expect(close).not.toMatch(/\bborder/);
+    expect(close).not.toContain("rounded-full");
+  });
+
+  it("shows the base voice in a picker with a chevron", () => {
+    const html = form({ ...draft, baseVoice: "Schedar", sex: "male" });
+    expect(html).toContain("Schedar · Even");
+    expect(html).toContain('aria-haspopup="listbox"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('data-chevron');
+    expect(html).not.toContain('role="listbox"');
+  });
+
+  it("opens the persona's sex group first, with the selected option marked", () => {
+    const html = renderToStaticMarkup(createElement(BaseVoicePicker, { value: "Kore", onChange: noop, sex: "female", initialOpen: true }));
+    expect(html).toContain('role="listbox"');
+    expect(html.indexOf("Female voices")).toBeGreaterThan(-1);
+    expect(html.indexOf("Female voices")).toBeLessThan(html.indexOf("Male voices"));
+    expect(html.match(/role="option"/g)).toHaveLength(GEMINI_VOICES.length);
+    expect(html.match(/aria-selected="true"/g)).toHaveLength(1);
+    expect(html).toMatch(/aria-selected="true"[^>]*>[^]*?Kore/);
+  });
+
+  it("lists Male voices first when the sex is unknown", () => {
+    const html = renderToStaticMarkup(createElement(BaseVoicePicker, { value: "Kore", onChange: noop, sex: null, initialOpen: true }));
+    expect(html.indexOf("Male voices")).toBeLessThan(html.indexOf("Female voices"));
   });
 
   it("shows the warning when there is one", () => {

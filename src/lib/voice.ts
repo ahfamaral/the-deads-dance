@@ -64,6 +64,7 @@ export type VoiceDto = {
   hasSample: boolean;
   updatedAt: string;
   sampleLanguage: string;
+  sex: "male" | "female" | null;
   warning: string | null;
 };
 

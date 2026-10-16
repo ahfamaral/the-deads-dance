@@ -254,6 +254,8 @@ CREATE TABLE IF NOT EXISTS persona_voices (
   approved_at  timestamptz,
   updated_at   timestamptz NOT NULL DEFAULT now()
 );
+-- The persona's sex as the draft judged it; picks which base voices the admin sees first. Null for older voices.
+ALTER TABLE persona_voices ADD COLUMN IF NOT EXISTS sex text CHECK (sex IN ('male','female'));
 
 -- Spec §33.2: how a conversation is held; set by its first turn, never changed.
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'text'

@@ -52,6 +52,10 @@ type ChatSessionProps = {
   initialTurnRunning?: boolean;
   /** Spec §32.6: a record's rating, for its rating row. */
   initialFeedback?: Feedback | null;
+  /** Spec §33.4: a voice conversation, in this language; null or absent for text. Sent with every turn. */
+  voice?: { language: string } | null;
+  /** Spec §33.5: a reloaded voice chat waits for a tap ("Tap to continue"); the voice screen uses it. */
+  resume?: boolean;
 };
 
 /**
@@ -74,6 +78,7 @@ export default function ChatSession({
   initialSpend,
   initialTurnRunning,
   initialFeedback,
+  voice = null,
 }: ChatSessionProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [turn, setTurn] = useState<TurnState | null>(null);
@@ -176,6 +181,7 @@ export default function ChatSession({
         retry,
         first: !confirmed.current,
         languageMode,
+        ...(voice ? { mode: "voice" as const, voiceLanguage: voice.language } : {}),
         signal: controller.signal,
       })) {
         // The server stores the visitor message before it streams anything.

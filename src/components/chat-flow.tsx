@@ -7,6 +7,7 @@ import ConversationHistory from "@/components/conversation-history";
 import PersonaPicker from "@/components/persona-picker";
 import RatingSheet from "@/components/rating-sheet";
 import SignOutButton from "@/components/sign-out-button";
+import VoiceStartDialog, { type StartChoice } from "@/components/voice-start-dialog";
 import VoicePanel from "@/components/voice-panel";
 import type { ChatStreamEvent, Message, Spend } from "@/lib/chat-types";
 import type { StoredConversation } from "@/lib/conversation-types";
@@ -17,6 +18,8 @@ import type { BannerThreshold } from "@/lib/energy";
 import { applyMeterEvent, markBannerRead, parseMeter, type Meter } from "@/lib/meter";
 import { ensureAccess } from "@/lib/ensure-access";
 import { newId } from "@/lib/new-id";
+import { defaultVoiceLanguage } from "@/lib/voice";
+import { speechSupported } from "@/lib/speech-input";
 import { requestHidden } from "@/lib/persona-hide-api";
 import type { Persona } from "@/lib/personas";
 import type { AccessBody } from "@/lib/server/access-info";
@@ -37,6 +40,10 @@ type ChatStep = {
   turnRunning?: boolean;
   /** Spec §32.6: a record's rating. */
   feedback?: Feedback | null;
+  /** Spec §33.4: a voice conversation in this language; null for text. */
+  voice: { language: string } | null;
+  /** Spec §33.5: a voice chat restored after a reload opens at "Tap to continue". */
+  resume?: boolean;
 };
 type Step = { name: "start" } | { name: "history" } | { name: "select" } | { name: "restoring" } | ChatStep;
 
@@ -72,6 +79,8 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
   };
   const outOfEnergyNow = () => setMeter((m) => (m?.kind === "energy" ? { ...m, left: 0 } : m));
 
+  // Spec §33.4: the persona the Start dialog is open for.
+  const [choosing, setChoosing] = useState<Persona | null>(null);
   const [startNotice, setStartNotice] = useState<string | null>(null);
   // Spec §32.4: the conversation just left, rated over the next screen.
   const [rating, setRating] = useState<{ conversationId: string; personaName: string } | null>(null);
@@ -88,15 +97,23 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
     turnRunning: c.turnRunning,
     ownerEmail: c.userEmail && c.userEmail !== email ? c.userEmail : undefined,
     feedback: c.feedback ?? null,
+    voice: c.mode === "voice" && c.voiceLanguage ? { language: c.voiceLanguage } : null,
   });
 
   /** A live chat. This tab remembers it, so a reload brings it back (spec §25.5). */
   function openLive(chat: Omit<ChatStep, "name" | "backTo">) {
-    writeOpenChat({ conversationId: chat.conversationId, personaId: chat.personaId });
+    writeOpenChat({ conversationId: chat.conversationId, personaId: chat.personaId, voiceLanguage: chat.voice?.language });
     setStep({ name: "chat", backTo: "select", ...chat });
   }
-  const startChat = (persona: { id: string; name: string }) =>
-    openLive({ conversationId: newId(), personaId: persona.id, personaName: persona.name, messages: [] });
+  const startChat = (persona: { id: string; name: string }, voice: { language: string } | null = null) =>
+    openLive({ conversationId: newId(), personaId: persona.id, personaName: persona.name, messages: [], voice });
+  // Spec §33.4: a persona with a voice asks Text or Voice first (when the browser can listen).
+  const canAskVoice = (persona: Persona) => persona.voiceLanguages.length > 0 && speechSupported();
+  const begin = (persona: Persona) => (canAskVoice(persona) ? setChoosing(persona) : startChat(persona));
+  const onChoice = (persona: Persona, choice: StartChoice) => {
+    setChoosing(null);
+    startChat(persona, choice.mode === "voice" ? { language: choice.language } : null);
+  };
 
   // Spec §25.5: the open chat survives a reload of its own tab. sessionStorage is only readable
   // after hydration, so this is an effect; it runs once.
@@ -126,11 +143,13 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
         setStep({ name: "start" });
       } else if (result.kind === "found") {
         const c = result.conversation;
-        openLive({ conversationId: c.id, personaId: c.personaId, personaName: c.personaName, messages: c.messages, spend: c.spend, turnRunning: c.turnRunning });
+        const voice = c.mode === "voice" && c.voiceLanguage ? { language: c.voiceLanguage } : null;
+        openLive({ conversationId: c.id, personaId: c.personaId, personaName: c.personaName, messages: c.messages, spend: c.spend, turnRunning: c.turnRunning, voice, resume: voice !== null });
       } else if (result.kind === "missing") {
         // Nothing was sent yet, or it was deleted elsewhere: a fresh chat with the same persona.
         const persona = initialPersonas.find((p) => p.id === saved.personaId);
-        if (persona) startChat(persona);
+        // The language chosen at Start was saved with the open chat; the text chat has none.
+        if (persona) startChat(persona, saved.voiceLanguage ? { language: saved.voiceLanguage } : null);
         else {
           writeOpenChat(null);
           setStep({ name: "start" });
@@ -284,11 +303,20 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
           }
         />
       )}
+      {choosing && (
+        <VoiceStartDialog
+          key={choosing.id}
+          persona={choosing}
+          defaultLanguage={defaultVoiceLanguage(choosing.voiceLanguages, navigator.languages)}
+          onStart={(choice) => onChoice(choosing, choice)}
+          onCancel={() => setChoosing(null)}
+        />
+      )}
       <PersonaPicker
         personas={personas}
         canManage={isAdmin}
         notice={pickerNotice}
-        onConfirm={(persona) => startChat(persona)}
+        onConfirm={begin}
         onBack={() => setStep({ name: "start" })}
         onDelete={removePersona}
         onToggleHidden={(persona) => void toggleHidden(persona)}
@@ -318,7 +346,13 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
       }}
       onNewVisit={(askRating) => {
         if (askRating) setRating({ conversationId: step.conversationId, personaName: step.personaName });
-        startChat({ id: step.personaId, name: step.personaName });
+        const persona = personas.find((p) => p.id === step.personaId);
+        // From a voice conversation the Start dialog opens again, over the picker (spec §33.4).
+        if (step.voice && persona && canAskVoice(persona)) {
+          writeOpenChat(null);
+          setStep({ name: "select" });
+          setChoosing(persona);
+        } else startChat({ id: step.personaId, name: step.personaName });
       }}
       meter={meter}
       onMeterEvent={onMeterEvent}
@@ -327,6 +361,8 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
       initialSpend={step.spend}
       initialTurnRunning={step.turnRunning}
       initialFeedback={step.feedback}
+      voice={step.voice}
+      resume={step.resume}
     />
   );
 }

@@ -5,6 +5,8 @@ import type { StoredConversation } from "@/lib/conversation-types";
 import { ENDED_NOTE, STOPPED_NOTE } from "@/lib/message-notes";
 
 const conversation = (messages: Message[]): StoredConversation => ({
+  mode: "text",
+  voiceLanguage: null,
   id: "c1",
   personaId: "chien-shiung-wu",
   personaName: "Chien-Shiung Wu",

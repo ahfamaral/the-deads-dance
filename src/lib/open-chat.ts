@@ -9,10 +9,11 @@ import type { StoredConversation } from "@/lib/conversation-types";
  */
 export const OPEN_CHAT_KEY = "deads-dance:open-chat";
 
-export type OpenChat = { conversationId: string; personaId: string };
+/** voiceLanguage: spec §33.5, set for a voice conversation, so a reload before its first turn still knows the language. */
+export type OpenChat = { conversationId: string; personaId: string; voiceLanguage?: string };
 
 export function serializeOpenChat(c: OpenChat): string {
-  return JSON.stringify({ conversationId: c.conversationId, personaId: c.personaId });
+  return JSON.stringify({ conversationId: c.conversationId, personaId: c.personaId, ...(c.voiceLanguage ? { voiceLanguage: c.voiceLanguage } : {}) });
 }
 
 export function parseOpenChat(raw: string | null): OpenChat | null {
@@ -24,9 +25,10 @@ export function parseOpenChat(raw: string | null): OpenChat | null {
     return null;
   }
   if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
-  const { conversationId, personaId } = v as Record<string, unknown>;
+  const { conversationId, personaId, voiceLanguage } = v as Record<string, unknown>;
   if (typeof conversationId !== "string" || !conversationId || typeof personaId !== "string" || !personaId) return null;
-  return { conversationId, personaId };
+  const language = typeof voiceLanguage === "string" && /^[a-z]{2,3}$/.test(voiceLanguage) ? voiceLanguage : undefined;
+  return { conversationId, personaId, ...(language ? { voiceLanguage: language } : {}) };
 }
 
 export function readOpenChat(): OpenChat | null {

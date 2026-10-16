@@ -25,6 +25,8 @@ const search: ToolCall = {
 };
 
 const conversation = (messages: Message[]): StoredConversation => ({
+  mode: "text",
+  voiceLanguage: null,
   id: "c1",
   personaId: "chien-shiung-wu",
   personaName: "Chien-Shiung Wu",

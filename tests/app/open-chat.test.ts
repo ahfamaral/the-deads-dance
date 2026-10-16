@@ -7,6 +7,17 @@ describe("the open-chat entry (spec §25.5)", () => {
     expect(parseOpenChat(serializeOpenChat(c))).toEqual(c);
   });
 
+  it("keeps a voice language through the round trip", () => {
+    const c = { conversationId: "a", personaId: "b", voiceLanguage: "de" };
+    expect(parseOpenChat(serializeOpenChat(c))).toEqual(c);
+    expect(parseOpenChat('{"conversationId":"a","personaId":"b","voiceLanguage":"de"}')?.voiceLanguage).toBe("de");
+  });
+
+  it.each([5, "", "d", "german", null])("drops a bad voiceLanguage %j", (bad) => {
+    const parsed = parseOpenChat(JSON.stringify({ conversationId: "a", personaId: "b", voiceLanguage: bad }));
+    expect(parsed).toEqual({ conversationId: "a", personaId: "b" });
+  });
+
   it.each([null, "", "not json", "[]", "{}", '{"conversationId":"x"}', '{"conversationId":"","personaId":"wu"}', '{"conversationId":1,"personaId":"wu"}'])(
     "reads %j as nothing",
     (raw) => {
@@ -16,7 +27,7 @@ describe("the open-chat entry (spec §25.5)", () => {
 });
 
 describe("restoring the open chat (spec §27)", () => {
-  const conv = (userEmail?: string) => ({ id: "c", personaId: "wu", personaName: "Wu", updatedAt: "", messages: [], ...(userEmail ? { userEmail } : {}) });
+  const conv = (userEmail?: string) => ({ id: "c", personaId: "wu", personaName: "Wu", updatedAt: "", messages: [], mode: "text" as const, voiceLanguage: null, ...(userEmail ? { userEmail } : {}) });
   it("reopens your own conversation live", () => {
     expect(canRestoreLive(conv(), "ana@example.com")).toBe(true); // a tester's read carries no userEmail
     expect(canRestoreLive(conv("boss@example.com"), "boss@example.com")).toBe(true);

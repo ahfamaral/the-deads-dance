@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { StoredConversation } from "@/lib/conversation-types";
 import { waitForReply } from "@/lib/wait-for-reply";
 
-const conv = (turnRunning: boolean): StoredConversation => ({ id: "c", personaId: "wu", personaName: "Wu", updatedAt: "", messages: [], turnRunning });
+const conv = (turnRunning: boolean): StoredConversation => ({ id: "c", personaId: "wu", personaName: "Wu", updatedAt: "", messages: [], mode: "text", voiceLanguage: null, turnRunning });
 
 describe("waitForReply (spec §26.5)", () => {
   it("polls until the turn has finished", async () => {

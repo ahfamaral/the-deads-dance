@@ -228,6 +228,13 @@ describe("readConversation", () => {
     ]);
   });
 
+  it("returns the conversation's mode and voice language", async () => {
+    await seedConversation({ id: CONV, userId: ana });
+    expect(await readConversation(pool(), ana, CONV, { costs: false })).toMatchObject({ mode: "text", voiceLanguage: null });
+    await pool().query(`UPDATE conversations SET mode = 'voice', voice_language = 'de' WHERE id = $1`, [CONV]);
+    expect(await readConversation(pool(), ana, CONV, { costs: false })).toMatchObject({ mode: "voice", voiceLanguage: "de" });
+  });
+
   it("is null for another user's conversation", async () => {
     await seedConversation({ id: CONV, userId: await insertUser("bo@example.com") });
     expect(await readConversation(pool(), ana, CONV, { costs: false })).toBeNull();

@@ -1,4 +1,4 @@
-import { type ChatStreamEvent, type LanguageMode } from "@/lib/chat-types";
+import { type ChatStreamEvent, type ConversationMode, type LanguageMode } from "@/lib/chat-types";
 import { readNdjson } from "@/lib/ndjson";
 
 /** A turn that failed before or while streaming. `retryable` decides whether the UI offers Retry. */
@@ -23,6 +23,9 @@ export async function* streamChat(opts: {
   /** The conversation's first message: only then may the server create it. */
   first?: boolean;
   languageMode?: LanguageMode;
+  /** Spec §33.5: how the conversation is held; the server keeps what the first turn says. */
+  mode?: ConversationMode;
+  voiceLanguage?: string;
   /** Aborted when the chat closes; the server finishes the turn anyway (spec §26.4). */
   signal?: AbortSignal;
 }): AsyncGenerator<ChatStreamEvent> {
@@ -36,6 +39,8 @@ export async function* streamChat(opts: {
         personaId: opts.personaId,
         ...(opts.retry ? { retry: true } : { text: opts.text, ...(opts.first ? { first: true } : {}) }),
         languageMode: opts.languageMode ?? "realistic",
+        ...(opts.mode ? { mode: opts.mode } : {}),
+        ...(opts.voiceLanguage ? { voiceLanguage: opts.voiceLanguage } : {}),
       }),
       signal: opts.signal,
     });

@@ -1,4 +1,4 @@
-import type { Message, Spend } from "@/lib/chat-types";
+import type { ConversationMode, Message, Spend } from "@/lib/chat-types";
 import type { Feedback } from "@/lib/feedback";
 import type { VisitEnding } from "@/lib/visit";
 
@@ -15,6 +15,10 @@ export type StoredConversation = {
   /** ISO timestamp of the latest message. */
   updatedAt: string;
   messages: Message[];
+  /** Spec §33.5: how the conversation is held; fixed on its first turn. */
+  mode: ConversationMode;
+  /** Spec §33.5: the voice conversation's language code; null for text. */
+  voiceLanguage: string | null;
   /** Spec §27, admin only: the owner's email. */
   userEmail?: string;
   /** Spec §26.4: a turn is still being written on the server. */

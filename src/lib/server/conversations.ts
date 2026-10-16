@@ -257,7 +257,7 @@ export async function listConversations(pool: Queryable, userId: string, opts: {
 /** One of the user's conversations with its messages, or null (another user's, or none). Spec §27: with `anyOwner` (the admin), anyone's, with the owner's email. */
 export async function readConversation(pool: Queryable, userId: string, id: string, opts: { costs: boolean; anyOwner?: boolean }): Promise<StoredConversation | null> {
   const { rows } = await pool.query(
-    `SELECT c.id, c.persona_slug, c.persona_name, c.updated_at, c.cost, c.tokens, ${RUNNING} AS turn_running, u.email AS user_email,
+    `SELECT c.id, c.persona_slug, c.persona_name, c.updated_at, c.mode, c.voice_language, c.cost, c.tokens, ${RUNNING} AS turn_running, u.email AS user_email,
             f.stars AS feedback_stars, f.comment AS feedback_comment
      FROM conversations c JOIN "user" u ON u.id = c.user_id
      LEFT JOIN conversation_feedback f ON f.conversation_id = c.id
@@ -275,6 +275,8 @@ export async function readConversation(pool: Queryable, userId: string, id: stri
     personaName: rows[0].persona_name,
     updatedAt: new Date(rows[0].updated_at).toISOString(),
     messages: messages.map((m) => toMessage(m, opts.costs)),
+    mode: rows[0].mode,
+    voiceLanguage: rows[0].voice_language,
     turnRunning: rows[0].turn_running,
     feedback: rows[0].feedback_stars === null ? null : { stars: rows[0].feedback_stars, comment: rows[0].feedback_comment },
     ...(opts.costs ? { spend: { cost: Number(rows[0].cost), tokens: rows[0].tokens } } : {}),

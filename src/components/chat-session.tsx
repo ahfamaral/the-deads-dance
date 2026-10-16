@@ -6,14 +6,17 @@ import ConfirmDialog from "@/components/confirm-dialog";
 import Conversation from "@/components/conversation";
 import EnergyBar from "@/components/energy-bar";
 import EnergyNotice from "@/components/energy-notice";
+import FeedbackRow from "@/components/feedback-row";
+import RatingSheet from "@/components/rating-sheet";
 import SpendBadge from "@/components/spend-badge";
-import { fetchConversation } from "@/lib/conversations-api";
+import { fetchConversation, sendFeedback } from "@/lib/conversations-api";
 import { ChatRequestError, streamChat } from "@/lib/chat-client";
 import { applyChatEvent, startTurn, type TurnState } from "@/lib/turn-state";
 import type { ChatStreamEvent, LanguageMode, Message, Spend, TurnSpend } from "@/lib/chat-types";
 import { dueBanner, type BannerThreshold } from "@/lib/energy";
+import type { Feedback } from "@/lib/feedback";
 import { loadLanguageMode, saveLanguageMode } from "@/lib/language-mode";
-import { confirmBeforeLeaving, showEndBar } from "@/lib/leave-guard";
+import { confirmBeforeLeaving, shouldAskForRating, showEndBar } from "@/lib/leave-guard";
 import { isOutOfEnergy, type Meter } from "@/lib/meter";
 import { newId } from "@/lib/new-id";
 import { foldVisit, isEnded } from "@/lib/visit";
@@ -33,9 +36,10 @@ type ChatSessionProps = {
   initialMessages: Message[];
   /** Spec §22: reopened from history, so it can't be continued. */
   readOnly?: boolean;
-  onBack: () => void;
+  /** askRating: spec §32.4, the flow asks for a rating over the next screen. */
+  onBack: (askRating: boolean) => void;
   /** Spec §23.2: a fresh conversation with the same persona, offered once the visit has ended. */
-  onNewVisit: () => void;
+  onNewVisit: (askRating: boolean) => void;
   /** Spec §26.5–6: the tester's energy, or the admin's spend; null if it couldn't be read. */
   meter: Meter | null;
   onMeterEvent: (event: ChatStreamEvent) => void;
@@ -46,6 +50,8 @@ type ChatSessionProps = {
   initialSpend?: Spend;
   /** Spec §26.4: the server is still writing this conversation's reply. */
   initialTurnRunning?: boolean;
+  /** Spec §32.6: a record's rating, for its rating row. */
+  initialFeedback?: Feedback | null;
 };
 
 /**
@@ -67,6 +73,7 @@ export default function ChatSession({
   onOutOfEnergy,
   initialSpend,
   initialTurnRunning,
+  initialFeedback,
 }: ChatSessionProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [turn, setTurn] = useState<TurnState | null>(null);
@@ -95,6 +102,8 @@ export default function ChatSession({
   const abortRef = useRef<AbortController | null>(null);
   const [gone, setGone] = useState(false);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback | null>(initialFeedback ?? null);
+  const [rating, setRating] = useState(false);
   // Spec §25.3: true once the server has the conversation. Only a first message may create it.
   const confirmed = useRef(initialMessages.length > 0);
   // Whether the last failed turn's visitor message reached the server: Retry answers it there;
@@ -107,6 +116,9 @@ export default function ChatSession({
     refused ||
     isEnded(messages) ||
     foldVisit(messages.filter((m) => m.role === "user").map((m) => m.act ?? null)).closed;
+  // Spec §32.4. Review Focus 1: `confirmed` is false when the first message never reached the server, so there is nothing to rate.
+  const askRating = () =>
+    shouldAskForRating({ hasUserMessage: confirmed.current && messages.some((m) => m.role === "user"), readOnly, gone });
 
   // Leaving the chat stops listening; the server finishes the turn (spec §26.4).
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -260,7 +272,7 @@ export default function ChatSession({
         onRetry={turnError?.retryable && !turn && !readOnly && !waiting ? retry : undefined}
         toolsUnavailable={toolsUnavailable}
         onBack={() =>
-          confirmBeforeLeaving({ readOnly, ended, gone, hasMessages: messages.length > 0 }) ? setConfirmingLeave(true) : onBack()
+          confirmBeforeLeaving({ readOnly, ended, gone, hasMessages: messages.length > 0 }) ? setConfirmingLeave(true) : onBack(askRating())
         }
         languageMode={languageMode}
         onLanguageModeChange={changeLanguageMode}
@@ -269,6 +281,7 @@ export default function ChatSession({
         waiting={waiting}
         showCost={isAdmin}
       />
+      {readOnly && !gone && <FeedbackRow feedback={feedback} editable={!ownerEmail} onRate={() => setRating(true)} />}
       {showEndBar({ ended, streaming: turn !== null }) ? (
         <div
           role="status"
@@ -277,15 +290,15 @@ export default function ChatSession({
           <span>{personaName} has ended the visit.</span>
           <div className="flex w-full gap-1.5 sm:w-auto sm:gap-2">
             {readOnly ? (
-              <button type="button" onClick={onBack} className={END_BAR_PRIMARY}>
+              <button type="button" onClick={() => onBack(askRating())} className={END_BAR_PRIMARY}>
                 Back to history
               </button>
             ) : (
               <>
-                <button type="button" onClick={onNewVisit} className={END_BAR_PRIMARY}>
+                <button type="button" onClick={() => onNewVisit(askRating())} className={END_BAR_PRIMARY}>
                   Start a new visit
                 </button>
-                <button type="button" onClick={onBack} className={END_BAR_SECONDARY}>
+                <button type="button" onClick={() => onBack(askRating())} className={END_BAR_SECONDARY}>
                   Back to personas
                 </button>
               </>
@@ -309,10 +322,23 @@ export default function ChatSession({
         confirmLabel="Leave"
         onConfirm={() => {
           setConfirmingLeave(false);
-          onBack();
+          onBack(askRating());
         }}
         onCancel={() => setConfirmingLeave(false)}
       />
+      {rating && (
+        <RatingSheet
+          open
+          personaName={personaName}
+          initial={feedback}
+          onSave={(f) => sendFeedback(conversationId, f)}
+          onSaved={(f) => {
+            setFeedback(f);
+            setRating(false);
+          }}
+          onClose={() => setRating(false)}
+        />
+      )}
     </>
   );
 }

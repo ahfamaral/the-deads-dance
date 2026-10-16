@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import ChatSession from "@/components/chat-session";
 import ConversationHistory from "@/components/conversation-history";
 import PersonaPicker from "@/components/persona-picker";
+import RatingSheet from "@/components/rating-sheet";
 import SignOutButton from "@/components/sign-out-button";
 import type { ChatStreamEvent, Message, Spend } from "@/lib/chat-types";
 import type { StoredConversation } from "@/lib/conversation-types";
-import { fetchConversation } from "@/lib/conversations-api";
-import { canRestoreLive, readOpenChat, writeOpenChat } from "@/lib/open-chat";
+import { fetchConversation, sendFeedback } from "@/lib/conversations-api";
+import type { Feedback } from "@/lib/feedback";
+import { canRestoreLive, linkedConversation, readOpenChat, writeOpenChat } from "@/lib/open-chat";
 import type { BannerThreshold } from "@/lib/energy";
 import { applyMeterEvent, markBannerRead, parseMeter, type Meter } from "@/lib/meter";
 import { ensureAccess } from "@/lib/ensure-access";
@@ -31,6 +33,8 @@ type ChatStep = {
   spend?: Spend;
   /** Spec §26.4: the server is still writing the last reply. */
   turnRunning?: boolean;
+  /** Spec §32.6: a record's rating. */
+  feedback?: Feedback | null;
 };
 type Step = { name: "start" } | { name: "history" } | { name: "select" } | { name: "restoring" } | ChatStep;
 
@@ -65,6 +69,22 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
   const outOfEnergyNow = () => setMeter((m) => (m?.kind === "energy" ? { ...m, left: 0 } : m));
 
   const [startNotice, setStartNotice] = useState<string | null>(null);
+  // Spec §32.4: the conversation just left, rated over the next screen.
+  const [rating, setRating] = useState<{ conversationId: string; personaName: string } | null>(null);
+
+  /** A record from History (spec §22), or from the admin's Feedback list (spec §32.7). */
+  const recordStep = (c: StoredConversation): ChatStep => ({
+    name: "chat",
+    conversationId: c.id,
+    personaId: c.personaId,
+    personaName: c.personaName,
+    messages: c.messages,
+    backTo: "history",
+    spend: c.spend,
+    turnRunning: c.turnRunning,
+    ownerEmail: c.userEmail && c.userEmail !== email ? c.userEmail : undefined,
+    feedback: c.feedback ?? null,
+  });
 
   /** A live chat. This tab remembers it, so a reload brings it back (spec §25.5). */
   function openLive(chat: Omit<ChatStep, "name" | "backTo">) {
@@ -77,9 +97,23 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
   // Spec §25.5: the open chat survives a reload of its own tab. sessionStorage is only readable
   // after hydration, so this is an effect; it runs once.
   useEffect(() => {
+    // Spec §32.7: /?open=<id> from the admin's Feedback list opens that conversation read-only.
+    const linked = linkedConversation(window.location.search);
+    if (linked) {
+      window.history.replaceState(null, "", "/");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- flips to the loading screen before the async fetch
+      setStep({ name: "restoring" });
+      void fetchConversation(linked).then((result) => {
+        if (result.kind === "found") setStep(recordStep(result.conversation));
+        else {
+          setStartNotice("Couldn't open that conversation.");
+          setStep({ name: "start" });
+        }
+      });
+      return;
+    }
     const saved = readOpenChat();
     if (!saved) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- flips to the loading screen before the async fetch
     setStep({ name: "restoring" });
     void fetchConversation(saved.conversationId).then((result) => {
       if (result.kind === "found" && !canRestoreLive(result.conversation, email)) {
@@ -146,12 +180,31 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
     }
   }
 
+  const sheet = rating && (
+    <RatingSheet
+      key={rating.conversationId}
+      open
+      personaName={rating.personaName}
+      initial={null}
+      onSave={(f) => sendFeedback(rating.conversationId, f)}
+      onSaved={() => setRating(null)}
+      onClose={() => setRating(null)}
+    />
+  );
+  // Every screen carries the sheet, so it stays open across the screen change that follows an exit.
+  const withSheet = (screen: ReactNode) => (
+    <>
+      {screen}
+      {sheet}
+    </>
+  );
+
   if (step.name === "start") {
     // A lighter backdrop than the other panels, so the menu reads as secondary.
     const menuSurface =
       "w-full rounded-3xl border border-white/10 bg-neutral-900/50 px-5 shadow-lg shadow-black/30 backdrop-blur-md";
     const menuButton = `${menuSurface} py-3 text-sm font-medium transition-colors hover:border-white/40 hover:bg-neutral-700/70 hover:text-foreground focus-visible:border-white/40 focus-visible:outline-none`;
-    return (
+    return withSheet(
       <div className="flex flex-1 items-center justify-center">
         <nav aria-label="Start" className="flex w-full max-w-xs flex-col gap-3">
           {startNotice && (
@@ -190,22 +243,20 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
   }
 
   if (step.name === "restoring") {
-    return <p className="m-auto text-sm text-neutral-500">Loading…</p>;
+    return withSheet(<p className="m-auto text-sm text-neutral-500">Loading…</p>);
   }
 
   if (step.name === "history") {
-    return (
+    return withSheet(
       <ConversationHistory
         onBack={() => setStep({ name: "start" })}
-        onOpen={(c: StoredConversation) =>
-          setStep({ name: "chat", conversationId: c.id, personaId: c.personaId, personaName: c.personaName, messages: c.messages, backTo: "history", spend: c.spend, turnRunning: c.turnRunning, ownerEmail: c.userEmail && c.userEmail !== email ? c.userEmail : undefined })
-        }
+        onOpen={(c: StoredConversation) => setStep(recordStep(c))}
       />
     );
   }
 
   if (step.name === "select") {
-    return (
+    return withSheet(
       <PersonaPicker
         personas={personas}
         canManage={isAdmin}
@@ -220,7 +271,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
     );
   }
 
-  return (
+  return withSheet(
     <ChatSession
       key={step.conversationId}
       conversationId={step.conversationId}
@@ -229,18 +280,23 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
       ownerEmail={step.ownerEmail}
       initialMessages={step.messages}
       readOnly={step.backTo === "history"}
-      onBack={() => {
+      onBack={(askRating) => {
+        if (askRating) setRating({ conversationId: step.conversationId, personaName: step.personaName });
         // Leaving a live chat: from now on it opens from History, read-only (spec §25.5).
         if (step.backTo === "select") writeOpenChat(null);
         setStep(step.backTo === "history" ? { name: "history" } : { name: "select" });
       }}
-      onNewVisit={() => startChat({ id: step.personaId, name: step.personaName })}
+      onNewVisit={(askRating) => {
+        if (askRating) setRating({ conversationId: step.conversationId, personaName: step.personaName });
+        startChat({ id: step.personaId, name: step.personaName });
+      }}
       meter={meter}
       onMeterEvent={onMeterEvent}
       onDismissBanner={dismissBanner}
       onOutOfEnergy={outOfEnergyNow}
       initialSpend={step.spend}
       initialTurnRunning={step.turnRunning}
+      initialFeedback={step.feedback}
     />
   );
 }

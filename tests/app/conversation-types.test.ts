@@ -24,7 +24,7 @@ describe("cutPreview (spec §25.4)", () => {
 
 describe("History's owner line and Delete (spec §27)", () => {
   const row = (extra: Partial<ConversationSummary> = {}): ConversationSummary => ({
-    id: "c", personaId: "wu", personaName: "Wu", preview: null, updatedAt: "2026-10-07T00:00:00.000Z", ended: null, ...extra,
+    id: "c", personaId: "wu", personaName: "Wu", preview: null, updatedAt: "2026-10-07T00:00:00.000Z", ended: null, stars: null, ...extra,
   });
   it("shows the owner's email, 'you' for the admin's own, and nothing in a tester's list", () => {
     expect(ownerLine(row({ userEmail: "ana@example.com", mine: false }))).toBe("ana@example.com");

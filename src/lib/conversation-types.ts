@@ -1,4 +1,5 @@
 import type { Message, Spend } from "@/lib/chat-types";
+import type { Feedback } from "@/lib/feedback";
 import type { VisitEnding } from "@/lib/visit";
 
 /**
@@ -20,6 +21,8 @@ export type StoredConversation = {
   turnRunning?: boolean;
   /** Spec §26.6, admin only. */
   spend?: Spend;
+  /** Spec §32.3: the owner's rating; null when unrated. */
+  feedback?: Feedback | null;
 };
 
 /** One History row: no message bodies. */
@@ -31,6 +34,8 @@ export type ConversationSummary = {
   preview: string | null;
   updatedAt: string;
   ended: VisitEnding | null;
+  /** Spec §32.6: the conversation's stars, null when unrated. */
+  stars: number | null;
   /** Spec §27, admin only: whose conversation it is. */
   userEmail?: string;
   /** Spec §27, admin only: the admin's own. */

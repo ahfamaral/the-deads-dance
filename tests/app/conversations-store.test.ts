@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closePool, getPool } from "@corpus/db";
 import { HISTORY_WINDOW } from "@/lib/chat-types";
 import { beginTurn, deleteConversation, findConversation, listConversations, loadTurnContext, readConversation, settleTurn, type BeginTurn } from "@/lib/server/conversations";
+import { saveFeedback } from "@/lib/server/feedback";
 import type { ResolvedCall } from "@/lib/server/pricing";
 import type { VisitorAct } from "@/lib/visitor-act";
 import { resetAuth } from "../helpers/db";
@@ -199,7 +200,7 @@ describe("listConversations", () => {
 
     const list = await listConversations(pool(), ana);
     expect(list.map((c) => c.id)).toEqual([newer, older]);
-    expect(list[0]).toEqual({ id: newer, personaId: "curie", personaName: "Marie Curie", preview: "Bonjour", updatedAt: expect.any(String), ended: "farewell" });
+    expect(list[0]).toEqual({ id: newer, personaId: "curie", personaName: "Marie Curie", preview: "Bonjour", updatedAt: expect.any(String), ended: "farewell", stars: null });
     expect(list[1].preview).toBe("First question");
   });
 });
@@ -286,5 +287,27 @@ describe("the admin's view (spec §27)", () => {
     expect(await readConversation(getPool(), boss, id, { costs: true })).toBeNull();
     expect(await readConversation(getPool(), boss, id, { costs: true, anyOwner: true })).toMatchObject({ id, userEmail: "owner-ana@example.com" });
     expect(JSON.stringify(await readConversation(getPool(), ana, id, { costs: false }))).not.toContain("userEmail");
+  });
+});
+
+describe("feedback in History (spec §32.3)", () => {
+  const rate = (conversationId: string, userId: string, stars: number, comment = "") =>
+    saveFeedback(pool(), { conversationId, userId, stars, comment, model: "m", commitSha: "dev" });
+
+  it("lists each conversation's stars, null when unrated", async () => {
+    const rated = await seedConversation({ userId: ana, messages: [{ role: "user", text: "Hi", act: ACT }] });
+    const unrated = await seedConversation({ userId: ana, messages: [{ role: "user", text: "Yo", act: ACT }] });
+    await rate(rated, ana, 4);
+    const list = await listConversations(pool(), ana);
+    expect(Object.fromEntries(list.map((c) => [c.id, c.stars]))).toEqual({ [rated]: 4, [unrated]: null });
+  });
+
+  it("reads a conversation's rating, null when unrated, the owner's when the admin reads it", async () => {
+    const id = await seedConversation({ userId: ana, messages: [{ role: "user", text: "Hi", act: ACT }] });
+    expect((await readConversation(pool(), ana, id, { costs: false }))?.feedback).toBeNull();
+    await rate(id, ana, 5, "Great");
+    expect((await readConversation(pool(), ana, id, { costs: false }))?.feedback).toEqual({ stars: 5, comment: "Great" });
+    const boss = await insertUser("boss@example.com");
+    expect((await readConversation(pool(), boss, id, { costs: true, anyOwner: true }))?.feedback).toEqual({ stars: 5, comment: "Great" });
   });
 });

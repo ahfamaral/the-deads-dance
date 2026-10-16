@@ -214,12 +214,14 @@ function toMessage(r: MessageRow, costs: boolean): Message {
 /**
  * Spec §25.4: the user's conversations, newest first. Summaries only, no paging. Spec §27: with `all`
  * (the admin), every user's, each with its owner's email and whether it's the caller's own.
+ * Spec §32.6: with each one's stars.
  */
 export async function listConversations(pool: Queryable, userId: string, opts: { all: boolean } = { all: false }): Promise<ConversationSummary[]> {
   const { rows } = await pool.query(
-    `SELECT c.id, c.persona_slug, c.persona_name, c.updated_at, c.ended, u.email AS user_email, c.user_id = $1 AS mine,
+    `SELECT c.id, c.persona_slug, c.persona_name, c.updated_at, c.ended, u.email AS user_email, c.user_id = $1 AS mine, f.stars,
             (SELECT m.text FROM messages m WHERE m.conversation_id = c.id AND m.role = 'user' ORDER BY m.id LIMIT 1) AS first_text
      FROM conversations c JOIN "user" u ON u.id = c.user_id
+     LEFT JOIN conversation_feedback f ON f.conversation_id = c.id
      WHERE $2::boolean OR c.user_id = $1
      ORDER BY c.updated_at DESC, c.id`,
     [userId, opts.all],
@@ -231,6 +233,7 @@ export async function listConversations(pool: Queryable, userId: string, opts: {
     preview: cutPreview(r.first_text),
     updatedAt: new Date(r.updated_at).toISOString(),
     ended: r.ended,
+    stars: r.stars ?? null,
     ...(opts.all ? { userEmail: r.user_email, mine: r.mine } : {}),
   }));
 }
@@ -238,8 +241,10 @@ export async function listConversations(pool: Queryable, userId: string, opts: {
 /** One of the user's conversations with its messages, or null (another user's, or none). Spec §27: with `anyOwner` (the admin), anyone's, with the owner's email. */
 export async function readConversation(pool: Queryable, userId: string, id: string, opts: { costs: boolean; anyOwner?: boolean }): Promise<StoredConversation | null> {
   const { rows } = await pool.query(
-    `SELECT c.id, c.persona_slug, c.persona_name, c.updated_at, c.cost, c.tokens, ${RUNNING} AS turn_running, u.email AS user_email
+    `SELECT c.id, c.persona_slug, c.persona_name, c.updated_at, c.cost, c.tokens, ${RUNNING} AS turn_running, u.email AS user_email,
+            f.stars AS feedback_stars, f.comment AS feedback_comment
      FROM conversations c JOIN "user" u ON u.id = c.user_id
+     LEFT JOIN conversation_feedback f ON f.conversation_id = c.id
      WHERE c.id = $1 AND ($3::boolean OR c.user_id = $2)`,
     [id, userId, opts.anyOwner === true],
   );
@@ -255,6 +260,7 @@ export async function readConversation(pool: Queryable, userId: string, id: stri
     updatedAt: new Date(rows[0].updated_at).toISOString(),
     messages: messages.map((m) => toMessage(m, opts.costs)),
     turnRunning: rows[0].turn_running,
+    feedback: rows[0].feedback_stars === null ? null : { stars: rows[0].feedback_stars, comment: rows[0].feedback_comment },
     ...(opts.costs ? { spend: { cost: Number(rows[0].cost), tokens: rows[0].tokens } } : {}),
     ...(opts.anyOwner ? { userEmail: rows[0].user_email } : {}),
   };

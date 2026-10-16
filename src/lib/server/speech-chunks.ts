@@ -47,7 +47,7 @@ export function createChunker(maxChars = 300): {
 
   return {
     push(text) {
-      buffer += text;
+      buffer = (buffer + text).trimStart();
       const out: string[] = [];
       for (;;) {
         const end = findSentenceEnd(buffer);
@@ -56,11 +56,12 @@ export function createChunker(maxChars = 300): {
           buffer = buffer.slice(end).trimStart();
         } else if (buffer.length > maxChars) {
           // Too long for one chunk: send what is waiting, then cut at a word.
-          const space = buffer.lastIndexOf(" ", maxChars);
+          const space = buffer.slice(0, maxChars + 1).search(/\s\S*$/);
           const cut = space > 0 ? space : maxChars;
           if (group) out.push(group);
           group = "";
-          out.push(buffer.slice(0, cut).trim());
+          const piece = buffer.slice(0, cut).trim();
+          if (piece) out.push(piece);
           firstSent = true;
           buffer = buffer.slice(cut).trimStart();
         } else {

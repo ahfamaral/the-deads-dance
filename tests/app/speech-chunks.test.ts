@@ -72,4 +72,21 @@ describe("createChunker", () => {
     for (const p of parts) expect(p.length).toBeLessThanOrEqual(300);
     expect(parts.join(" ")).toBe(input.trim());
   });
+
+  it("trims leading whitespace before the first sentence", () => {
+    const c = createChunker();
+    expect(c.push("\n  Well. ")).toEqual(["Well."]);
+  });
+
+  it("emits nothing for whitespace-only input longer than the limit", () => {
+    const c = createChunker();
+    expect(c.push(" \n".repeat(400))).toEqual([]);
+    expect(c.flush()).toBeNull();
+  });
+
+  it("cuts at a newline or tab as well as a space", () => {
+    const c = createChunker(10);
+    expect(c.push("aaaa\nbbbb\tcccc")).toEqual(["aaaa\nbbbb"]);
+    expect(c.flush()).toBe("cccc");
+  });
 });

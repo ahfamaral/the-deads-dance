@@ -133,7 +133,8 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                     {ownerLine(conversation) && (
                       <span className="max-w-full truncate text-xs text-neutral-400">{ownerLine(conversation)}</span>
                     )}
-                    <span className="truncate text-sm text-neutral-500">
+                    {/* max-w-full: in an items-start column a line is as wide as its text, so truncate needs a cap to cut it with "…". */}
+                    <span className="max-w-full truncate text-sm text-neutral-500">
                       {firstLine ?? "No messages"}
                     </span>
                     <time dateTime={conversation.updatedAt} className="text-xs text-neutral-500">

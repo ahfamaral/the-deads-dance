@@ -29,11 +29,19 @@ function languageLine(code: string | null, languages: PersonaLanguage[], mode: L
   return `The visitor writes in ${name}, which you never learned: you cannot understand what they wrote. Say so in your own way, in ${fallbackName}, and do not answer its content.`;
 }
 
+/** Spec §33.5: a voice conversation is held in one language, whatever the visitor's words are taken to be. */
+function voiceLine(code: string): string {
+  const name = languageName(code);
+  return `You are speaking aloud in ${name}; answer in ${name}.`;
+}
+
 /** Spec §18.3: only the lines that apply, in plain words; null when there is nothing to say. */
 export function renderConversationState(opts: {
   visit: Visit | null;
   languages: PersonaLanguage[];
   languageMode: LanguageMode;
+  /** Spec §33.5: set in a voice conversation; then languageMode is ignored. */
+  voiceLanguage?: string | null;
 }): string | null {
   const { visit } = opts;
   if (!visit) return null;
@@ -47,7 +55,7 @@ export function renderConversationState(opts: {
     visit.farewell ? "The visitor is leaving. Say goodbye as you would." : null,
     visit.tired && !visit.windDown ? "You are getting tired; the visit has been long." : null,
     visit.windDown ? "Bring the visit to a close now, in your own way." : null,
-    languageLine(visit.language, opts.languages, opts.languageMode),
+    opts.voiceLanguage ? voiceLine(opts.voiceLanguage) : languageLine(visit.language, opts.languages, opts.languageMode),
   ].filter((l): l is string => l !== null);
   return lines.length ? `<conversation_state>\n${lines.join("\n")}\n</conversation_state>` : null;
 }

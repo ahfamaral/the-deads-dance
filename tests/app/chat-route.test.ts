@@ -4,6 +4,8 @@ import { closePool, getPool } from "@corpus/db";
 import type { ChatStreamEvent } from "@/lib/chat-types";
 import { readNdjson } from "@/lib/ndjson";
 import type { ChatDeps } from "@/lib/server/chat-deps";
+import { approveVoice, deleteVoice, insertVoice, setSample } from "@/lib/server/persona-voices";
+import type { Speak } from "@/lib/server/tts";
 import type { ClassifyVisitor } from "@/lib/server/visitor-classifier";
 import type { VisitorAct } from "@/lib/visitor-act";
 import { getAuth } from "@/lib/server/auth";
@@ -37,6 +39,9 @@ const searchCall = new AIMessage({
 
 const ACT: VisitorAct = { act: "question", offense: 0, sorePoint: false, language: "en", wants: "normal", visitorName: null };
 const classifyFake = (act: VisitorAct | null = ACT) => vi.fn<ClassifyVisitor>(async () => act);
+const ttsCall = { role: "tts" as const, model: "google/gemini-3.8-flash-tts", inputTokens: 20, outputTokens: 64, cost: null, generationId: null, latencyMs: 1 };
+const PCM = Buffer.alloc(4800);
+const speakFake = () => vi.fn<Speak>(async () => ({ pcm: PCM, call: ttsCall }));
 
 function setDeps(overrides: Partial<ChatDeps> = {}) {
   const search = fakeMcpTool("search_biography", () => ({ status: "ok", passages: [passage], queries: ["parity"] }));
@@ -50,6 +55,7 @@ function setDeps(overrides: Partial<ChatDeps> = {}) {
     },
     resolveCosts: async (calls) =>
       calls.map((c) => ({ ...c, cost: c.cost ?? 0, costSource: c.cost === null ? ("estimated" as const) : ("reported" as const) })),
+    speak: speakFake(),
     ...overrides,
   } satisfies ChatDeps;
   return search;
@@ -584,5 +590,137 @@ describe("POST /api/chat with a hidden persona", () => {
     expect(res.status).toBe(200);
     await events(res);
     expect(await conversationRow(CONV)).toBeDefined();
+  });
+});
+
+// Spec §33.5: a voice conversation speaks each reply as it streams.
+describe("POST /api/chat: voice conversations", () => {
+  const EINSTEIN_LANGUAGES = '[{"code":"de","name":"German","native":true},{"code":"en","name":"English","native":false}]';
+  const REPLY = "Well. This is the rest of it.";
+
+  async function addEinstein(approved = true) {
+    await insertPersona({ slug: "einstein", displayName: "Albert Einstein" });
+    await getPool().query(`UPDATE personas SET languages = $1::jsonb WHERE slug = 'einstein'`, [EINSTEIN_LANGUAGES]);
+    await insertVoice(getPool(), { personaSlug: "einstein", baseVoice: "Algenib", description: "An old man, slow and warm.", sampleText: "Guten Tag." });
+    if (approved) {
+      await setSample(getPool(), "einstein", Buffer.alloc(10));
+      await approveVoice(getPool(), "einstein");
+    }
+  }
+  const talk = (extra: Record<string, unknown> = {}) => ({ conversationId: CONV, personaId: "einstein", text: "Hallo, Herr Professor.", ...extra });
+  const firstVoice = (voiceLanguage = "de") => talk({ first: true, mode: "voice", voiceLanguage });
+  const spoken = (all: ChatStreamEvent[]) => all.filter((e) => e.type === "audio");
+
+  beforeEach(async () => {
+    await addEinstein();
+  });
+
+  it("stores the mode and language on the first turn and speaks the reply in order", async () => {
+    let system = "";
+    const speak = speakFake();
+    setDeps({ speak, model: fakeModel().respond((m: BaseMessage[]) => ((system = m[0].text), new AIMessage(REPLY))) });
+    const all = await events(await post(firstVoice()));
+    expect(await conversationRow(CONV)).toMatchObject({ mode: "voice", voice_language: "de" });
+    expect(spoken(all)).toEqual([0, 1].map((seq) => ({ type: "audio", seq, data: PCM.toString("base64"), sampleRate: 24000 })));
+    expect(all.find((e) => e.type === "done")).toMatchObject({ message: { text: REPLY } });
+    expect(all.at(-1)).toMatchObject({ type: "energy" });
+    expect(speak.mock.calls.map(([r]) => r.text)).toEqual(["Well.", "This is the rest of it."]);
+    expect(speak.mock.calls[0][0]).toMatchObject({ voice: "Algenib", instructions: expect.stringContaining("An old man, slow and warm. Speaks German, the native language.") });
+    expect(system).toContain("You are speaking aloud, not writing.");
+    expect(system).toContain("You are speaking aloud in German; answer in German.");
+    expect((await messagesOf(CONV)).map((r) => r.text)).toEqual(["Hallo, Herr Professor.", REPLY]);
+  });
+
+  it("refuses a voice conversation with a persona whose voice isn't approved, before any model call", async () => {
+    await insertPersona({ slug: "curie", displayName: "Marie Curie" });
+    await getPool().query(`UPDATE personas SET languages = $1::jsonb WHERE slug = 'curie'`, [EINSTEIN_LANGUAGES]);
+    await insertVoice(getPool(), { personaSlug: "curie", baseVoice: "Kore", description: "A precise woman.", sampleText: "Bonjour." });
+    const classify = classifyFake();
+    setDeps({ classifyVisitor: classify });
+    for (const personaId of ["curie", "wu"]) {
+      const res = await post({ ...firstVoice(), personaId });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "Voice isn't available for this persona.", code: "voice_unavailable" });
+    }
+    expect(classify).not.toHaveBeenCalled();
+    expect(await conversationRow(CONV)).toBeUndefined();
+  });
+
+  it("refuses a language the persona's voice can't speak", async () => {
+    const res = await post(firstVoice("fr"));
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("voice_unavailable");
+  });
+
+  it("refuses voice mode without a language", async () => {
+    const res = await post(talk({ first: true, mode: "voice" }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("invalid_request");
+  });
+
+  // Review Focus 3: a stale tab or crafted request can't switch the mode or language after the first turn.
+  it("keeps the stored mode and language on later turns", async () => {
+    setDeps({ model: fakeModel().respond(new AIMessage(REPLY)) });
+    await events(await post(firstVoice()));
+    let system = "";
+    setDeps({ model: fakeModel().respond((m: BaseMessage[]) => ((system = m[0].text), new AIMessage(REPLY))) });
+    const later = await events(await post(talk({ mode: "text" })));
+    expect(spoken(later)).toHaveLength(2);
+    expect(system).toContain("You are speaking aloud in German");
+
+    const textConv = crypto.randomUUID();
+    setDeps({ model: fakeModel().respond(new AIMessage(REPLY)) });
+    await events(await post({ ...talk(), conversationId: textConv, first: true }));
+    setDeps({ model: fakeModel().respond(new AIMessage(REPLY)) });
+    const crafted = await events(await post({ ...talk({ mode: "voice", voiceLanguage: "de" }), conversationId: textConv }));
+    expect(crafted.some((e) => e.type === "audio" || e.type === "audio_error")).toBe(false);
+    expect(await conversationRow(textConv)).toMatchObject({ mode: "text", voice_language: null });
+  });
+
+  it("logs each speech call as a tts row and charges it to the tester", async () => {
+    setDeps({
+      model: fakeModel().respond(new AIMessage(REPLY)),
+      resolveCosts: async (calls) => calls.map((c) => ({ ...c, cost: c.role === "tts" ? 5_000 : 0, costSource: "estimated" as const })),
+    });
+    await events(await post(firstVoice()));
+    const { rows } = await getPool().query(`SELECT user_id, conversation_id FROM model_calls WHERE role = 'tts'`);
+    expect(rows).toEqual([0, 1].map(() => ({ user_id: userId, conversation_id: CONV })));
+    const balance = await getPool().query(`SELECT "energyBalance" FROM "user" WHERE id = $1`, [userId]);
+    expect(Number(balance.rows[0].energyBalance)).toBe(990_000);
+  });
+
+  // Review Focus 1: the voice was deleted mid-visit; the turn still answers, in text.
+  it("streams the text and an audio_error when the voice was deleted since the first turn", async () => {
+    setDeps({ model: fakeModel().respond(new AIMessage(REPLY)) });
+    await events(await post(firstVoice()));
+    await deleteVoice(getPool(), "einstein");
+    const speak = speakFake();
+    setDeps({ speak, model: fakeModel().respond(new AIMessage(REPLY)) });
+    const res = await post(talk());
+    expect(res.status).toBe(200);
+    const all = await events(res);
+    expect(all.map((e) => e.type)).toEqual(["act", "token", "done", "audio_error", "energy"]);
+    expect(speak).not.toHaveBeenCalled();
+    expect((await messagesOf(CONV)).map((r) => r.role)).toEqual(["user", "persona", "user", "persona"]);
+  });
+
+  // Review Focus 4: the tab closed mid-answer.
+  it("still stores the reply when the browser goes away after the first audio", async () => {
+    setDeps({ model: fakeModel().respond(new AIMessage(REPLY)) });
+    const res = await post(firstVoice());
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let seen = "";
+    while (!seen.includes('"type":"audio"')) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      seen += decoder.decode(value);
+    }
+    await reader.cancel();
+    await vi.waitFor(async () => {
+      const { rows } = await getPool().query(`SELECT turn_running_since FROM conversations WHERE id = $1`, [CONV]);
+      expect(rows[0].turn_running_since).toBeNull();
+    });
+    expect((await messagesOf(CONV)).map((r) => r.text)).toEqual(["Hallo, Herr Professor.", REPLY]);
   });
 });

@@ -65,6 +65,9 @@ Keeper: Everything? That's forty winters of fog. I'll give you the start: I was 
 
 const TOOLS_OFF = `Your biography tools are unavailable right now, so you cannot look anything up. Don't state facts about your life: your memory is failing you today, and you say so in your own way. Don't suggest coming back later.`;
 
+/** Spec §33.5: a voice conversation's replies are heard, not read. */
+const SPOKEN = `You are speaking aloud, not writing. Talk the way you would across a table: short sentences, contractions, a "well…" or a pause where it's natural, a thought that restarts. No lists, no parentheses, no dates in brackets. Say years and numbers as you'd say them. The length rules still apply.`;
+
 /** Spec §30.3 F.3: the last section of the system prompt, not a per-turn message (DeepSeek returned empty replies after a trailing note). */
 const CLOSING = "Before you answer: at most two short paragraphs, even when asked for a whole life. Plain prose. Begin with the answer itself.";
 
@@ -96,11 +99,16 @@ function timeSection(lifespan: string): string {
   return `Your time:\n${lifeLine(lifespan)}\n${TIME_RULES}`;
 }
 
-export type PromptOptions = { toolsAvailable: boolean; state?: string | null };
+export type PromptOptions = {
+  toolsAvailable: boolean;
+  state?: string | null;
+  /** Spec §33.5: a voice conversation; adds the spoken section. */
+  voice?: boolean;
+};
 
 /** The prompt's sections, in the order buildPersonaPrompt joins them. Spec §30.6: the eval's variants rearrange them. */
 export const SECTION_ORDER = [
-  "identity", "facts", "profile", "state", "character", "stateRule", "memory", "time", "requests", "manner", "examples", "toolsOff", "closing",
+  "identity", "facts", "profile", "state", "character", "stateRule", "memory", "time", "requests", "manner", "examples", "toolsOff", "spoken", "closing",
 ] as const;
 export type PromptSections = Record<(typeof SECTION_ORDER)[number], string | null>;
 
@@ -120,6 +128,7 @@ export function promptSections(persona: PromptPersona, options: PromptOptions): 
     manner: MANNER,
     examples: EXAMPLES,
     toolsOff: options.toolsAvailable ? null : TOOLS_OFF,
+    spoken: options.voice ? SPOKEN : null,
     closing: CLOSING,
   };
 }

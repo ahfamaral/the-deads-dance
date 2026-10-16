@@ -273,6 +273,15 @@ describe("promptSections (spec §30.6)", () => {
       expect(joinSections(SECTION_ORDER.map((k) => s[k]))).toBe(buildPersonaPrompt(wu, o));
     }
   });
+  it("adds the spoken section before the closing only for a voice conversation (spec §33.5)", () => {
+    const spoken = buildPersonaPrompt(wu, { ...on, voice: true });
+    expect(spoken).toContain("You are speaking aloud, not writing.");
+    expect(spoken.indexOf("You are speaking aloud, not writing.")).toBeLessThan(spoken.indexOf("Before you answer:"));
+    expect(buildPersonaPrompt(wu, on)).not.toContain("speaking aloud");
+    expect(buildPersonaPrompt(wu, { ...on, voice: false })).toBe(buildPersonaPrompt(wu, on));
+    const s = promptSections(wu, { ...on, voice: true });
+    expect(joinSections(SECTION_ORDER.map((k) => s[k]))).toBe(spoken);
+  });
   it("leaves out what doesn't apply: no profile, no state, tools on", () => {
     const s = promptSections({ ...wu, profile: null }, on);
     expect([s.profile, s.character, s.state, s.stateRule, s.toolsOff]).toEqual([null, null, null, null, null]);

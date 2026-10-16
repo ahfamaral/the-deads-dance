@@ -9,6 +9,9 @@ import type { VisitorAct } from "./visitor-act";
 /** Spec §18.4: realistic = the persona understands only languages it spoke; visitor = it follows the visitor. */
 export type LanguageMode = "realistic" | "visitor";
 
+/** Spec §33.2: set by a conversation's first turn, never changed. */
+export type ConversationMode = "text" | "voice";
+
 export const MAX_MESSAGE_CHARS = 4000;
 /** Only the most recent messages go to the model (spec §16.2). */
 export const HISTORY_WINDOW = 20;
@@ -65,6 +68,10 @@ export type ChatRequest = {
   /** The conversation's first message: only then may the server create it. */
   first?: true;
   languageMode: LanguageMode;
+  /** Spec §33.5: how the conversation is held; stored on its first turn, ignored after. Absent = text. */
+  mode?: ConversationMode;
+  /** Spec §33.5: the spoken language (ISO 639-1); required with voice mode. */
+  voiceLanguage?: string;
 };
 
 /** One line of the chat route's newline-delimited JSON stream (spec §16.2). */
@@ -76,5 +83,9 @@ export type ChatStreamEvent =
   | { type: "tool_end"; id: string; status: "ok" | "error"; result: unknown; durationMs: number }
   | { type: "done"; message: { text: string; toolCalls: ToolCall[]; sources: Source[]; ended?: VisitEnding } }
   | { type: "error"; reason: string; retryable: boolean }
+  /** Spec §33.5: one spoken chunk, base64 PCM (16-bit little-endian, mono), in seq order. */
+  | { type: "audio"; seq: number; data: string; sampleRate: number }
+  /** Spec §33.5: this answer's voice was lost; the text still arrives with done. */
+  | { type: "audio_error" }
   | { type: "energy"; left: number }
   | { type: "cost"; turn: TurnSpend; conversation: Spend };

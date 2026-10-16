@@ -109,4 +109,11 @@ describe("renderConversationState", () => {
       "The visitor writes in Japanese. Answer in Japanese, even though you never spoke it.",
     );
   });
+
+  // Spec §33.5: a voice conversation always answers in its spoken language, whatever the visitor typed or the mode.
+  it("in a voice conversation, answers in the voice language", () => {
+    const out = renderConversationState({ visit: foldVisit([act({ language: "de" })]), languages: EINSTEIN, languageMode: "visitor", voiceLanguage: "en" })!;
+    expect(out).toContain("You are speaking aloud in English; answer in English.");
+    expect(out).not.toContain("The visitor writes in");
+  });
 });

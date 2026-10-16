@@ -19,11 +19,14 @@ const ChatRequestSchema = z
     retry: z.literal(true).optional(),
     first: z.literal(true).optional(),
     languageMode: z.enum(["realistic", "visitor"]).default("realistic"),
+    mode: z.enum(["text", "voice"]).optional(),
+    voiceLanguage: z.string().regex(/^[a-z]{2,3}$/, "voiceLanguage must be a language code.").optional(),
   })
   .superRefine((req, ctx) => {
     if (req.retry && req.text !== undefined) ctx.addIssue({ code: "custom", message: "Send a message or retry, not both." });
     if (req.retry && req.first) ctx.addIssue({ code: "custom", message: "A first message can't be a retry." });
     if (!req.retry && req.text === undefined) ctx.addIssue({ code: "custom", message: "Send a message." });
+    if (req.mode === "voice" && req.voiceLanguage === undefined) ctx.addIssue({ code: "custom", message: "A voice conversation needs a language." });
   });
 
 export function parseChatRequest(body: unknown): { ok: true; value: ChatRequest } | { ok: false; error: string } {

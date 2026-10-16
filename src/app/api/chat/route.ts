@@ -11,10 +11,14 @@ import { renderConversationState } from "@/lib/server/conversation-state";
 import { beginTurn, findConversation, loadTurnContext, settleTurn, type TurnContext } from "@/lib/server/conversations";
 import { languagesFor } from "@/lib/server/persona-languages";
 import { buildPersonaPrompt } from "@/lib/server/persona-prompt";
+import { findVoice, type StoredVoice } from "@/lib/server/persona-voices";
 import { recordCalls } from "@/lib/server/spend";
 import { lockPersona } from "@/lib/server/persona-tools";
+import { turnInstructions } from "@/lib/server/voice-draft";
+import { speakReply } from "@/lib/server/voice-turn";
 import { applyChatEvent, replyToStore, startTurn } from "@/lib/turn-state";
 import { foldVisit } from "@/lib/visit";
+import { voiceLanguages } from "@/lib/voice";
 
 /** Spec §31.4: Vercel's limit for one answer. Twice Haiku's slowest measured (55 s); within the 2-minute running-turn lock. */
 export const maxDuration = 120;
@@ -30,6 +34,8 @@ const outOfEnergy = () =>
   Response.json({ error: "You're out of energy. Ask the admin for more.", code: "out_of_energy" }, { status: 402 });
 const turnInProgress = () =>
   Response.json({ error: "Still replying…", code: "turn_in_progress" }, { status: 409 });
+const voiceUnavailable = () =>
+  Response.json({ error: "Voice isn't available for this persona.", code: "voice_unavailable" }, { status: 400 });
 const NOTHING_STORED: TurnContext = { history: [], acts: [], unanswered: false };
 
 /**
@@ -38,7 +44,8 @@ const NOTHING_STORED: TurnContext = { history: [], acts: [], unanswered: false }
  * before streaming, and stores the reply when the stream ends. Validates first, so rejections
  * get real HTTP statuses, then streams newline-delimited JSON, starting with the classifier's act.
  * The browser may leave mid-stream; the turn still runs to the end, so the reply is stored whole
- * and billed exactly (spec §26.4). There is no Stop.
+ * and billed exactly (spec §26.4). There is no Stop. In a voice conversation the reply is also
+ * spoken as it streams (spec §33.5).
  */
 export async function POST(request: Request) {
   // Spec §24.5: approved users only, before reading the body or touching any dependency.
@@ -64,14 +71,15 @@ export async function POST(request: Request) {
   }
   const parsed = parseChatRequest(body);
   if (!parsed.ok) return invalid(parsed.error);
-  const { conversationId, personaId, text, retry, first, languageMode } = parsed.value;
+  const { conversationId, personaId, text, retry, first, languageMode, mode, voiceLanguage: requestedLanguage } = parsed.value;
 
   let deps: ChatDeps;
   let persona: PersonaRow | null;
   let context: TurnContext;
+  let existing: Awaited<ReturnType<typeof findConversation>>;
   try {
     deps = chatDeps();
-    const existing = await findConversation(deps.pool, conversationId);
+    existing = await findConversation(deps.pool, conversationId);
     // Someone else's conversation, or one deleted since this tab opened it: only a first message creates one.
     if (existing ? existing.userId !== user.id : !first) return unknownConversation();
     if (existing && existing.personaSlug !== personaId) return invalid("This conversation is with another persona.");
@@ -90,6 +98,23 @@ export async function POST(request: Request) {
   const hiddenFromVisitor = persona?.hidden === true && context === NOTHING_STORED && user.role !== "admin";
   if (!persona || persona.status !== "ready" || hiddenFromVisitor) {
     return Response.json({ error: "This persona is no longer available.", code: "unknown_persona" }, { status: 404 });
+  }
+
+  // Spec §33.5: the first turn sets the mode and language; later turns use the stored ones, whatever the request says.
+  const voiceLanguage = existing
+    ? existing.mode === "voice" ? existing.voiceLanguage : null
+    : mode === "voice" ? requestedLanguage! : null;
+  let voice: StoredVoice | null = null;
+  if (voiceLanguage) {
+    try {
+      voice = await findVoice(deps.pool, persona.slug);
+    } catch (err) {
+      return unavailable(err, { showMessage: true });
+    }
+    // Checked before any model call. A voice edited or deleted since the first turn doesn't stop the visit (spec §33.2).
+    if (!existing && (voice?.status !== "approved" || !voiceLanguages(persona.languages).includes(voiceLanguage))) {
+      return voiceUnavailable();
+    }
   }
 
   // On Retry the visitor message is already stored, with its act: nothing is classified again.
@@ -129,6 +154,7 @@ export async function POST(request: Request) {
       visitor: retry ? null : { text: visitorText, act },
       ending: visit.ended,
       create: first === true && !retry,
+      voice: voiceLanguage ? { language: voiceLanguage } : null,
     });
   } catch (err) {
     await settleClassifier();
@@ -144,18 +170,28 @@ export async function POST(request: Request) {
   const tools = mcpTools ? lockPersona(mcpTools, persona.slug, ledger) : [];
   const toolsAvailable = tools.length > 0;
   // languagesFor applies the English fallback (spec §18.4).
-  const state = renderConversationState({ visit, languages, languageMode });
-  const events = chatEvents({
+  const state = renderConversationState({ visit, languages, languageMode, voiceLanguage });
+  const textEvents = chatEvents({
     personaId: persona.slug,
     ended: visit.ended ?? null,
     turn: runTurn({
       model: deps.model,
       tools,
-      systemPrompt: buildPersonaPrompt(persona, { toolsAvailable, state }),
+      systemPrompt: buildPersonaPrompt(persona, { toolsAvailable, state, voice: voiceLanguage !== null }),
       messages: toAgentMessages(history),
       callbacks: [ledger.handler("agent")],
     }),
   });
+  // Spec §26.4: a closed tab stops the sending, never the turn; in voice mode it also stops new speech calls (spec §33.5).
+  const browser = { open: true };
+  const events = voiceLanguage
+    ? speakReply(textEvents, {
+        voice: voice ? { baseVoice: voice.baseVoice, instructions: turnInstructions(voice, voiceLanguage, persona) } : null,
+        speak: deps.speak,
+        ledger,
+        listening: () => browser.open,
+      })
+    : textEvents;
 
   const pool = deps.pool;
   const resolveCosts = deps.resolveCosts;
@@ -164,14 +200,13 @@ export async function POST(request: Request) {
     async start(controller) {
       // Built from the same events the browser gets, so what's stored is what the visitor saw.
       let turn = startTurn("reply");
-      let open = true;
-      // Spec §26.4: a closed tab stops the sending, never the turn: the agent runs on, so the reply is stored and billed whole.
+      // The agent runs on after a closed tab, so the reply is stored and billed whole.
       const send = (event: ChatStreamEvent) => {
-        if (!open) return;
+        if (!browser.open) return;
         try {
           controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
         } catch {
-          open = false;
+          browser.open = false;
         }
       };
       try {
@@ -205,6 +240,9 @@ export async function POST(request: Request) {
           // Already closed by a cancelled client.
         }
       }
+    },
+    cancel() {
+      browser.open = false;
     },
   });
   return new Response(stream, { headers: { "Content-Type": "application/x-ndjson" } });

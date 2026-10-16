@@ -28,6 +28,7 @@ const turn = (over: Partial<BeginTurn> = {}): BeginTurn => ({
   visitor: { text: "Hi", act: ACT },
   ending: null,
   create: true,
+  voice: null,
   ...over,
 });
 
@@ -157,13 +158,23 @@ describe("settleTurn (spec §26.4)", () => {
 describe("the turn flag (spec §26.4)", () => {
   it("refuses a second turn while one runs, and lets it through after 2 minutes", async () => {
     const id = await seedConversation({ userId: ana });
-    const t = { conversationId: id, userId: ana, personaSlug: "wu", personaName: "Wu", visitor: { text: "hi", act: null }, ending: null, create: false };
+    const t = { conversationId: id, userId: ana, personaSlug: "wu", personaName: "Wu", visitor: { text: "hi", act: null }, ending: null, create: false, voice: null };
     expect(await beginTurn(getPool(), t)).toEqual({ ok: true });
     expect((await findConversation(getPool(), id))?.turnRunning).toBe(true);
     expect(await beginTurn(getPool(), t)).toEqual({ ok: false, reason: "busy" });
     await getPool().query(`UPDATE conversations SET turn_running_since = now() - interval '3 minutes' WHERE id = $1`, [id]);
     expect((await findConversation(getPool(), id))?.turnRunning).toBe(false);
     expect(await beginTurn(getPool(), t)).toEqual({ ok: true });
+  });
+});
+
+describe("beginTurn: voice (spec §33.5)", () => {
+  it("stores the mode and language on the first turn only", async () => {
+    await beginTurn(pool(), turn({ voice: { language: "de" } }));
+    expect(await findConversation(pool(), CONV)).toMatchObject({ mode: "voice", voiceLanguage: "de" });
+    await finishTurn();
+    await beginTurn(pool(), turn({ create: false, voice: null }));
+    expect(await findConversation(pool(), CONV)).toMatchObject({ mode: "voice", voiceLanguage: "de" });
   });
 });
 
@@ -186,7 +197,7 @@ describe("loadTurnContext and findConversation", () => {
 
   it("finds a conversation with its owner, persona and ending, or null", async () => {
     await seedConversation({ id: CONV, userId: ana, ended: "tired" });
-    expect(await findConversation(pool(), CONV)).toEqual({ id: CONV, userId: ana, personaSlug: "wu", personaName: "Chien-Shiung Wu", ended: "tired", turnRunning: false });
+    expect(await findConversation(pool(), CONV)).toEqual({ id: CONV, userId: ana, personaSlug: "wu", personaName: "Chien-Shiung Wu", ended: "tired", turnRunning: false, mode: "text", voiceLanguage: null });
     expect(await findConversation(pool(), crypto.randomUUID())).toBeNull();
   });
 });

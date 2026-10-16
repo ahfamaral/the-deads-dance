@@ -15,10 +15,12 @@ export type TurnState = {
   toolsUnavailable: boolean;
   /** The server's reading of the user message this turn answers (spec §18.1). */
   act?: VisitorAct | null;
+  /** Spec §33.5: this answer's voice was lost, so the voice screen shows its text. */
+  voiceLost: boolean;
 };
 
 export function startTurn(id: string): TurnState {
-  return { message: { id, role: "persona", text: "", toolCalls: [], sources: [] }, status: "streaming", toolsUnavailable: false };
+  return { message: { id, role: "persona", text: "", toolCalls: [], sources: [] }, status: "streaming", toolsUnavailable: false, voiceLost: false };
 }
 
 function updateCalls(message: Message, update: (calls: ToolCall[]) => ToolCall[]): Message {
@@ -57,6 +59,10 @@ export function applyChatEvent(state: TurnState, event: ChatStreamEvent): TurnSt
       return { ...state, status: "error", error: { reason: event.reason, retryable: event.retryable } };
     case "energy":
       return state; // spec §26.5: the screen's meter handles it
+    case "audio":
+      return state; // spec §33.5: the voice player handles it
+    case "audio_error":
+      return { ...state, voiceLost: true };
     case "cost":
       return { ...state, message: { ...state.message, cost: event.turn.cost, tokens: event.turn.tokens } };
   }

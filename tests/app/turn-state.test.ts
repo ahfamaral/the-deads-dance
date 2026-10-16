@@ -45,6 +45,16 @@ describe("applyChatEvent", () => {
   });
 });
 
+describe("applyChatEvent: voice (spec §33.5)", () => {
+  it("leaves the turn alone on audio and marks a lost voice on audio_error", () => {
+    const start = startTurn("p1");
+    expect(start.voiceLost).toBe(false);
+    expect(applyChatEvent(start, { type: "audio", seq: 0, data: "AAAA", sampleRate: 24000 })).toBe(start);
+    const lost = applyChatEvent(start, { type: "audio_error" });
+    expect(lost).toEqual({ ...start, voiceLost: true });
+  });
+});
+
 describe("applyChatEvent: act (spec §18.1)", () => {
   it("records the act on the turn, not on the persona message", () => {
     const act = { act: "thanks", offense: 0, sorePoint: false, language: "en", wants: "brief", visitorName: null } as const;

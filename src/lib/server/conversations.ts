@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { HISTORY_WINDOW, type HistoryMessage, type Message, type Spend, type TurnSpend } from "@/lib/chat-types";
+import { HISTORY_WINDOW, type ConversationMode, type HistoryMessage, type Message, type Spend, type TurnSpend } from "@/lib/chat-types";
 import { cutPreview, type ConversationSummary, type StoredConversation } from "@/lib/conversation-types";
 import type { VisitEnding } from "@/lib/visit";
 import { VisitorActSchema, type VisitorAct } from "@/lib/visitor-act";
@@ -21,6 +21,10 @@ export type ConversationRow = {
   personaName: string;
   ended: VisitEnding | null;
   turnRunning: boolean;
+  /** Spec §33.2: stored by the first turn, never changed. */
+  mode: ConversationMode;
+  /** Spec §33.2: the spoken language of a voice conversation; null in text. */
+  voiceLanguage: string | null;
 };
 
 export type TurnContext = {
@@ -43,6 +47,8 @@ export type BeginTurn = {
   ending: VisitEnding | null;
   /** True only on a conversation's first message; otherwise a missing row (deleted mid-turn) is not_found. */
   create: boolean;
+  /** Spec §33.5: a voice conversation's language; written only when `create`. */
+  voice: { language: string } | null;
 };
 
 /** A stored act that no longer parses reads as null, like a classifier failure. */
@@ -53,11 +59,21 @@ export function parseAct(value: unknown): VisitorAct | null {
 
 export async function findConversation(pool: Queryable, id: string): Promise<ConversationRow | null> {
   const { rows } = await pool.query(
-    `SELECT id, user_id, persona_slug, persona_name, ended, ${RUNNING} AS turn_running FROM conversations WHERE id = $1`,
+    `SELECT id, user_id, persona_slug, persona_name, ended, ${RUNNING} AS turn_running, mode, voice_language FROM conversations WHERE id = $1`,
     [id],
   );
   const r = rows[0];
-  return r ? { id: r.id, userId: r.user_id, personaSlug: r.persona_slug, personaName: r.persona_name, ended: r.ended, turnRunning: r.turn_running } : null;
+  if (!r) return null;
+  return {
+    id: r.id,
+    userId: r.user_id,
+    personaSlug: r.persona_slug,
+    personaName: r.persona_name,
+    ended: r.ended,
+    turnRunning: r.turn_running,
+    mode: r.mode,
+    voiceLanguage: r.voice_language,
+  };
 }
 
 export async function loadTurnContext(pool: Queryable, conversationId: string): Promise<TurnContext> {
@@ -89,9 +105,9 @@ export async function beginTurn(pool: Pool, t: BeginTurn): Promise<{ ok: true } 
     await client.query("BEGIN");
     if (t.create) {
       await client.query(
-        `INSERT INTO conversations (id, user_id, persona_slug, persona_name) VALUES ($1, $2, $3, $4)
+        `INSERT INTO conversations (id, user_id, persona_slug, persona_name, mode, voice_language) VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (id) DO NOTHING`,
-        [t.conversationId, t.userId, t.personaSlug, t.personaName],
+        [t.conversationId, t.userId, t.personaSlug, t.personaName, t.voice ? "voice" : "text", t.voice?.language ?? null],
       );
     }
     const { rows } = await client.query(`SELECT user_id, ended, ${RUNNING} AS busy FROM conversations WHERE id = $1 FOR UPDATE`, [t.conversationId]);

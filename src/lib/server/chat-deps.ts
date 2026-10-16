@@ -8,6 +8,7 @@ import type { ModelCallRecord } from "@corpus/cost-ledger";
 import type { AgentModel } from "./agent";
 import { getMcpTools } from "./mcp-client";
 import { resolveCosts, type ResolvedCall } from "./pricing";
+import { speak, type Speak } from "./tts";
 import { visitorClassifier, type ClassifyVisitor } from "./visitor-classifier";
 
 export type ChatDeps = {
@@ -21,6 +22,8 @@ export type ChatDeps = {
   fetchLanguages: (qid: string) => Promise<PersonaLanguage[]>;
   /** Spec §26.3: prices a turn's recorded calls. */
   resolveCosts: (calls: readonly ModelCallRecord[]) => Promise<ResolvedCall[]>;
+  /** Spec §33.5: speaks one chunk of a voice conversation's reply. */
+  speak: Speak;
 };
 
 /** The real dependencies for a chat turn. Route tests replace this module. */
@@ -32,5 +35,6 @@ export function chatDeps(): ChatDeps {
     classifyVisitor: visitorClassifier(),
     fetchLanguages: (qid) => fetchPersonLanguages(qid),
     resolveCosts,
+    speak,
   };
 }

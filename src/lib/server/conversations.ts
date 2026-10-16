@@ -234,7 +234,7 @@ function toMessage(r: MessageRow, costs: boolean): Message {
  */
 export async function listConversations(pool: Queryable, userId: string, opts: { all: boolean } = { all: false }): Promise<ConversationSummary[]> {
   const { rows } = await pool.query(
-    `SELECT c.id, c.persona_slug, c.persona_name, c.updated_at, c.ended, u.email AS user_email, c.user_id = $1 AS mine, f.stars,
+    `SELECT c.id, c.persona_slug, c.persona_name, c.updated_at, c.ended, c.mode, c.voice_language, u.email AS user_email, c.user_id = $1 AS mine, f.stars,
             (SELECT m.text FROM messages m WHERE m.conversation_id = c.id AND m.role = 'user' ORDER BY m.id LIMIT 1) AS first_text
      FROM conversations c JOIN "user" u ON u.id = c.user_id
      LEFT JOIN conversation_feedback f ON f.conversation_id = c.id
@@ -250,6 +250,7 @@ export async function listConversations(pool: Queryable, userId: string, opts: {
     updatedAt: new Date(r.updated_at).toISOString(),
     ended: r.ended,
     stars: r.stars ?? null,
+    voiceLanguage: r.mode === "voice" ? r.voice_language : null,
     ...(opts.all ? { userEmail: r.user_email, mine: r.mine } : {}),
   }));
 }

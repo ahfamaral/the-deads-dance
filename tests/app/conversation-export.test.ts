@@ -38,3 +38,14 @@ describe("toMarkdown", () => {
     expect(md).toContain(`**Chien-Shiung Wu:** Fare\n\n*(${STOPPED_NOTE})*\n\n*(${ENDED_NOTE})*`);
   });
 });
+
+describe("the voice marker (spec §33.6)", () => {
+  it("starts the markdown with Voice conversation · Language for a voice conversation", () => {
+    const md = toMarkdown({ ...conversation([{ id: "m1", role: "user", text: "Hallo" }]), mode: "voice", voiceLanguage: "de" });
+    expect(md.split("\n")[0]).toBe("Voice conversation · German");
+    expect(md).toContain("# Conversation with Chien-Shiung Wu");
+  });
+  it("has none for a text conversation", () => {
+    expect(toMarkdown(conversation([]))).not.toContain("Voice conversation");
+  });
+});

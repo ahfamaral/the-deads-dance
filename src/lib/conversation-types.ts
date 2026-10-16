@@ -1,3 +1,4 @@
+import { languageName } from "@corpus/languages";
 import type { ConversationMode, Message, Spend } from "@/lib/chat-types";
 import type { Feedback } from "@/lib/feedback";
 import type { VisitEnding } from "@/lib/visit";
@@ -40,11 +41,16 @@ export type ConversationSummary = {
   ended: VisitEnding | null;
   /** Spec §32.6: the conversation's stars, null when unrated. */
   stars: number | null;
+  /** Spec §33.6: the voice conversation's language code; null for text. */
+  voiceLanguage: string | null;
   /** Spec §27, admin only: whose conversation it is. */
   userEmail?: string;
   /** Spec §27, admin only: the admin's own. */
   mine?: boolean;
 };
+
+/** Spec §33.6: the line that marks a voice conversation in a record, an export and the PDF. */
+export const voiceMarker = (voiceLanguage: string) => `Voice conversation · ${languageName(voiceLanguage)}`;
 
 export const PREVIEW_CHARS = 120;
 

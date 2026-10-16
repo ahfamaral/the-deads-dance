@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import PersonaMessage from "@/components/persona-message";
+import { voiceMarker } from "@/lib/conversation-types";
 import type { LanguageMode, Message } from "@/lib/chat-types";
 
 type ConversationProps = {
@@ -29,6 +30,8 @@ type ConversationProps = {
   showCost?: boolean;
   /** Spec §33.4: the voice screen, in place of the message list. */
   stage?: ReactNode;
+  /** Spec §33.6: a record of a voice conversation, marked above its messages; the transcript stays as text. */
+  voiceLanguage?: string;
 };
 
 /** Transcript of the exchange between the user and the persona, including the reply that is still streaming. */
@@ -48,6 +51,7 @@ export default function Conversation({
   waiting = false,
   showCost = false,
   stage,
+  voiceLanguage,
 }: ConversationProps) {
   const endRef = useRef<HTMLDivElement>(null);
   // Keep the newest content in view as the reply streams in.
@@ -111,6 +115,7 @@ export default function Conversation({
         {/* Inner shadow along the top edge; an overlay so messages scroll beneath it rather than over it. */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-linear-to-b from-black/40 to-transparent" />
         <div className="min-h-0 flex-1 scroll-pb-10 overflow-y-auto px-5 pt-5 pb-10">
+          {voiceLanguage && <p className="mb-4 text-center text-xs text-neutral-400">{voiceMarker(voiceLanguage)}</p>}
           {empty ? (
             <p className="flex h-full items-center justify-center text-neutral-500">
               Ask {personaName} anything to begin.

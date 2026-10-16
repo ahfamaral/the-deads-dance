@@ -156,3 +156,13 @@ describe("renderConversationPdf", () => {
     expect(bytes.length).toBeLessThan(200_000);
   });
 });
+
+describe("the voice marker (spec §33.6)", () => {
+  it("is the first line of a voice conversation's PDF", () => {
+    const { pages } = render({ ...conversation([{ id: "m1", role: "user", text: "Hallo" }]), mode: "voice", voiceLanguage: "de" });
+    expect(pages[0][0]).toBe("Voice conversation · German");
+  });
+  it("is absent from a text conversation's PDF", () => {
+    expect(allText(render(conversation([])).pages)).not.toContain("Voice conversation");
+  });
+});

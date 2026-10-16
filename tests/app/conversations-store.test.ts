@@ -211,8 +211,20 @@ describe("listConversations", () => {
 
     const list = await listConversations(pool(), ana);
     expect(list.map((c) => c.id)).toEqual([newer, older]);
-    expect(list[0]).toEqual({ id: newer, personaId: "curie", personaName: "Marie Curie", preview: "Bonjour", updatedAt: expect.any(String), ended: "farewell", stars: null });
+    expect(list[0]).toEqual({ id: newer, personaId: "curie", personaName: "Marie Curie", preview: "Bonjour", updatedAt: expect.any(String), ended: "farewell", stars: null, voiceLanguage: null });
     expect(list[1].preview).toBe("First question");
+  });
+
+  it("carries a voice conversation's language, for the admin's list too (spec §33.6)", async () => {
+    const voice = await seedConversation({ userId: ana, messages: [{ role: "user", text: "Hallo", act: ACT }] });
+    await pool().query(`UPDATE conversations SET mode = 'voice', voice_language = 'de' WHERE id = $1`, [voice]);
+    const text = await seedConversation({ userId: ana, messages: [{ role: "user", text: "Hi", act: ACT }] });
+    const byId = (list: Awaited<ReturnType<typeof listConversations>>, id: string) => list.find((c) => c.id === id);
+    const own = await listConversations(pool(), ana);
+    expect(byId(own, voice)?.voiceLanguage).toBe("de");
+    expect(byId(own, text)?.voiceLanguage).toBeNull();
+    const admin = await listConversations(pool(), await insertUser("boss@example.com"), { all: true });
+    expect(byId(admin, voice)?.voiceLanguage).toBe("de");
   });
 });
 

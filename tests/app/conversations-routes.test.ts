@@ -30,7 +30,7 @@ describe("GET /api/conversations", () => {
     const res = await list(req(ana.cookie));
     expect(res.status).toBe(200);
     const { conversations } = await res.json();
-    expect(conversations).toEqual([{ id: mine, personaId: "wu", personaName: "Chien-Shiung Wu", preview: "Hi", updatedAt: expect.any(String), ended: null, stars: null }]);
+    expect(conversations).toEqual([{ id: mine, personaId: "wu", personaName: "Chien-Shiung Wu", preview: "Hi", updatedAt: expect.any(String), ended: null, stars: null, voiceLanguage: null }]);
   });
 
   // Review Focus 5: signed out, or not approved.

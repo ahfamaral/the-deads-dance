@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import ConfirmDialog from "@/components/confirm-dialog";
 import ExportDialog from "@/components/export-dialog";
+import VoiceIcon from "@/components/voice-icon";
 import { canDelete, ownerLine, type ConversationSummary, type StoredConversation } from "@/lib/conversation-types";
 import { fetchConversation, fetchConversationList, removeConversation } from "@/lib/conversations-api";
 import { starsText } from "@/lib/feedback";
@@ -18,6 +19,24 @@ const updatedAtFormat = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 });
+
+/** A row's first line: the persona's name, the voice icon of a voice conversation (spec §33.6), and the stars. */
+export function HistoryRowHead({ conversation }: { conversation: ConversationSummary }) {
+  return (
+    <span className="flex max-w-full items-baseline gap-2">
+      <span className="min-w-0 truncate font-medium text-foreground">
+        {conversation.personaName}
+        {conversation.voiceLanguage && <VoiceIcon label="Voice conversation" />}
+      </span>
+      {conversation.stars !== null && (
+        <span className="shrink-0 text-sm text-amber-400">
+          <span className="sr-only">Rated {conversation.stars} of 5</span>
+          <span aria-hidden="true">{starsText(conversation.stars)}</span>
+        </span>
+      )}
+    </span>
+  );
+}
 
 /**
  * Spec §25.4: your conversations, newest first, from the server. Spec §27: the admin sees everyone's, with the
@@ -122,15 +141,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                     onClick={() => setSelectedId(conversation.id)}
                     className="flex min-w-0 flex-1 flex-col items-start gap-0.5 self-stretch rounded-2xl px-4 py-3 text-left outline-none"
                   >
-                    <span className="flex max-w-full items-baseline gap-2">
-                      <span className="min-w-0 truncate font-medium text-foreground">{conversation.personaName}</span>
-                      {conversation.stars !== null && (
-                        <span className="shrink-0 text-sm text-amber-400">
-                          <span className="sr-only">Rated {conversation.stars} of 5</span>
-                          <span aria-hidden="true">{starsText(conversation.stars)}</span>
-                        </span>
-                      )}
-                    </span>
+                    <HistoryRowHead conversation={conversation} />
                     {ownerLine(conversation) && (
                       <span className="max-w-full truncate text-xs text-neutral-400">{ownerLine(conversation)}</span>
                     )}

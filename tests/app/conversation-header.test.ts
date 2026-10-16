@@ -44,3 +44,24 @@ describe("the language switch (spec §18.4)", () => {
     expect(render(false)).not.toContain("Always answer in my language");
   });
 });
+
+// Spec §33.6: a record of a voice conversation is the normal transcript, marked above the messages.
+describe("the voice marker (spec §33.6)", () => {
+  const render = (voiceLanguage?: string) =>
+    renderToStaticMarkup(
+      createElement(Conversation, {
+        personaName: "Wu",
+        messages: [{ id: "m1", role: "user", text: "Hallo" }],
+        onBack: () => {},
+        voiceLanguage,
+      }),
+    );
+  it("shows Voice conversation · Language above the messages", () => {
+    const out = render("de");
+    expect(out).toContain("Voice conversation · German");
+    expect(out.indexOf("Voice conversation")).toBeLessThan(out.indexOf("Hallo"));
+  });
+  it("shows nothing for a text conversation", () => {
+    expect(render()).not.toContain("Voice conversation");
+  });
+});

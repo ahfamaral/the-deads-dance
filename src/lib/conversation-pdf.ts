@@ -1,6 +1,6 @@
 import type { jsPDF } from "jspdf";
 import type { Message, ToolCall } from "@/lib/chat-types";
-import type { StoredConversation } from "@/lib/conversation-types";
+import { voiceMarker, type StoredConversation } from "@/lib/conversation-types";
 import { ENDED_NOTE, STOPPED_NOTE } from "@/lib/message-notes";
 import {
   explanationOf,
@@ -158,6 +158,7 @@ export function renderConversationPdf(
   };
 
   // Header
+  if (conversation.voiceLanguage) write(voiceMarker(conversation.voiceLanguage), STYLES.meta);
   write(`Conversation with ${conversation.personaName}`, STYLES.title);
   gap(1);
   const count = conversation.messages.length;

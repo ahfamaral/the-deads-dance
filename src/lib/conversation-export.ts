@@ -1,4 +1,4 @@
-import type { StoredConversation } from "@/lib/conversation-types";
+import { voiceMarker, type StoredConversation } from "@/lib/conversation-types";
 import { ENDED_NOTE, STOPPED_NOTE } from "@/lib/message-notes";
 
 /**
@@ -23,6 +23,7 @@ function toJson(conversation: StoredConversation): string {
 
 export function toMarkdown(conversation: StoredConversation): string {
   const lines = [
+    ...(conversation.voiceLanguage ? [voiceMarker(conversation.voiceLanguage), ""] : []),
     `# Conversation with ${conversation.personaName}`,
     "",
     `Last message ${new Date(conversation.updatedAt).toLocaleString()}`,

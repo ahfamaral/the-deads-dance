@@ -349,6 +349,7 @@ export default function ChatSession({
         notice={banner !== null ? <EnergyNotice threshold={banner} onDismiss={() => onDismissBanner(banner)} /> : null}
         waiting={waiting}
         showCost={isAdmin}
+        voiceLanguage={readOnly && voice ? voice.language : undefined}
         stage={
           voiceScreen && voice ? (
             <VoiceStage

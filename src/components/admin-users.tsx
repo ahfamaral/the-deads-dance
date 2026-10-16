@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import AddEnergyDialog from "@/components/add-energy-dialog";
 import AdminCredit from "@/components/admin-credit";
+import AdminFeedback from "@/components/admin-feedback";
 import ConfirmDialog from "@/components/confirm-dialog";
 import { energyCell } from "@/lib/admin-spend";
 import { energyLeft, levelOf, type EnergyLevel } from "@/lib/energy";
@@ -65,7 +66,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(und
 /** Spec §24.6: tabs per status; a table on desktop, cards on phones. */
 export default function AdminUsers({ adminId }: { adminId: string }) {
   const [users, setUsers] = useState<Row[] | null>(null);
-  const [tab, setTab] = useState<Status>("pending");
+  const [tab, setTab] = useState<Status | "feedback">("pending");
   const [note, setNote] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ row: Row; action: Confirmed } | null>(null);
   const [defaultAmount, setDefaultAmount] = useState("1.00");
@@ -200,66 +201,80 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
             </span>
           </button>
         ))}
+        <button
+          role="tab"
+          aria-selected={tab === "feedback"}
+          onClick={() => setTab("feedback")}
+          className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${tab === "feedback" ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 bg-neutral-900/70 text-neutral-300 backdrop-blur-sm"}`}
+        >
+          Feedback
+        </button>
       </div>
 
-      {note && (
-        <p role="status" className="rounded-xl border border-white/10 bg-neutral-900/70 px-3 py-2 text-sm text-neutral-300">
-          {note}
-        </p>
-      )}
-
-      {users === null ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-neutral-500">Nobody here.</p>
+      {tab === "feedback" ? (
+        <AdminFeedback />
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-900/50">
-          {/* Desktop: a table */}
-          <table className="hidden w-full text-sm md:table">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-neutral-500">
-                <th className="px-2 py-2 font-medium">Email</th>
-                <th className="px-2 py-2 font-medium">{tab === "pending" ? "Signed up" : "Changed"}</th>
-                {tab !== "pending" && <th className="px-2 py-2 font-medium">By</th>}
-                {tab === "approved" && <th className="px-2 py-2 font-medium">Energy left</th>}
-                {tab === "approved" && <th className="px-2 py-2 font-medium">Spent</th>}
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-t border-white/5">
-                  <td className="break-all px-2 py-2">
-                    {r.email} {r.role === "admin" && <span className="text-neutral-500">(admin)</span>}
-                  </td>
-                  <td className="px-2 py-2 text-neutral-400">{dateOf(r)}</td>
-                  {tab !== "pending" && <td className="px-2 py-2 text-neutral-400">{byOf(r)}</td>}
-                  {tab === "approved" && <td className="px-2 py-2">{energyOf(r)}</td>}
-                  {tab === "approved" && <td className="px-2 py-2 text-neutral-400">{formatDollars(r.spent)}</td>}
-                  <td className="px-2 py-2">
-                    <div className="flex justify-end gap-2">{actions(r)}</div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {/* Phone: cards */}
-          <ul className="flex flex-col gap-2 md:hidden">
-            {rows.map((r) => (
-              <li key={r.id} className="rounded-2xl border border-white/10 bg-neutral-900/90 p-3">
-                <p className="break-all text-sm">
-                  {r.email} {r.role === "admin" && <span className="text-neutral-500">(admin)</span>}
-                </p>
-                <p className="mb-2 text-xs text-neutral-500">
-                  {tab === "pending" ? `Signed up ${dateOf(r)}` : `${dateOf(r)} · by ${byOf(r)}`}
-                  {tab === "approved" && ` · spent ${formatDollars(r.spent)}`}
-                </p>
-                {tab === "approved" && <div className="my-1.5 text-sm">{energyOf(r)}</div>}
-                <div className="flex gap-2">{actions(r)}</div>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <>
+          {note && (
+            <p role="status" className="rounded-xl border border-white/10 bg-neutral-900/70 px-3 py-2 text-sm text-neutral-300">
+              {note}
+            </p>
+          )}
+
+          {users === null ? (
+            <p className="text-sm text-neutral-500">Loading…</p>
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-neutral-500">Nobody here.</p>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-900/50">
+              {/* Desktop: a table */}
+              <table className="hidden w-full text-sm md:table">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wider text-neutral-500">
+                    <th className="px-2 py-2 font-medium">Email</th>
+                    <th className="px-2 py-2 font-medium">{tab === "pending" ? "Signed up" : "Changed"}</th>
+                    {tab !== "pending" && <th className="px-2 py-2 font-medium">By</th>}
+                    {tab === "approved" && <th className="px-2 py-2 font-medium">Energy left</th>}
+                    {tab === "approved" && <th className="px-2 py-2 font-medium">Spent</th>}
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.id} className="border-t border-white/5">
+                      <td className="break-all px-2 py-2">
+                        {r.email} {r.role === "admin" && <span className="text-neutral-500">(admin)</span>}
+                      </td>
+                      <td className="px-2 py-2 text-neutral-400">{dateOf(r)}</td>
+                      {tab !== "pending" && <td className="px-2 py-2 text-neutral-400">{byOf(r)}</td>}
+                      {tab === "approved" && <td className="px-2 py-2">{energyOf(r)}</td>}
+                      {tab === "approved" && <td className="px-2 py-2 text-neutral-400">{formatDollars(r.spent)}</td>}
+                      <td className="px-2 py-2">
+                        <div className="flex justify-end gap-2">{actions(r)}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {/* Phone: cards */}
+              <ul className="flex flex-col gap-2 md:hidden">
+                {rows.map((r) => (
+                  <li key={r.id} className="rounded-2xl border border-white/10 bg-neutral-900/90 p-3">
+                    <p className="break-all text-sm">
+                      {r.email} {r.role === "admin" && <span className="text-neutral-500">(admin)</span>}
+                    </p>
+                    <p className="mb-2 text-xs text-neutral-500">
+                      {tab === "pending" ? `Signed up ${dateOf(r)}` : `${dateOf(r)} · by ${byOf(r)}`}
+                      {tab === "approved" && ` · spent ${formatDollars(r.spent)}`}
+                    </p>
+                    {tab === "approved" && <div className="my-1.5 text-sm">{energyOf(r)}</div>}
+                    <div className="flex gap-2">{actions(r)}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
 
       <ConfirmDialog

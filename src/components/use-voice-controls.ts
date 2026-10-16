@@ -15,6 +15,7 @@ const RESULT_PULSE_MS = 400;
 type Listening = {
   turn: ReturnType<typeof createSpeechTurn>;
   stream: MediaStream | null;
+  source: MediaStreamAudioSourceNode | null;
   analyser: AnalyserNode | null;
   lastResult: number;
 };
@@ -34,6 +35,7 @@ export function useVoiceControls(language: string) {
 
   const release = (l: Listening) => {
     for (const track of l.stream?.getTracks() ?? []) track.stop();
+    l.source?.disconnect();
     l.analyser?.disconnect();
   };
 
@@ -45,7 +47,7 @@ export function useVoiceControls(language: string) {
         l.turn.stop();
         release(l);
       }
-      player.current?.stop();
+      player.current?.dispose();
     },
     [],
   );
@@ -64,6 +66,7 @@ export function useVoiceControls(language: string) {
     const l: Listening = {
       turn: createSpeechTurn({ recognition, onResult: () => (l.lastResult = performance.now()) }),
       stream: null,
+      source: null,
       analyser: null,
       lastResult: -Infinity,
     };
@@ -80,7 +83,8 @@ export function useVoiceControls(language: string) {
         l.stream = stream;
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
-        ctx.createMediaStreamSource(stream).connect(analyser);
+        l.source = ctx.createMediaStreamSource(stream);
+        l.source.connect(analyser);
         l.analyser = analyser;
       })
       .catch(() => {}); // the bars fall back to recognition results

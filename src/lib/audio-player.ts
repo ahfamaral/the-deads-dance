@@ -32,6 +32,8 @@ export type PcmPlayer = {
   /** Called each time the last scheduled buffer has finished playing. */
   onIdle(cb: () => void): void;
   stop(): void;
+  /** Stops and disconnects the analyser; the player is not used again. */
+  dispose(): void;
   playing(): boolean;
 };
 
@@ -47,6 +49,20 @@ export function createPcmPlayer(ctx: AudioContext): PcmPlayer {
   const sources = new Set<AudioBufferSourceNode>();
   const idle: (() => void)[] = [];
   let endOfLast = 0;
+
+  const stop = () => {
+    for (const source of sources) {
+      source.onended = null;
+      try {
+        source.stop();
+      } catch {
+        // Not started yet, or already ended.
+      }
+      source.disconnect();
+    }
+    sources.clear();
+    endOfLast = 0;
+  };
 
   return {
     enqueue(data, sampleRate) {
@@ -77,18 +93,11 @@ export function createPcmPlayer(ctx: AudioContext): PcmPlayer {
     onIdle(cb) {
       idle.push(cb);
     },
-    stop() {
-      for (const source of sources) {
-        source.onended = null;
-        try {
-          source.stop();
-        } catch {
-          // Not started yet, or already ended.
-        }
-        source.disconnect();
-      }
-      sources.clear();
-      endOfLast = 0;
+    stop,
+    dispose() {
+      stop();
+      idle.length = 0;
+      analyser.disconnect();
     },
     playing: () => sources.size > 0,
   };

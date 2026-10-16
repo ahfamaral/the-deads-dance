@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Message } from "@/lib/chat-types";
 import type { StoredConversation } from "@/lib/conversation-types";
 
 /**
@@ -42,11 +43,46 @@ export function readOpenChat(): OpenChat | null {
 /** null forgets it: the chat was left, so it opens read-only from History from now on. */
 export function writeOpenChat(c: OpenChat | null): void {
   try {
-    if (c === null) sessionStorage.removeItem(OPEN_CHAT_KEY);
-    else sessionStorage.setItem(OPEN_CHAT_KEY, serializeOpenChat(c));
+    if (c === null) {
+      sessionStorage.removeItem(OPEN_CHAT_KEY);
+      sessionStorage.removeItem(HEARD_REPLY_KEY);
+    } else sessionStorage.setItem(OPEN_CHAT_KEY, serializeOpenChat(c));
   } catch {
     // Not remembered; the chat still works, it just won't survive a reload.
   }
+}
+
+/**
+ * Spec §33.5: the last persona reply this tab finished playing in the open voice chat, as its
+ * position (the conversation's length with it): the server stores the reply under its own id, so
+ * the id seen while streaming never comes back. A restored chat whose last reply isn't it shows
+ * that reply's text, as for a lost voice.
+ */
+export const HEARD_REPLY_KEY = "deads-dance:heard-reply";
+
+export function readHeardReply(conversationId: string): number | null {
+  try {
+    const v: unknown = JSON.parse(sessionStorage.getItem(HEARD_REPLY_KEY) ?? "null");
+    if (typeof v !== "object" || v === null) return null;
+    const { conversationId: id, length } = v as Record<string, unknown>;
+    return id === conversationId && Number.isInteger(length) ? (length as number) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeHeardReply(conversationId: string, length: number): void {
+  try {
+    sessionStorage.setItem(HEARD_REPLY_KEY, JSON.stringify({ conversationId, length }));
+  } catch {
+    // Not remembered: after a reload the last reply shows as text, which is harmless.
+  }
+}
+
+/** The last message, when it is a persona reply other than the one heard. */
+export function unheardReply(messages: Message[], heardLength: number | null): Message | null {
+  const last = messages.at(-1);
+  return last?.role === "persona" && messages.length !== heardLength ? last : null;
 }
 
 /**

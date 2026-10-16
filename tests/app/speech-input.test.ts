@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSpeechTurn, type RecognitionLike } from "@/lib/speech-input";
+import { createRecognition, createSpeechTurn, type RecognitionLike } from "@/lib/speech-input";
 
-/** A stand-in for the browser's SpeechRecognition: the test fires its events by hand. */
-function fakeRecognition() {
+/**
+ * A stand-in for the browser's SpeechRecognition: the test fires its events by hand. By default it
+ * starts at once; `autoStart: false` holds `onstart` back, as a permission prompt does.
+ */
+function fakeRecognition({ autoStart = true } = {}) {
   const phrases: string[] = [];
   const rec: RecognitionLike & { started: boolean; stopped: number; say(text: string): void; fail(error: string): void } = {
     lang: "",
@@ -11,10 +14,12 @@ function fakeRecognition() {
     onresult: null,
     onerror: null,
     onend: null,
+    onstart: null,
     started: false,
     stopped: 0,
     start() {
       this.started = true;
+      if (autoStart) this.onstart?.();
     },
     stop() {
       this.stopped += 1;
@@ -124,11 +129,75 @@ describe("createSpeechTurn (spec §33.4)", () => {
     await expect(turn.done).resolves.toEqual({ text: "Ja" });
   });
 
+  it("doesn't time out while the recognition hasn't started (the permission prompt is up)", async () => {
+    const rec = fakeRecognition({ autoStart: false });
+    const turn = createSpeechTurn({ recognition: rec });
+    let settled: unknown = null;
+    void turn.done.then((r) => (settled = r));
+    vi.advanceTimersByTime(12_000);
+    await Promise.resolve();
+    expect(settled).toBeNull();
+    expect(turn.elapsed()).toBe(0);
+    rec.onstart?.();
+    vi.advanceTimersByTime(1000);
+    expect(turn.elapsed()).toBe(1000);
+    rec.say("Hallo");
+    vi.advanceTimersByTime(2999);
+    await Promise.resolve();
+    expect(settled).toBeNull();
+    vi.advanceTimersByTime(1);
+    await expect(turn.done).resolves.toEqual({ text: "Hallo" });
+  });
+
+  it("the 10 s cap counts from the start, not from the tap", async () => {
+    const rec = fakeRecognition({ autoStart: false });
+    const turn = createSpeechTurn({ recognition: rec });
+    let settled: unknown = null;
+    void turn.done.then((r) => (settled = r));
+    vi.advanceTimersByTime(5000);
+    rec.onstart?.();
+    for (let i = 1; i <= 9; i++) {
+      vi.advanceTimersByTime(1000);
+      rec.say(`w${i}`);
+    }
+    await Promise.resolve();
+    expect(settled).toBeNull();
+    vi.advanceTimersByTime(1000);
+    await expect(turn.done).resolves.toEqual({ text: "w1 w2 w3 w4 w5 w6 w7 w8 w9" });
+  });
+
+  it("fails when the recognition never starts within 15 s", async () => {
+    const rec = fakeRecognition({ autoStart: false });
+    const turn = createSpeechTurn({ recognition: rec });
+    vi.advanceTimersByTime(15_000);
+    await expect(turn.done).resolves.toEqual({ error: "failed" });
+    expect(rec.stopped).toBeGreaterThan(0);
+  });
+
   it("the browser ending the session on its own sends what was heard", async () => {
     const rec = fakeRecognition();
     const turn = createSpeechTurn({ recognition: rec });
     rec.say("Danke");
     rec.onend?.();
     await expect(turn.done).resolves.toEqual({ text: "Danke" });
+  });
+});
+
+describe("createRecognition", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("listens in the language's speech locale (pt → pt-BR), else the bare code", () => {
+    class FakeRecognition {
+      lang = "";
+    }
+    vi.stubGlobal("window", { SpeechRecognition: FakeRecognition });
+    expect(createRecognition("pt")?.lang).toBe("pt-BR");
+    expect(createRecognition("de")?.lang).toBe("de-DE");
+    expect(createRecognition("xx")?.lang).toBe("xx");
+  });
+
+  it("is null without speech recognition", () => {
+    vi.stubGlobal("window", {});
+    expect(createRecognition("pt")).toBeNull();
   });
 });

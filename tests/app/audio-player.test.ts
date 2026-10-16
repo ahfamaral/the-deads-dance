@@ -19,10 +19,11 @@ describe("pcm16ToFloat32 (spec §33.5: 16-bit little-endian mono)", () => {
 function fakeContext(currentTime = 0) {
   const starts: number[] = [];
   const sources: { onended: (() => void) | null }[] = [];
+  const analyser = { fftSize: 0, disconnected: false, connect() {}, disconnect() { this.disconnected = true; }, getFloatTimeDomainData(a: Float32Array) { a.fill(0.5); } };
   const ctx = {
     currentTime,
     destination: {},
-    createAnalyser: () => ({ fftSize: 0, connect() {}, disconnect() {}, getFloatTimeDomainData(a: Float32Array) { a.fill(0.5); } }),
+    createAnalyser: () => analyser,
     createBuffer: (_channels: number, length: number, rate: number) => ({ duration: length / rate, getChannelData: () => new Float32Array(length) }),
     createBufferSource: () => {
       const source = { buffer: null, onended: null as (() => void) | null, connect() {}, disconnect() {}, start: (at: number) => starts.push(at), stop() {} };
@@ -30,7 +31,7 @@ function fakeContext(currentTime = 0) {
       return source;
     },
   };
-  return { ctx: ctx as unknown as AudioContext, starts, sources, setTime: (t: number) => (ctx.currentTime = t) };
+  return { ctx: ctx as unknown as AudioContext, starts, sources, analyser, setTime: (t: number) => (ctx.currentTime = t) };
 }
 
 const second = (rate: number) => Buffer.alloc(rate * 2).toString("base64");
@@ -80,5 +81,14 @@ describe("createPcmPlayer (spec §33.4: chunks play back to back)", () => {
     player.enqueue(second(24000), 24000);
     expect(player.level()).toBeGreaterThan(0);
     expect(player.level()).toBeLessThanOrEqual(1);
+  });
+
+  it("dispose() stops playback and disconnects its analyser", () => {
+    const { ctx, analyser } = fakeContext(0);
+    const player = createPcmPlayer(ctx);
+    player.enqueue(second(24000), 24000);
+    player.dispose();
+    expect(player.playing()).toBe(false);
+    expect(analyser.disconnected).toBe(true);
   });
 });

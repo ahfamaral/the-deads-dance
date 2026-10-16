@@ -23,6 +23,7 @@ import { loadLanguageMode, saveLanguageMode } from "@/lib/language-mode";
 import { confirmBeforeLeaving, shouldAskForRating, showEndBar } from "@/lib/leave-guard";
 import { isOutOfEnergy, type Meter } from "@/lib/meter";
 import { newId } from "@/lib/new-id";
+import { readHeardReply, unheardReply, writeHeardReply } from "@/lib/open-chat";
 import { thinkingLine } from "@/lib/thinking";
 import { foldVisit, isEnded } from "@/lib/visit";
 import { voiceStageState } from "@/lib/voice-stage-state";
@@ -122,7 +123,12 @@ export default function ChatSession({
   // Spec §33.5: a reloaded voice chat waits for a tap, which unlocks audio on iOS.
   const [resumeNeeded, setResumeNeeded] = useState(resume && voiceScreen);
   // Spec §33.5: the answer whose voice was lost is shown as text until the next turn starts.
-  const [lostText, setLostText] = useState<string | null>(null);
+  // A restored chat whose last reply this tab never finished playing shows it the same way.
+  const [lostText, setLostText] = useState<string | null>(() =>
+    resume && voiceScreen ? (unheardReply(initialMessages, readHeardReply(conversationId))?.text ?? null) : null,
+  );
+  // The position of the reply being spoken, written as heard once its playback ends (spec §33.5).
+  const speaking = useRef<number | null>(null);
   // This turn's audio has begun: "Speaking…" holds between chunks that arrive late.
   const [audioStarted, setAudioStarted] = useState(false);
   // Spec §25.3: true once the server has the conversation. Only a first message may create it.
@@ -143,6 +149,13 @@ export default function ChatSession({
 
   // Leaving the chat stops listening; the server finishes the turn (spec §26.4).
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (speaking.current !== null && turn === null && !voiceControls.playing) {
+      writeHeardReply(conversationId, speaking.current);
+      speaking.current = null;
+    }
+  }, [turn, voiceControls.playing, conversationId]);
 
   // Spec §26.5: poll until the server has finished the turn, then show what it stored.
   useEffect(() => {
@@ -181,6 +194,7 @@ export default function ChatSession({
     let state = startTurn(newId());
     let stored = false;
     let resynced = false;
+    let spoken = false;
     setMessages(history);
     setTurn(state);
     setTurnError(null);
@@ -213,6 +227,7 @@ export default function ChatSession({
         if (event.type === "audio" && voiceScreen) {
           voiceControls.enqueue(event.data, event.sampleRate);
           setAudioStarted(true);
+          spoken = true;
         }
         if (event.type === "cost") {
           setSpend(event.conversation);
@@ -227,6 +242,7 @@ export default function ChatSession({
       if (state.status === "done") {
         setMessages([...withAct(history), state.message]);
         if (voiceScreen && state.voiceLost) setLostText(state.message.text);
+        else if (spoken) speaking.current = withAct(history).length + 1;
       } else {
         setMessages(withAct(history));
         setTurnError(state.error ?? { reason: "The reply was interrupted.", retryable: true });
@@ -344,7 +360,11 @@ export default function ChatSession({
               listen={voiceControls}
               onMic={listen}
               onStop={voiceControls.stopListening}
-              onRetry={retry}
+              onRetry={() => {
+                // Inside the tap, so iOS lets the answer play.
+                void getAudioContext()?.resume().catch(() => {});
+                retry();
+              }}
               onResume={() => {
                 void getAudioContext()?.resume().catch(() => {});
                 setResumeNeeded(false);

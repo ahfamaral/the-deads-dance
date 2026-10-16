@@ -17,6 +17,10 @@ describe("voice language rules (spec §33.2)", () => {
   it("offers nothing for a persona with only dead languages", () => {
     expect(voiceLanguages([{ code: "la", name: "Latin", native: true }])).toEqual([]);
   });
+  it("lists a repeated language once", () => {
+    expect(voiceLanguages([{ code: "de", name: "German", native: true }, { code: "en", name: "English", native: false }, { code: "de", name: "German", native: false }])).toEqual(["de", "en"]);
+  });
+  it("has no default language without options", () => expect(defaultVoiceLanguage([], ["en"])).toBeNull());
   it("maps Portuguese to Brazilian Portuguese for recognition", () => expect(speechLocale("pt")).toBe("pt-BR"));
   it("has no locale for an unknown code", () => expect(speechLocale("xx")).toBeNull());
   it("defaults to the browser's language when the persona spoke it", () => {

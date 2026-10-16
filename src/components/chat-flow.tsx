@@ -312,7 +312,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
         <VoiceStartDialog
           key={choosing.id}
           persona={choosing}
-          defaultLanguage={defaultVoiceLanguage(choosing.voiceLanguages, navigator.languages)}
+          defaultLanguage={defaultVoiceLanguage(choosing.voiceLanguages, navigator.languages) ?? choosing.voiceLanguages[0]}
           onStart={(choice) => onChoice(choosing, choice)}
           onCancel={() => setChoosing(null)}
         />

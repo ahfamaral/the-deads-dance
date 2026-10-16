@@ -7,7 +7,7 @@ const bad = () => new Response("boom", { status: 500 });
 describe("speakWith", () => {
   it("posts a PCM speech request and estimates tokens", async () => {
     const pcm = Buffer.alloc(48000); // one second
-    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(pcm, { headers: { "x-generation-id": "gen-1" } }));
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(pcm, { headers: { "x-generation-id": "gen-1" } }));
     const out = await speakWith(fetchImpl, () => "k")(req);
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toMatch(/\/audio\/speech$/);

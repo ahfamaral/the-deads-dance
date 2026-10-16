@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { closePool, getPool } from "@corpus/db";
 import { CostLedger, type ModelCallRecord } from "@corpus/cost-ledger";
 import { approvedVoiceSlugs, findVoice, insertVoice } from "@/lib/server/persona-voices";
@@ -22,13 +22,14 @@ const speakFake = vi.fn<VoiceDeps["speak"]>();
 
 let cookie = "";
 let adminId = "";
-let ledgerSeen: CostLedger | null = null;
+let handlerSpy: MockInstance<CostLedger["handler"]>;
+// The ledger the route built: the context of the latest handler() call.
+const ledgerSeen = () => handlerSpy.mock.contexts.at(-1) as CostLedger | undefined;
 
 beforeEach(async () => {
   const handler = CostLedger.prototype.handler;
-  vi.spyOn(CostLedger.prototype, "handler").mockImplementation(function (this: CostLedger, role) {
-    ledgerSeen = this;
-    return handler.call(this, role);
+  handlerSpy = vi.spyOn(CostLedger.prototype, "handler").mockImplementation(function (role) {
+    return handler.call(ledgerSeen()!, role);
   });
   await resetDb();
   await resetAuth();
@@ -36,7 +37,7 @@ beforeEach(async () => {
   draftFake.mockReset().mockImplementation(async (_p, callbacks) => {
     // The real model reports through the ledger handler; the fake records on the same ledger.
     expect(callbacks).toHaveLength(1);
-    ledgerSeen?.record(helperCall);
+    ledgerSeen()?.record(helperCall);
     return { description: "An old woman, soft and precise.", baseVoice: "Algenib", sex: "male", sampleText: "Welcome, friend.", warning: null };
   });
   speakFake.mockReset().mockResolvedValue({ pcm: PCM, call: ttsCall });
@@ -179,7 +180,7 @@ describe("admin voice routes (spec §33.3)", () => {
   it("POST: a draft failure is 502, creates no voice and still logs the helper call", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     draftFake.mockImplementationOnce(async () => {
-      ledgerSeen?.record(helperCall);
+      ledgerSeen()?.record(helperCall);
       throw new Error("bad draft");
     });
     const res = await call("POST");

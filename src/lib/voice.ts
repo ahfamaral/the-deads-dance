@@ -72,7 +72,7 @@ export type VoiceDto = {
 export function voiceLanguages(languages: PersonaLanguage[]): string[] {
   return languages
     .map((l) => l.code)
-    .filter((c) => !DEAD_LANGUAGES.has(c) && TTS_LANGUAGES.has(c) && c in SPEECH_LOCALES);
+    .filter((c, i, all) => !DEAD_LANGUAGES.has(c) && TTS_LANGUAGES.has(c) && c in SPEECH_LOCALES && all.indexOf(c) === i);
 }
 
 export function speechLocale(code: string): string | null {
@@ -80,12 +80,12 @@ export function speechLocale(code: string): string | null {
 }
 
 /** The first browser language the persona also spoke, else the persona's first (native) one. */
-export function defaultVoiceLanguage(options: string[], browserLanguages: readonly string[]): string {
+export function defaultVoiceLanguage(options: string[], browserLanguages: readonly string[]): string | null {
   for (const tag of browserLanguages) {
     const primary = tag.toLowerCase().split("-")[0];
     if (options.includes(primary)) return primary;
   }
-  return options[0];
+  return options[0] ?? null;
 }
 
 /** Spec §33.2: the accent sentence fed into the voice description. */

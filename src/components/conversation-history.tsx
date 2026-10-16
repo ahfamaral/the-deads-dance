@@ -26,8 +26,12 @@ export function HistoryRowHead({ conversation }: { conversation: ConversationSum
     <span className="flex max-w-full items-baseline gap-2">
       <span className="min-w-0 truncate font-medium text-foreground">
         {conversation.personaName}
-        {conversation.voiceLanguage && <VoiceIcon label="Voice conversation" />}
       </span>
+      {conversation.voiceLanguage && (
+        <span className="-ml-2 shrink-0">
+          <VoiceIcon label="Voice conversation" />
+        </span>
+      )}
       {conversation.stars !== null && (
         <span className="shrink-0 text-sm text-amber-400">
           <span className="sr-only">Rated {conversation.stars} of 5</span>

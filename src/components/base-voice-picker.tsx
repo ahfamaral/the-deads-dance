@@ -11,6 +11,8 @@ type Props = {
   sex: Sex | null;
   disabled?: boolean;
   id?: string;
+  /** The id of the element that labels the list. */
+  labelId?: string;
   /** For tests: renders with the list open. */
   initialOpen?: boolean;
 };
@@ -44,8 +46,10 @@ function Check() {
 }
 
 /** Spec §33.3: the base voice, chosen from a list that opens inside the panel, grouped by gender. */
-export default function BaseVoicePicker({ value, onChange, sex, disabled = false, id, initialOpen = false }: Props) {
+export default function BaseVoicePicker({ value, onChange, sex, disabled = false, id, labelId, initialOpen = false }: Props) {
   const [openState, setOpen] = useState(initialOpen);
+  // A disabled picker closes for good, so the list does not reappear when it is enabled again.
+  if (disabled && openState) setOpen(false);
   const open = openState && !disabled;
   const [active, setActive] = useState(0);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -71,12 +75,15 @@ export default function BaseVoicePicker({ value, onChange, sex, disabled = false
     onChange(name);
     close();
   }
-  function onKeyDown(event: KeyboardEvent) {
+  function onEscape(event: KeyboardEvent) {
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
       close();
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    }
+  }
+  function onKeyDown(event: KeyboardEvent) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       setActive((i) => Math.min(flat.length - 1, Math.max(0, i + (event.key === "ArrowDown" ? 1 : -1))));
     } else if (event.key === "Enter" || event.key === " ") {
@@ -87,7 +94,7 @@ export default function BaseVoicePicker({ value, onChange, sex, disabled = false
 
   let index = -1;
   return (
-    <div className="flex flex-col gap-1" onKeyDown={open ? onKeyDown : undefined}>
+    <div className="flex flex-col gap-1" onKeyDown={open ? onEscape : undefined}>
       <button
         ref={triggerRef}
         id={id}
@@ -102,7 +109,7 @@ export default function BaseVoicePicker({ value, onChange, sex, disabled = false
         <Chevron open={open} />
       </button>
       {open && (
-        <ul role="listbox" aria-label="Base voice" className="max-h-72 overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950/60 py-1">
+        <ul role="listbox" aria-label={labelId ? undefined : "Base voice"} aria-labelledby={labelId} onKeyDown={onKeyDown} className="max-h-72 overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950/60 py-1">
           {groups.map((g) => (
             <li key={g.gender} role="presentation">
               <p className="px-3 pt-2 pb-1 text-xs text-neutral-400">{g.gender === "male" ? "Male voices" : "Female voices"}</p>

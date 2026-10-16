@@ -40,7 +40,7 @@ export function VoiceForm({ slug, voice, baseVoice, description, busy, error, on
         <label htmlFor={`${id}-base`} id={`${id}-base-label`} className="text-sm text-neutral-400">
           Base voice
         </label>
-        <BaseVoicePicker id={`${id}-base`} value={baseVoice} onChange={onBaseVoice} sex={voice.sex} disabled={busy} initialOpen={initialPickerOpen} />
+        <BaseVoicePicker id={`${id}-base`} labelId={`${id}-base-label`} value={baseVoice} onChange={onBaseVoice} sex={voice.sex} disabled={busy} initialOpen={initialPickerOpen} />
       </div>
       <div className="flex flex-col gap-1">
         <label htmlFor={`${id}-description`} className="text-sm text-neutral-400">

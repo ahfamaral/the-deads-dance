@@ -21,6 +21,13 @@ describe("a History row (spec §33.6)", () => {
     expect(out).toContain('aria-label="Voice conversation"');
     expect(out.indexOf("Chien-Shiung Wu")).toBeLessThan(out.indexOf("Voice conversation"));
   });
+  it("keeps the icon outside the truncated name so a long name cannot clip it", () => {
+    const out = renderToStaticMarkup(createElement(HistoryRowHead, { conversation: summary("de") }));
+    const truncated = out.match(/<span class="[^"]*truncate[^"]*">(.*?)<\/span>/)![1];
+    expect(truncated).toContain("Chien-Shiung Wu");
+    expect(truncated).not.toContain("Voice conversation");
+    expect(out).toContain("Voice conversation");
+  });
   it("shows no icon for a text conversation", () => {
     expect(renderToStaticMarkup(createElement(HistoryRowHead, { conversation: summary(null) }))).not.toContain("Voice conversation");
   });

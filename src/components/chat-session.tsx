@@ -148,7 +148,13 @@ export default function ChatSession({
     shouldAskForRating({ hasUserMessage: confirmed.current && messages.some((m) => m.role === "user"), readOnly, gone });
 
   // Leaving the chat stops listening; the server finishes the turn (spec §26.4).
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      speaking.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (speaking.current !== null && turn === null && !voiceControls.playing) {
@@ -191,6 +197,7 @@ export default function ChatSession({
   async function run(history: Message[], { retry = false }: { retry?: boolean } = {}) {
     const controller = new AbortController();
     abortRef.current = controller;
+    speaking.current = null;
     let state = startTurn(newId());
     let stored = false;
     let resynced = false;

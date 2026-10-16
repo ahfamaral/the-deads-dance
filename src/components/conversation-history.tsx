@@ -110,7 +110,8 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
               return (
                 <li
                   key={conversation.id}
-                  className={`flex items-center rounded-2xl border transition-colors ${selected
+                  // The keyboard focus ring sits on the card, not on the inner row button (a second border inside the card).
+                  className={`flex items-center rounded-2xl border transition-colors has-[>button:focus-visible]:outline has-[>button:focus-visible]:outline-white/40 ${selected
                       ? "border-white/25 bg-white/10"
                       : "border-white/5 bg-white/5 hover:border-white/20 hover:bg-white/10"
                     }`}
@@ -119,7 +120,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                     type="button"
                     aria-pressed={selected}
                     onClick={() => setSelectedId(conversation.id)}
-                    className="flex min-w-0 flex-1 flex-col items-start gap-0.5 self-stretch rounded-2xl px-4 py-3 text-left focus-visible:outline focus-visible:outline-white/40"
+                    className="flex min-w-0 flex-1 flex-col items-start gap-0.5 self-stretch rounded-2xl px-4 py-3 text-left outline-none"
                   >
                     <span className="flex max-w-full items-baseline gap-2">
                       <span className="min-w-0 truncate font-medium text-foreground">{conversation.personaName}</span>

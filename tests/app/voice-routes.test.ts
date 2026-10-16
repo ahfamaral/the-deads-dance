@@ -1,6 +1,6 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { closePool, getPool } from "@corpus/db";
-import type { ModelCallRecord } from "@corpus/cost-ledger";
+import { CostLedger, type ModelCallRecord } from "@corpus/cost-ledger";
 import { approvedVoiceSlugs, findVoice, insertVoice } from "@/lib/server/persona-voices";
 import type { VoiceDeps } from "@/lib/server/voice-deps";
 import { NAME_WARNING } from "@/lib/server/voice-draft";
@@ -22,15 +22,21 @@ const speakFake = vi.fn<VoiceDeps["speak"]>();
 
 let cookie = "";
 let adminId = "";
+let ledgerSeen: CostLedger | null = null;
 
 beforeEach(async () => {
+  const handler = CostLedger.prototype.handler;
+  vi.spyOn(CostLedger.prototype, "handler").mockImplementation(function (this: CostLedger, role) {
+    ledgerSeen = this;
+    return handler.call(this, role);
+  });
   await resetDb();
   await resetAuth();
   ({ cookie, userId: adminId } = await signInAs("boss@example.com", { role: "admin" }));
   draftFake.mockReset().mockImplementation(async (_p, callbacks) => {
-    // The real model reports through the ledger handler; the fake records directly through it.
-    const handler = callbacks[0] as unknown as { ledger: { record(c: ModelCallRecord): void } };
-    handler.ledger.record(helperCall);
+    // The real model reports through the ledger handler; the fake records on the same ledger.
+    expect(callbacks).toHaveLength(1);
+    ledgerSeen?.record(helperCall);
     return { description: "An old woman, soft and precise.", baseVoice: "Algenib", sampleText: "Welcome, friend.", warning: null };
   });
   speakFake.mockReset().mockResolvedValue({ pcm: PCM, call: ttsCall });
@@ -42,6 +48,7 @@ beforeEach(async () => {
   } satisfies VoiceDeps;
   await insertPersona({ slug: "wu", displayName: "Chien-Shiung Wu" });
 });
+afterEach(() => vi.restoreAllMocks());
 afterAll(() => closePool());
 
 const ctx = (slug: string) => ({ params: Promise.resolve({ slug }) });
@@ -139,6 +146,51 @@ describe("admin voice routes (spec §33.3)", () => {
     expect(rendered.status).toBe(200);
     expect(speakFake).toHaveBeenCalledTimes(2);
     expect(speakFake.mock.calls[1][0].instructions).toContain("A gruff old man.");
+    expect((await loggedRoles()).map((r) => r.role)).toEqual(["helper", "tts", "tts"]);
+  });
+
+  it("an edit drops the stale sample, so approving needs a new render", async () => {
+    await call("POST");
+    const edited = await (await call("PATCH", { description: "A gruff old man." })).json();
+    expect(edited.voice).toMatchObject({ status: "draft", hasSample: false });
+    expect((await call("PATCH", { status: "approved" })).status).toBe(409);
+    const rendered = await (await call("PATCH", { render: true })).json();
+    expect(rendered.voice.hasSample).toBe(true);
+    expect((await call("PATCH", { status: "approved" })).status).toBe(200);
+  });
+
+  it("an edit with render renders the new sample in the same request", async () => {
+    await call("POST");
+    const res = await (await call("PATCH", { baseVoice: "Iapetus", render: true })).json();
+    expect(res.voice).toMatchObject({ baseVoice: "Iapetus", status: "draft", hasSample: true });
+    expect((await call("PATCH", { status: "approved" })).status).toBe(200);
+  });
+
+  it("POST: a draft failure is 502, creates no voice and still logs the helper call", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    draftFake.mockImplementationOnce(async () => {
+      ledgerSeen?.record(helperCall);
+      throw new Error("bad draft");
+    });
+    const res = await call("POST");
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Couldn't draft the voice. Try again." });
+    expect(await findVoice(getPool(), "wu")).toBeNull();
+    expect((await loggedRoles()).map((r) => r.role)).toEqual(["helper"]);
+    expect(speakFake).not.toHaveBeenCalled();
+  });
+
+  it("PATCH render: a TTS failure is 502, keeps the edit and logs the spend", async () => {
+    await call("POST");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    speakFake.mockImplementationOnce(async () => {
+      ledgerSeen?.record(ttsCall);
+      throw new Error("boom");
+    });
+    const res = await call("PATCH", { description: "A gruff old man.", render: true });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "Couldn't render the sample. Try again." });
+    expect(await findVoice(getPool(), "wu")).toMatchObject({ description: "A gruff old man.", status: "draft", sampleAudio: null });
     expect((await loggedRoles()).map((r) => r.role)).toEqual(["helper", "tts", "tts"]);
   });
 

@@ -52,6 +52,7 @@ describe("persona voices (spec §33.2)", () => {
     expect(await updateVoice(db(), "wu", { description: "Deeper." })).toBe(true);
     const v = await findVoice(db(), "wu");
     expect(v).toMatchObject({ status: "draft", description: "Deeper.", baseVoice: "Algenib" });
+    expect(v?.sampleAudio).toBeNull();
     const { rows } = await db().query(`SELECT approved_at FROM persona_voices WHERE persona_slug = 'wu'`);
     expect(rows[0].approved_at).toBeNull();
     expect(await updateVoice(db(), "nobody", { baseVoice: "X" })).toBe(false);

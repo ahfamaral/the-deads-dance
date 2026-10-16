@@ -46,7 +46,7 @@ export async function insertVoice(
   return (res.rowCount ?? 0) > 0;
 }
 
-/** Spec §33.2: any edit of the voice or its description sends it back to draft. */
+/** Spec §33.2: any edit of the voice or its description sends it back to draft and drops the sample, which no longer matches the form. */
 export async function updateVoice(
   db: Queryable,
   slug: string,
@@ -55,6 +55,7 @@ export async function updateVoice(
   const res = await db.query(
     `UPDATE persona_voices
      SET base_voice = COALESCE($2, base_voice), description = COALESCE($3, description),
+         sample_audio = CASE WHEN $2::text IS NULL AND $3::text IS NULL THEN sample_audio ELSE NULL END,
          status = 'draft', approved_at = NULL, updated_at = now()
      WHERE persona_slug = $1`,
     [slug, patch.baseVoice ?? null, patch.description ?? null],

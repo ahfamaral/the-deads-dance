@@ -1,4 +1,5 @@
 import type { ConversationSummary, StoredConversation } from "@/lib/conversation-types";
+import type { Feedback } from "@/lib/feedback";
 
 type Deps = { fetch: (url: string, init: RequestInit) => Promise<Response>; reload: () => void };
 
@@ -62,4 +63,16 @@ export async function fetchConversation(id: string, deps: Deps = browser): Promi
 export async function removeConversation(id: string, deps: Deps = browser): Promise<boolean> {
   const res = await call(path(id), { method: "DELETE" }, deps);
   return res !== null && (res.status === 204 || res.status === 404);
+}
+
+/** Spec §32.3: saves your rating of a conversation. The saved rating, or null when it couldn't be saved. */
+export async function sendFeedback(id: string, feedback: Feedback, deps: Deps = browser): Promise<Feedback | null> {
+  const res = await call(
+    `${path(id)}/feedback`,
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(feedback) },
+    deps,
+  );
+  if (!res?.ok) return null;
+  const saved = (await body(res))?.feedback;
+  return saved && typeof saved === "object" ? (saved as Feedback) : null;
 }

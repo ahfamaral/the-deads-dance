@@ -14,3 +14,11 @@ export function showEndBar(s: { ended: boolean; streaming: boolean }): boolean {
 export function confirmBeforeLeaving(s: { readOnly: boolean; ended: boolean; gone: boolean; hasMessages: boolean }): boolean {
   return s.hasMessages && !s.ended && !s.readOnly && !s.gone;
 }
+
+/**
+ * Spec §32.4: after leaving a live conversation, ask for a rating, if the server has a visitor
+ * message to rate. A record is rated from History instead; a deleted one can't be.
+ */
+export function shouldAskForRating(s: { hasUserMessage: boolean; readOnly: boolean; gone: boolean }): boolean {
+  return s.hasUserMessage && !s.readOnly && !s.gone;
+}

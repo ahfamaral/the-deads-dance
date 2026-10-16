@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { confirmBeforeLeaving, showEndBar } from "@/lib/leave-guard";
+import { confirmBeforeLeaving, shouldAskForRating, showEndBar } from "@/lib/leave-guard";
 
 describe("showEndBar", () => {
   // Final review: a retry on the exit turn streams with the input (and its Stop), not under the end bar.
@@ -23,5 +23,19 @@ describe("confirmBeforeLeaving (spec §25.5)", () => {
     expect(confirmBeforeLeaving({ ...live, ended: true })).toBe(false); // the persona already ended it
     expect(confirmBeforeLeaving({ ...live, readOnly: true })).toBe(false); // a record from History
     expect(confirmBeforeLeaving({ ...live, gone: true })).toBe(false); // deleted elsewhere
+  });
+});
+
+describe("shouldAskForRating (spec §32.4)", () => {
+  const live = { hasUserMessage: true, readOnly: false, gone: false };
+
+  it("asks after leaving a live conversation the visitor spoke in", () => {
+    expect(shouldAskForRating(live)).toBe(true);
+  });
+
+  it("doesn't ask when there's nothing to rate, or it's rated elsewhere", () => {
+    expect(shouldAskForRating({ ...live, hasUserMessage: false })).toBe(false); // nothing sent, or it never reached the server
+    expect(shouldAskForRating({ ...live, readOnly: true })).toBe(false); // a record: rated from History instead
+    expect(shouldAskForRating({ ...live, gone: true })).toBe(false); // deleted elsewhere
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canRestoreLive, parseOpenChat, serializeOpenChat } from "@/lib/open-chat";
+import { canRestoreLive, linkedConversation, parseOpenChat, serializeOpenChat } from "@/lib/open-chat";
 
 describe("the open-chat entry (spec §25.5)", () => {
   it("round-trips", () => {
@@ -23,5 +23,18 @@ describe("restoring the open chat (spec §27)", () => {
   });
   it("never reopens another user's conversation live, e.g. after switching accounts in the tab", () => {
     expect(canRestoreLive(conv("ana@example.com"), "boss@example.com")).toBe(false);
+  });
+});
+
+describe("linkedConversation (spec §32.7)", () => {
+  const id = "8f14e45f-ceea-467f-a0e6-2b8a2a6b1c11";
+  it("reads the conversation id from ?open=", () => {
+    expect(linkedConversation(`?open=${id}`)).toBe(id);
+    expect(linkedConversation(`?x=1&open=${id}`)).toBe(id);
+  });
+  it("ignores a missing or malformed id", () => {
+    expect(linkedConversation("")).toBeNull();
+    expect(linkedConversation("?open=")).toBeNull();
+    expect(linkedConversation("?open=../admin")).toBeNull();
   });
 });

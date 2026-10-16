@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { StoredConversation } from "@/lib/conversation-types";
 
 /**
@@ -52,4 +53,10 @@ export function writeOpenChat(c: OpenChat | null): void {
  */
 export function canRestoreLive(conversation: StoredConversation, email: string): boolean {
   return !conversation.userEmail || conversation.userEmail === email;
+}
+
+/** Spec §32.7: the admin's Feedback list links to `/?open=<id>`, which opens that conversation read-only. */
+export function linkedConversation(search: string): string | null {
+  const id = new URLSearchParams(search).get("open");
+  return id && z.uuid().safeParse(id).success ? id : null;
 }

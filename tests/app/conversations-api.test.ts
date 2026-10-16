@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchConversation, fetchConversationList, removeConversation } from "@/lib/conversations-api";
+import { fetchConversation, fetchConversationList, removeConversation, sendFeedback } from "@/lib/conversations-api";
 
 const deps = (res: Response | Error) => ({
   fetch: vi.fn(async () => {
@@ -43,5 +43,22 @@ describe("conversations-api (spec §25.4)", () => {
       expect(await fetchConversationList(d)).toBeNull();
       expect(d.reload).toHaveBeenCalledOnce();
     }
+  });
+});
+
+describe("sendFeedback (spec §32.3)", () => {
+  it("PUTs the rating as JSON and returns the saved one", async () => {
+    const d = deps(json({ feedback: { stars: 4, comment: "Good" } }));
+    expect(await sendFeedback("c1", { stars: 4, comment: "Good" }, d)).toEqual({ stars: 4, comment: "Good" });
+    expect(d.fetch).toHaveBeenCalledWith(
+      "/api/conversations/c1/feedback",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ stars: 4, comment: "Good" }), headers: { "Content-Type": "application/json" } }),
+    );
+  });
+
+  it("gives null on a refusal, a network failure or a non-JSON body", async () => {
+    expect(await sendFeedback("c1", { stars: 4, comment: "" }, deps(json({ code: "no_messages" }, 400)))).toBeNull();
+    expect(await sendFeedback("c1", { stars: 4, comment: "" }, deps(new TypeError("offline")))).toBeNull();
+    expect(await sendFeedback("c1", { stars: 4, comment: "" }, deps(new Response("<html>", { status: 200 })))).toBeNull();
   });
 });

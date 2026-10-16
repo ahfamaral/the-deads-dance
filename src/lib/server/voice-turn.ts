@@ -63,23 +63,26 @@ export async function* speakReply(events: AsyncIterable<ChatStreamEvent>, opts: 
       const text = waiting.shift()!;
       const seq = nextSeq++;
       inFlight++;
+      // Any throw, from the call or from handling its result, loses the voice; the chain never rejects, so the stream always ends.
       speak({ text, voice: voice.baseVoice, instructions: voice.instructions })
-        .then(
-          ({ pcm, call }) => {
-            ledger.record(call);
-            ready.set(seq, pcm);
-            sendReady();
-          },
-          (err) => {
-            console.error(err); // tts.ts has already retried once
-            loseVoice();
-          },
-        )
+        .then(({ pcm, call }) => {
+          ledger.record(call);
+          ready.set(seq, pcm);
+          sendReady();
+        })
+        .catch((err) => {
+          console.error(err); // tts.ts has already retried once
+          loseVoice();
+        })
         .finally(() => {
           inFlight--;
-          startCalls();
-          notify();
-        });
+          try {
+            startCalls();
+          } finally {
+            notify();
+          }
+        })
+        .catch((err) => console.error(err));
     }
   };
 

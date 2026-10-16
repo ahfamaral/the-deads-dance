@@ -80,6 +80,36 @@ describe("speakReply (spec §33.5)", () => {
     expect(quiet).toHaveBeenCalled();
   });
 
+  it("loses the voice, and still ends, when handling a call's result throws", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const ledger = new CostLedger();
+    vi.spyOn(ledger, "record").mockImplementationOnce(() => {
+      throw new Error("ledger broke");
+    });
+    const speak = vi.fn<Speak>(async () => ({ pcm: PCM, call: ttsCall }));
+    const all = await collect(speakReply(upstream(TWO_CHUNKS), { voice: VOICE, speak, ledger, listening: () => true }));
+    expect(all.filter((e) => e.type === "audio_error")).toHaveLength(1);
+    expect(all.some((e) => e.type === "audio")).toBe(false);
+    expect(all.filter((e) => e.type !== "audio_error")).toEqual(TWO_CHUNKS);
+    expect(quiet).toHaveBeenCalled();
+  });
+
+  it("drops the audio of a call in flight when an earlier one fails, and starts no more", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { speak, pending } = heldSpeak();
+    const long = `${"a".repeat(200)}. `;
+    const out = collect(speakReply(upstream(reply("Well. ", long, long)), { voice: VOICE, speak, ledger: new CostLedger(), listening: () => true }));
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    pending[0].reject(new Error("HTTP 500"));
+    await new Promise((r) => setTimeout(r, 10));
+    pending[1].resolve();
+    const all = await out;
+    expect(speak).toHaveBeenCalledTimes(2);
+    expect(all.some((e) => e.type === "audio")).toBe(false);
+    expect(all.filter((e) => e.type === "audio_error")).toHaveLength(1);
+    expect(quiet).toHaveBeenCalled();
+  });
+
   // Review Focus 1: the persona's voice was deleted mid-visit.
   it("with no voice, streams the text and one audio_error after done", async () => {
     const speak = vi.fn<Speak>();

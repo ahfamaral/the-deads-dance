@@ -41,23 +41,28 @@ export function createRecognition(lang: string): RecognitionLike | null {
 type Timers = { setTimeout: (fn: () => void, ms: number) => unknown; clearTimeout: (id: unknown) => void };
 
 /**
- * Spec §33.4: one spoken turn. It ends after `silenceMs` without a new result (also when nothing is
- * said), at `maxMs` in all, on `stop()` (a tap), or when the browser ends the session; it resolves
- * once, with the transcript heard so far (interim results included), trimmed. The clocks start when
- * the recognition does (`onstart`), so the first tap's permission prompt doesn't use them up; one
+ * Spec §33.4: one spoken turn. It ends after `silenceMs` without a new result, after `firstWordMs` when
+ * nothing is heard (Chrome returns the first word ~1.5 s after speech starts), at `maxMs` in all, on
+ * `stop()` (a tap), or when the browser ends the session; it resolves once, with the transcript heard
+ * (interim results included), trimmed. A tap or a clock stops the recognition and then waits, at most
+ * `drainMs`, for the browser to end, so the words it is still processing aren't lost. The clocks start
+ * when the recognition does (`onstart`), so the first tap's permission prompt doesn't use them up; one
  * that never starts within `startMs` fails.
  */
 export function createSpeechTurn(opts: {
   recognition: RecognitionLike;
   silenceMs?: number;
+  firstWordMs?: number;
   maxMs?: number;
   startMs?: number;
+  drainMs?: number;
   timers?: Timers;
   now?: () => number;
   /** Called on every recognition result; the sound-level bars use it when the mic can't be read. */
   onResult?: () => void;
 }): { done: Promise<SpeechResult>; stop(): void; elapsed(): number } {
-  const { recognition, silenceMs = 3000, maxMs = 10_000, startMs = 15_000 } = opts;
+  const { recognition, silenceMs = 3000, firstWordMs = 8000, maxMs = 10_000, startMs = 15_000, drainMs = 2000 } =
+    opts;
   const timers: Timers = opts.timers ?? {
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
@@ -67,22 +72,40 @@ export function createSpeechTurn(opts: {
   let endedAt: number | null = null;
   let transcript = "";
   let settled = false;
+  let draining = false;
   let resolve!: (result: SpeechResult) => void;
   const done = new Promise<SpeechResult>((r) => (resolve = r));
 
   let silence: unknown = null;
+  let drainTimer: unknown = null;
   let total: unknown = timers.setTimeout(() => finish({ error: "failed" }, true), startMs);
-  const restartSilence = () => {
+  const restartSilence = (ms = silenceMs) => {
     if (silence !== null) timers.clearTimeout(silence);
-    silence = timers.setTimeout(() => finish({ text: transcript }, true), silenceMs);
+    silence = timers.setTimeout(drain, ms);
   };
+
+  /** Stops listening, then sends once the browser ends (with its last words) or `drainMs` passes. */
+  function drain() {
+    if (settled || draining) return;
+    draining = true;
+    endedAt = now();
+    timers.clearTimeout(total);
+    if (silence !== null) timers.clearTimeout(silence);
+    drainTimer = timers.setTimeout(() => finish({ text: transcript }, false), drainMs);
+    try {
+      recognition.stop();
+    } catch {
+      finish({ text: transcript }, false);
+    }
+  }
 
   function finish(result: SpeechResult, stopRecognition: boolean) {
     if (settled) return;
     settled = true;
-    endedAt = now();
+    endedAt ??= now();
     timers.clearTimeout(total);
     if (silence !== null) timers.clearTimeout(silence);
+    if (drainTimer !== null) timers.clearTimeout(drainTimer);
     recognition.onresult = null;
     recognition.onerror = null;
     recognition.onend = null;
@@ -102,7 +125,7 @@ export function createSpeechTurn(opts: {
   recognition.onresult = (event) => {
     // Continuous mode lists every phrase of the session, so the transcript is rebuilt from all of them.
     transcript = Array.from(event.results, (r) => r[0]?.transcript ?? "").join(" ");
-    restartSilence();
+    if (!draining) restartSilence();
     opts.onResult?.();
   };
   recognition.onerror = (event) => {
@@ -115,8 +138,8 @@ export function createSpeechTurn(opts: {
     if (startedAt !== null) return;
     startedAt = now();
     timers.clearTimeout(total);
-    total = timers.setTimeout(() => finish({ text: transcript }, true), maxMs);
-    restartSilence();
+    total = timers.setTimeout(drain, maxMs);
+    restartSilence(firstWordMs);
   };
   try {
     recognition.start();
@@ -126,7 +149,7 @@ export function createSpeechTurn(opts: {
 
   return {
     done,
-    stop: () => finish({ text: transcript }, true),
+    stop: drain,
     elapsed: () => (startedAt === null ? 0 : (endedAt ?? now()) - startedAt),
   };
 }

@@ -3,9 +3,11 @@ import { createRecognition, createSpeechTurn, type RecognitionLike } from "@/lib
 
 /**
  * A stand-in for the browser's SpeechRecognition: the test fires its events by hand. By default it
- * starts at once; `autoStart: false` holds `onstart` back, as a permission prompt does.
+ * starts at once; `autoStart: false` holds `onstart` back, as a permission prompt does. By default
+ * `stop()` ends it at once; `endOnStop: false` leaves the end to the test, as Chrome does while it
+ * still processes the last words.
  */
-function fakeRecognition({ autoStart = true } = {}) {
+function fakeRecognition({ autoStart = true, endOnStop = true } = {}) {
   const phrases: string[] = [];
   const rec: RecognitionLike & { started: boolean; stopped: number; say(text: string): void; fail(error: string): void } = {
     lang: "",
@@ -23,6 +25,7 @@ function fakeRecognition({ autoStart = true } = {}) {
     },
     stop() {
       this.stopped += 1;
+      if (endOnStop) this.onend?.();
     },
     abort() {
       this.stopped += 1;
@@ -83,11 +86,33 @@ describe("createSpeechTurn (spec §33.4)", () => {
     expect(rec.stopped).toBeGreaterThan(0);
   });
 
-  it("gives an empty transcript after 3 s with no speech at all", async () => {
+  it("waits past 3 s for the first word: Chrome returns it ~1.5 s after speech starts", async () => {
     const rec = fakeRecognition();
     const turn = createSpeechTurn({ recognition: rec });
-    vi.advanceTimersByTime(3000);
+    let settled: unknown = null;
+    void turn.done.then((r) => (settled = r));
+    vi.advanceTimersByTime(3500);
+    await Promise.resolve();
+    expect(settled).toBeNull();
+    rec.say("Hallo");
+    vi.advanceTimersByTime(2999);
+    await Promise.resolve();
+    expect(settled).toBeNull();
+    vi.advanceTimersByTime(1);
+    await expect(turn.done).resolves.toEqual({ text: "Hallo" });
+  });
+
+  it("gives an empty transcript after 8 s with no speech at all", async () => {
+    const rec = fakeRecognition();
+    const turn = createSpeechTurn({ recognition: rec });
+    let settled: unknown = null;
+    void turn.done.then((r) => (settled = r));
+    vi.advanceTimersByTime(7999);
+    await Promise.resolve();
+    expect(settled).toBeNull();
+    vi.advanceTimersByTime(1);
     await expect(turn.done).resolves.toEqual({ text: "" });
+    expect(rec.stopped).toBeGreaterThan(0);
   });
 
   it("reports a refused microphone as denied", async () => {
@@ -116,6 +141,50 @@ describe("createSpeechTurn (spec §33.4)", () => {
     turn.stop();
     await expect(turn.done).resolves.toEqual({ text: "Wie geht es Ihnen?" });
     expect(rec.stopped).toBe(1);
+  });
+
+  it("a tap waits for the words Chrome is still processing, until it ends", async () => {
+    const rec = fakeRecognition({ endOnStop: false });
+    const turn = createSpeechTurn({ recognition: rec });
+    let settled: unknown = null;
+    void turn.done.then((r) => (settled = r));
+    rec.say("Wie geht");
+    turn.stop();
+    expect(rec.stopped).toBe(1);
+    rec.say("es Ihnen?");
+    await Promise.resolve();
+    expect(settled).toBeNull();
+    rec.onend?.();
+    await expect(turn.done).resolves.toEqual({ text: "Wie geht es Ihnen?" });
+  });
+
+  it("a tap sends what was heard after 2 s when the browser never ends", async () => {
+    const rec = fakeRecognition({ endOnStop: false });
+    const turn = createSpeechTurn({ recognition: rec });
+    let settled: unknown = null;
+    void turn.done.then((r) => (settled = r));
+    rec.say("Ja");
+    turn.stop();
+    vi.advanceTimersByTime(1999);
+    await Promise.resolve();
+    expect(settled).toBeNull();
+    vi.advanceTimersByTime(1);
+    await expect(turn.done).resolves.toEqual({ text: "Ja" });
+  });
+
+  it("the 10 s cap also waits for the last words", async () => {
+    const rec = fakeRecognition({ endOnStop: false });
+    const turn = createSpeechTurn({ recognition: rec });
+    for (let i = 1; i <= 9; i++) {
+      vi.advanceTimersByTime(1000);
+      rec.say(`w${i}`);
+    }
+    vi.advanceTimersByTime(1000);
+    expect(rec.stopped).toBe(1);
+    expect(turn.elapsed()).toBe(10_000);
+    rec.say("w10");
+    rec.onend?.();
+    await expect(turn.done).resolves.toEqual({ text: "w1 w2 w3 w4 w5 w6 w7 w8 w9 w10" });
   });
 
   it("settles once: events after the end are ignored", async () => {

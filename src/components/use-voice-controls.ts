@@ -14,6 +14,16 @@ export function turnOutcome(result: SpeechResult): { text: string } | { error: s
   return result.text ? result : { error: MIC_FAILED };
 }
 
+/**
+ * Spec §33.4: whether the bars may open their own mic stream next to recognition. Desktop Chrome shares
+ * the mic; Android Chrome lets the stream take it, so recognition hears nothing (2026-10-17), and iOS
+ * is said to do the same. iPadOS reports a Mac, so touch points tell it apart.
+ */
+export function micSharedWithRecognition(userAgent: string, maxTouchPoints: number): boolean {
+  if (/Android|iPhone|iPad|iPod/i.test(userAgent)) return false;
+  return !(/Macintosh/.test(userAgent) && maxTouchPoints > 1);
+}
+
 const MIC_GAIN = 4;
 /** How long the fallback bars take to settle after a recognition result. */
 const RESULT_PULSE_MS = 400;
@@ -29,7 +39,7 @@ type Listening = {
 /**
  * Spec §33.4: the voice screen's microphone and speaker. Listening runs one speech turn and hands a
  * non-empty transcript to its `onTranscript`; the mic's level comes from a getUserMedia analyser, or
- * pulses on recognition results when the stream can't open. Audio chunks play back to back. All of
+ * pulses on recognition results on phones (see micSharedWithRecognition) or when the stream can't open. Audio chunks play back to back. All of
  * it stops when the screen goes away, and the mic stream is released as soon as listening ends.
  * Audio that stops moving (a suspended context) is stopped and reported to `onStall`, so the answer
  * can show as a lost voice instead of "Speaking…" forever; the tab coming back tries to resume first.
@@ -93,21 +103,22 @@ export function useVoiceControls(language: string, onStall?: () => void) {
     current.current = l;
     setListening(true);
 
-    void navigator.mediaDevices
-      ?.getUserMedia({ audio: true })
-      .then((stream) => {
-        if (current.current !== l || !ctx) {
-          for (const track of stream.getTracks()) track.stop();
-          return;
-        }
-        l.stream = stream;
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        l.source = ctx.createMediaStreamSource(stream);
-        l.source.connect(analyser);
-        l.analyser = analyser;
-      })
-      .catch(() => {}); // the bars fall back to recognition results
+    if (micSharedWithRecognition(navigator.userAgent, navigator.maxTouchPoints ?? 0))
+      void navigator.mediaDevices
+        ?.getUserMedia({ audio: true })
+        .then((stream) => {
+          if (current.current !== l || !ctx) {
+            for (const track of stream.getTracks()) track.stop();
+            return;
+          }
+          l.stream = stream;
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 256;
+          l.source = ctx.createMediaStreamSource(stream);
+          l.source.connect(analyser);
+          l.analyser = analyser;
+        })
+        .catch(() => {}); // the bars fall back to recognition results, as on phones
 
     void l.turn.done.then((result) => {
       if (current.current !== l) return;

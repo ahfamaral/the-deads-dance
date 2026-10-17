@@ -152,7 +152,8 @@ export async function POST(request: Request) {
       userId: user.id,
       personaSlug: persona.slug,
       personaName: persona.displayName,
-      visitor: retry ? null : { text: visitorText, act },
+      // Voice ignores the switch (spec §33.5), so it isn't recorded there.
+      visitor: retry ? null : { text: visitorText, act, languageMode: voiceLanguage ? null : languageMode },
       ending: visit.ended,
       create: first === true && !retry,
       voice: voiceLanguage ? { language: voiceLanguage } : null,

@@ -167,6 +167,9 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS messages_conversation_id ON messages (conversation_id, id);
+-- 2026-10-17: the "Always answer in my language" switch as a visitor message was sent with it
+-- (spec §18.4), so the conversation can show where it was turned on or off. Null: not recorded.
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS language_mode text CHECK (language_mode IN ('realistic', 'visitor'));
 
 -- Spec §26.2: energy in micro-dollars ($1 = 1,000,000). Better Auth extra fields, camelCase like "status".
 ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "energyBalance" bigint NOT NULL DEFAULT 0;

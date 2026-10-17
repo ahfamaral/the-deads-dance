@@ -318,7 +318,8 @@ export default function ChatSession({
 
   function send(text: string) {
     if (turn || waiting || outOfEnergy || ended || readOnly || gone) return; // one turn at a time; none after the persona left or in a record
-    void run([...messages, { id: newId(), role: "user", text }]);
+    // The switch goes with the message (2026-10-17), so the log can show where it changed; voice ignores it.
+    void run([...messages, { id: newId(), role: "user", text, ...(voice ? {} : { languageMode }) }]);
   }
 
   // The last message is the user's: answer it again on the server, or resend it if it never got there.

@@ -1,4 +1,4 @@
-import type { LanguageMode } from "@/lib/chat-types";
+import type { LanguageMode, Message } from "@/lib/chat-types";
 
 const KEY = "persona-chatbot:language-mode";
 
@@ -17,4 +17,20 @@ export function saveLanguageMode(mode: LanguageMode): void {
   } catch {
     // Blocked storage: the switch still works for this page, it just isn't remembered.
   }
+}
+
+/**
+ * 2026-10-17: where the conversation shows "Always answer in my language: on/off": before the first
+ * visitor message sent after the switch changed (it starts off). Messages that don't record it (older
+ * ones, voice) are skipped. Keyed by message id.
+ */
+export function languageModeNotes(messages: Message[]): Map<string, "on" | "off"> {
+  const notes = new Map<string, "on" | "off">();
+  let current: LanguageMode = "realistic";
+  for (const m of messages) {
+    if (m.role !== "user" || !m.languageMode || m.languageMode === current) continue;
+    current = m.languageMode;
+    notes.set(m.id, current === "visitor" ? "on" : "off");
+  }
+  return notes;
 }

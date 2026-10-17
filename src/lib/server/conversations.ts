@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { HISTORY_WINDOW, type ConversationMode, type HistoryMessage, type Message, type Spend, type TurnSpend } from "@/lib/chat-types";
+import { HISTORY_WINDOW, type ConversationMode, type HistoryMessage, type LanguageMode, type Message, type Spend, type TurnSpend } from "@/lib/chat-types";
 import { cutPreview, type ConversationSummary, type StoredConversation } from "@/lib/conversation-types";
 import type { VisitEnding } from "@/lib/visit";
 import { VisitorActSchema, type VisitorAct } from "@/lib/visitor-act";
@@ -42,7 +42,7 @@ export type BeginTurn = {
   personaSlug: string;
   personaName: string;
   /** null on Retry: the visitor message is already stored. */
-  visitor: { text: string; act: VisitorAct | null } | null;
+  visitor: { text: string; act: VisitorAct | null; languageMode?: LanguageMode | null } | null;
   /** Set when this turn ends the visit; locked before the reply streams. */
   ending: VisitEnding | null;
   /** True only on a conversation's first message; otherwise a missing row (deleted mid-turn) is not_found. */
@@ -121,10 +121,11 @@ export async function beginTurn(pool: Pool, t: BeginTurn): Promise<{ ok: true } 
       return { ok: false, reason: refusal };
     }
     if (t.visitor) {
-      await client.query(`INSERT INTO messages (conversation_id, role, text, act) VALUES ($1, 'user', $2, $3::jsonb)`, [
+      await client.query(`INSERT INTO messages (conversation_id, role, text, act, language_mode) VALUES ($1, 'user', $2, $3::jsonb, $4)`, [
         t.conversationId,
         t.visitor.text,
         t.visitor.act === null ? null : JSON.stringify(t.visitor.act),
+        t.visitor.languageMode ?? null,
       ]);
     }
     await client.query(`UPDATE conversations SET updated_at = now(), ended = coalesce($2, ended), turn_running_since = now() WHERE id = $1`, [
@@ -210,6 +211,7 @@ type MessageRow = {
   sources: Message["sources"] | null;
   ended: VisitEnding | null;
   stopped: boolean;
+  language_mode: LanguageMode | null;
   cost: string | null;
   tokens: number | null;
 };
@@ -223,6 +225,7 @@ function toMessage(r: MessageRow, costs: boolean): Message {
     ...(r.role === "user" ? { act: parseAct(r.act) } : { toolCalls: r.tool_calls ?? [], sources: r.sources ?? [] }),
     ...(r.ended ? { ended: r.ended } : {}),
     ...(r.stopped ? { stopped: true } : {}),
+    ...(r.role === "user" && r.language_mode ? { languageMode: r.language_mode } : {}),
     ...(costs && r.cost !== null ? { cost: Number(r.cost), tokens: r.tokens ?? 0 } : {}),
   };
 }
@@ -267,7 +270,7 @@ export async function readConversation(pool: Queryable, userId: string, id: stri
   );
   if (!rows[0]) return null;
   const { rows: messages } = await pool.query<MessageRow>(
-    `SELECT id, role, text, act, tool_calls, sources, ended, stopped, cost, tokens FROM messages WHERE conversation_id = $1 ORDER BY id`,
+    `SELECT id, role, text, act, tool_calls, sources, ended, stopped, language_mode, cost, tokens FROM messages WHERE conversation_id = $1 ORDER BY id`,
     [id],
   );
   return {

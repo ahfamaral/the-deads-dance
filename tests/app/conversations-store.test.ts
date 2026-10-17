@@ -54,6 +54,17 @@ describe("beginTurn", () => {
     ]);
   });
 
+  it("stores the visitor's language switch on the message and reads it back (2026-10-17)", async () => {
+    await beginTurn(pool(), turn({ visitor: { text: "Hi", act: ACT, languageMode: "visitor" } }));
+    await finishTurn();
+    await beginTurn(pool(), turn({ visitor: { text: "Oi", act: ACT, languageMode: null } }));
+    const c = await readConversation(pool(), ana, CONV, { costs: false });
+    expect(c!.messages.map((m) => [m.text, m.languageMode])).toEqual([
+      ["Hi", "visitor"],
+      ["Oi", undefined],
+    ]);
+  });
+
   it("doesn't create a missing conversation when create is false", async () => {
     expect(await beginTurn(pool(), turn({ create: false }))).toEqual({ ok: false, reason: "not_found" });
     expect(await conversationRow(CONV)).toBeUndefined();

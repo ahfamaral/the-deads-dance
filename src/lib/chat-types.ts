@@ -49,6 +49,8 @@ export type Message = {
   ended?: VisitEnding;
   /** Spec §25.3: a partial reply, stored after Stop. */
   stopped?: boolean;
+  /** 2026-10-17: the language switch a visitor message was sent with; absent on older ones and voice. */
+  languageMode?: LanguageMode;
   /** Spec §26.6, admin only: the whole turn's cost and tokens. */
   cost?: number;
   tokens?: number;

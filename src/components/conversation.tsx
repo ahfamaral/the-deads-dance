@@ -1,7 +1,8 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import PersonaMessage from "@/components/persona-message";
 import { voiceMarker } from "@/lib/conversation-types";
 import type { LanguageMode, Message } from "@/lib/chat-types";
+import { languageModeNotes } from "@/lib/language-mode";
 
 type ConversationProps = {
   personaName: string;
@@ -59,6 +60,7 @@ export default function Conversation({
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length, pending?.text, pending?.toolCalls?.length, turnError, waiting]);
   const empty = messages.length === 0 && !pending && !turnError && !waiting;
+  const notes = languageModeNotes(messages);
   return (
     <section
       aria-label={`Conversation with ${personaName}`}
@@ -124,11 +126,16 @@ export default function Conversation({
             <ol className="flex flex-col gap-5">
               {messages.map((message) =>
                 message.role === "user" ? (
-                  <li key={message.id} className="flex justify-end">
-                    <p className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-white/10 px-4 py-2.5 text-foreground">
-                      {message.text}
-                    </p>
-                  </li>
+                  <Fragment key={message.id}>
+                    {notes.has(message.id) && (
+                      <li className="text-center text-xs text-neutral-400">Always answer in my language: {notes.get(message.id)}</li>
+                    )}
+                    <li className="flex justify-end">
+                      <p className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-white/10 px-4 py-2.5 text-foreground">
+                        {message.text}
+                      </p>
+                    </li>
+                  </Fragment>
                 ) : (
                   <PersonaMessage key={message.id} personaName={personaName} message={message} showCost={showCost} />
                 ),

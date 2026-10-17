@@ -32,6 +32,8 @@ const TABS: { status: Status; label: string }[] = [
 const BTN_PRIMARY = "min-h-11 flex-1 whitespace-nowrap rounded-full bg-neutral-100 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] font-semibold text-neutral-900 hover:bg-white md:flex-none md:px-4 md:text-sm md:font-semibold";
 const BTN = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-white/15 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] text-neutral-200 hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent md:flex-none md:px-4 md:text-sm";
 const BACK = "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full border border-white/15 px-4 text-sm text-neutral-200 hover:bg-white/10";
+/** Short status lines on their own surface, readable over the animated background. */
+const EMPTY_NOTE = "rounded-xl border border-white/10 bg-neutral-900/70 px-3 py-2 text-sm text-neutral-300";
 const BTN_DANGER = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-red-500/50 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] text-red-300 hover:bg-red-500/15 md:flex-none md:px-4 md:text-sm";
 
 // Same colours as EnergyBar, without the pulse or the icon.
@@ -185,14 +187,15 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
 
       <AdminCredit refresh={changes} onStartingEnergy={onStartingEnergy} />
 
-      <div role="tablist" className="flex gap-2 overflow-x-auto pb-1">
+      {/* 2026-10-17: the pills wrap onto a second line on phones instead of scrolling cut at the edges. */}
+      <div role="tablist" className="flex flex-wrap gap-2">
         {TABS.map((t) => (
           <button
             key={t.status}
             role="tab"
             aria-selected={tab === t.status}
             onClick={() => setTab(t.status)}
-            className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${tab === t.status ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 bg-neutral-900/70 text-neutral-300 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-sm"
+            className={`min-h-11 rounded-full border px-3 text-base sm:px-4 sm:text-sm ${tab === t.status ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 bg-neutral-900/70 text-neutral-300 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-sm"
               }`}
           >
             {t.label}{" "}
@@ -205,7 +208,7 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
           role="tab"
           aria-selected={tab === "feedback"}
           onClick={() => setTab("feedback")}
-          className={`min-h-11 shrink-0 rounded-full border px-4 text-sm ${tab === "feedback" ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 bg-neutral-900/70 text-neutral-300 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-sm"}`}
+          className={`min-h-11 rounded-full border px-3 text-base sm:px-4 sm:text-sm ${tab === "feedback" ? "border-neutral-100 bg-neutral-100 font-semibold text-neutral-900" : "border-white/15 bg-neutral-900/70 text-neutral-300 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-sm"}`}
         >
           Feedback
         </button>
@@ -222,9 +225,9 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
           )}
 
           {users === null ? (
-            <p className="text-sm text-neutral-500">Loading…</p>
+            <p className={EMPTY_NOTE}>Loading…</p>
           ) : rows.length === 0 ? (
-            <p className="text-sm text-neutral-500">Nobody here.</p>
+            <p className={EMPTY_NOTE}>Nobody here.</p>
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-900/50">
               {/* Desktop: a table */}

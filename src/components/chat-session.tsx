@@ -28,6 +28,7 @@ import { thinkingLine } from "@/lib/thinking";
 import { foldVisit, isEnded } from "@/lib/visit";
 import { voiceStageState } from "@/lib/voice-stage-state";
 import { waitForReply } from "@/lib/wait-for-reply";
+import { useBackHandler } from "@/lib/use-back-handler";
 
 // On phones the buttons share one row: same height, same width, no wrapping, smaller text.
 const END_BAR_BUTTON = "min-h-11 flex-1 whitespace-nowrap rounded-full px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] sm:flex-none sm:px-4 sm:text-sm";
@@ -157,6 +158,10 @@ export default function ChatSession({
   // Spec §32.4. Review Focus 1: `confirmed` is false when the first message never reached the server, so there is nothing to rate.
   const askRating = () =>
     shouldAskForRating({ hasUserMessage: confirmed.current && messages.some((m) => m.role === "user"), readOnly, gone });
+  // The header's Back, and the phone's back button (2026-10-17): a live chat asks before leaving.
+  const requestBack = () =>
+    confirmBeforeLeaving({ readOnly, ended, gone, hasMessages: messages.length > 0 }) ? setConfirmingLeave(true) : onBack(askRating());
+  useBackHandler(requestBack);
 
   // Leaving the chat stops listening; the server finishes the turn (spec §26.4).
   useEffect(
@@ -359,9 +364,7 @@ export default function ChatSession({
         turnError={turnError}
         onRetry={turnError?.retryable && !turn && !readOnly && !waiting ? retry : undefined}
         toolsUnavailable={toolsUnavailable}
-        onBack={() =>
-          confirmBeforeLeaving({ readOnly, ended, gone, hasMessages: messages.length > 0 }) ? setConfirmingLeave(true) : onBack(askRating())
-        }
+        onBack={requestBack}
         languageMode={languageMode}
         onLanguageModeChange={readOnly || voiceScreen ? undefined : changeLanguageMode}
         meterSlot={meterSlot}

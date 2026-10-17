@@ -21,6 +21,7 @@ import { newId } from "@/lib/new-id";
 import { defaultVoiceLanguage } from "@/lib/voice";
 import { speechSupported } from "@/lib/speech-input";
 import { requestHidden } from "@/lib/persona-hide-api";
+import { useBackHandler } from "@/lib/use-back-handler";
 import type { Persona } from "@/lib/personas";
 import type { AccessBody } from "@/lib/server/access-info";
 
@@ -119,6 +120,10 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
     setChoosing(null);
     startChat(persona, choice.mode === "voice" ? { language: choice.language } : null);
   };
+
+  // 2026-10-17: the phone's back button goes from the picker and History to the start menu; the chat
+  // registers its own Back, and the start menu none, so back leaves the app from there.
+  useBackHandler(step.name === "select" || step.name === "history" ? () => setStep({ name: "start" }) : null);
 
   // Spec §25.5: the open chat survives a reload of its own tab. sessionStorage is only readable
   // after hydration, so this is an effect; it runs once.

@@ -17,6 +17,7 @@ function fakeRecognition({ autoStart = true, endOnStop = true } = {}) {
     onerror: null,
     onend: null,
     onstart: null,
+    onspeechstart: null,
     started: false,
     stopped: 0,
     start() {
@@ -69,12 +70,12 @@ describe("createSpeechTurn (spec §33.4)", () => {
     expect(rec.stopped).toBeGreaterThan(0);
   });
 
-  it("ends at 10 s even while results keep arriving every second", async () => {
+  it("ends 10 s after the first word even while results keep arriving every second", async () => {
     const rec = fakeRecognition();
     const turn = createSpeechTurn({ recognition: rec });
     let settled: unknown = null;
     void turn.done.then((r) => (settled = r));
-    for (let i = 1; i <= 9; i++) {
+    for (let i = 1; i <= 10; i++) {
       vi.advanceTimersByTime(1000);
       rec.say(`word${i}`);
     }
@@ -82,7 +83,9 @@ describe("createSpeechTurn (spec §33.4)", () => {
     expect(settled).toBeNull();
     expect(turn.elapsed()).toBe(9000);
     vi.advanceTimersByTime(1000);
-    await expect(turn.done).resolves.toEqual({ text: "word1 word2 word3 word4 word5 word6 word7 word8 word9" });
+    await expect(turn.done).resolves.toEqual({
+      text: "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10",
+    });
     expect(rec.stopped).toBeGreaterThan(0);
   });
 
@@ -175,16 +178,16 @@ describe("createSpeechTurn (spec §33.4)", () => {
   it("the 10 s cap also waits for the last words", async () => {
     const rec = fakeRecognition({ endOnStop: false });
     const turn = createSpeechTurn({ recognition: rec });
-    for (let i = 1; i <= 9; i++) {
+    for (let i = 1; i <= 10; i++) {
       vi.advanceTimersByTime(1000);
       rec.say(`w${i}`);
     }
     vi.advanceTimersByTime(1000);
     expect(rec.stopped).toBe(1);
     expect(turn.elapsed()).toBe(10_000);
-    rec.say("w10");
+    rec.say("w11");
     rec.onend?.();
-    await expect(turn.done).resolves.toEqual({ text: "w1 w2 w3 w4 w5 w6 w7 w8 w9 w10" });
+    await expect(turn.done).resolves.toEqual({ text: "w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11" });
   });
 
   it("settles once: events after the end are ignored", async () => {
@@ -209,7 +212,6 @@ describe("createSpeechTurn (spec §33.4)", () => {
     expect(turn.elapsed()).toBe(0);
     rec.onstart?.();
     vi.advanceTimersByTime(1000);
-    expect(turn.elapsed()).toBe(1000);
     rec.say("Hallo");
     vi.advanceTimersByTime(2999);
     await Promise.resolve();
@@ -218,21 +220,24 @@ describe("createSpeechTurn (spec §33.4)", () => {
     await expect(turn.done).resolves.toEqual({ text: "Hallo" });
   });
 
-  it("the 10 s cap counts from the start, not from the tap", async () => {
+  it("the 10 s cap counts from the first word, so a pause before speaking leaves the full 10 s", async () => {
     const rec = fakeRecognition({ autoStart: false });
     const turn = createSpeechTurn({ recognition: rec });
     let settled: unknown = null;
     void turn.done.then((r) => (settled = r));
     vi.advanceTimersByTime(5000);
     rec.onstart?.();
-    for (let i = 1; i <= 9; i++) {
-      vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(4000);
+    expect(turn.elapsed()).toBe(0);
+    for (let i = 1; i <= 10; i++) {
       rec.say(`w${i}`);
+      vi.advanceTimersByTime(i < 10 ? 1000 : 999);
     }
     await Promise.resolve();
     expect(settled).toBeNull();
-    vi.advanceTimersByTime(1000);
-    await expect(turn.done).resolves.toEqual({ text: "w1 w2 w3 w4 w5 w6 w7 w8 w9" });
+    expect(turn.elapsed()).toBe(9999);
+    vi.advanceTimersByTime(1);
+    await expect(turn.done).resolves.toEqual({ text: "w1 w2 w3 w4 w5 w6 w7 w8 w9 w10" });
   });
 
   it("fails when the recognition never starts within 15 s", async () => {
@@ -241,6 +246,26 @@ describe("createSpeechTurn (spec §33.4)", () => {
     vi.advanceTimersByTime(15_000);
     await expect(turn.done).resolves.toEqual({ error: "failed" });
     expect(rec.stopped).toBeGreaterThan(0);
+  });
+
+  it("the 10 s cap and the ring start when the voice is detected, before the first word comes back", async () => {
+    const rec = fakeRecognition();
+    const turn = createSpeechTurn({ recognition: rec });
+    let settled: unknown = null;
+    void turn.done.then((r) => (settled = r));
+    vi.advanceTimersByTime(3000);
+    rec.onspeechstart?.();
+    vi.advanceTimersByTime(800);
+    expect(turn.elapsed()).toBe(800);
+    for (let i = 1; i <= 9; i++) {
+      rec.say(`w${i}`);
+      vi.advanceTimersByTime(1000);
+    }
+    await Promise.resolve();
+    expect(settled).toBeNull();
+    vi.advanceTimersByTime(200);
+    expect(rec.stopped).toBe(1);
+    await expect(turn.done).resolves.toEqual({ text: "w1 w2 w3 w4 w5 w6 w7 w8 w9" });
   });
 
   it("the browser ending the session on its own sends what was heard", async () => {

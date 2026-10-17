@@ -2,11 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPcmPlayer, getAudioContext, type PcmPlayer } from "@/lib/audio-player";
-import { createRecognition, createSpeechTurn } from "@/lib/speech-input";
+import { createRecognition, createSpeechTurn, type SpeechResult } from "@/lib/speech-input";
 
 /** Spec §33.4: the microphone errors, verbatim. */
 export const MIC_DENIED = "Allow the microphone for this site to talk.";
 export const MIC_FAILED = "I couldn't hear that. Tap and try again.";
+
+/** What a finished speech turn leads to: a transcript to send, or a message (nothing heard counts as not heard). */
+export function turnOutcome(result: SpeechResult): { text: string } | { error: string } {
+  if ("error" in result) return { error: result.error === "denied" ? MIC_DENIED : MIC_FAILED };
+  return result.text ? result : { error: MIC_FAILED };
+}
 
 const MIC_GAIN = 4;
 /** How long the fallback bars take to settle after a recognition result. */
@@ -108,8 +114,9 @@ export function useVoiceControls(language: string, onStall?: () => void) {
       current.current = null;
       release(l);
       setListening(false);
-      if ("error" in result) setSpeechError(result.error === "denied" ? MIC_DENIED : MIC_FAILED);
-      else if (result.text) onTranscript(result.text);
+      const outcome = turnOutcome(result);
+      if ("error" in outcome) setSpeechError(outcome.error);
+      else onTranscript(outcome.text);
     });
   }
 

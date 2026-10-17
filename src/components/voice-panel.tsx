@@ -14,7 +14,7 @@ export const DESCRIPTION_MAX = 600;
 export async function closeAfter(done: Promise<boolean>, onClose: () => void) {
   if (await done) onClose();
 }
-const BUTTON = "min-h-11 whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors disabled:opacity-40";
+const BUTTON = "min-h-11 whitespace-nowrap rounded-full px-4 py-1.5 text-base sm:text-sm transition-colors disabled:opacity-40";
 const FIELD =
   "w-full rounded-2xl border border-white/10 bg-neutral-950/60 px-3 py-2 text-base text-foreground focus-visible:outline focus-visible:outline-white/40 sm:text-sm";
 

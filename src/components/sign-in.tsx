@@ -10,10 +10,10 @@ import { MAX_TRIES, SIGN_IN_STORAGE_KEY, cooldownLeft, parseSignInState, seriali
 
 const RESEND_SECONDS = 60;
 const PRIMARY =
-  "min-h-11 w-full rounded-full bg-neutral-100 px-4 text-sm font-semibold text-neutral-900 transition-colors hover:bg-white disabled:opacity-50";
-// One row, one line, same height: the same approach as chat-session's END_BAR buttons.
+  "min-h-11 w-full rounded-full bg-neutral-100 px-4 text-base sm:text-sm font-semibold text-neutral-900 transition-colors hover:bg-white disabled:opacity-50";
+// One row, one line, same height, 16px on phones (2026-10-17); wraps only if it must.
 const LINK =
-  "inline-flex min-h-11 flex-1 items-center justify-center whitespace-nowrap px-1 text-[length:clamp(10px,2.9vw,12px)] text-neutral-300 underline underline-offset-2 disabled:no-underline disabled:opacity-50";
+  "inline-flex min-h-11 flex-1 items-center justify-center whitespace-nowrap px-1 text-base sm:text-sm text-neutral-300 underline underline-offset-2 disabled:no-underline disabled:opacity-50";
 
 // sessionStorage can throw (private windows, blocked storage), so every access is guarded.
 function readStored(): string | null {
@@ -164,7 +164,7 @@ export default function SignIn({ siteKey }: { siteKey: string }) {
             <p aria-live="polite" className="min-h-5 text-sm text-neutral-400">
               {busy ? "Checking your code…" : ""}
             </p>
-            <div className="flex w-full">
+            <div className="flex w-full flex-wrap">
               <button
                 type="button"
                 className={LINK}

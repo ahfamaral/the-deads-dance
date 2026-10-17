@@ -58,18 +58,18 @@ export default function AddEnergyDialog({ open, email, balance, defaultAmount, o
           </label>
           <p className="text-xs text-neutral-500">{micros === null ? "Enter an amount from 0.01 to 5.00." : addEnergyPreview(balance, micros)}</p>
         </div>
-        <div className="flex justify-end gap-1.5 sm:gap-2">
+        <div className="flex flex-wrap justify-end gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="min-h-11 flex-1 whitespace-nowrap rounded-full px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 sm:flex-none sm:px-4 sm:text-sm"
+            className="min-h-11 flex-1 whitespace-nowrap rounded-full px-1.5 py-1.5 text-base sm:text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 sm:flex-none sm:px-4 sm:text-sm"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={micros === null}
-            className="min-h-11 flex-1 whitespace-nowrap rounded-full bg-neutral-100 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] font-medium text-neutral-900 transition-colors hover:bg-white focus-visible:outline focus-visible:outline-white/40 disabled:opacity-40 sm:flex-none sm:px-4 sm:text-sm"
+            className="min-h-11 flex-1 whitespace-nowrap rounded-full bg-neutral-100 px-1.5 py-1.5 text-base sm:text-sm font-medium text-neutral-900 transition-colors hover:bg-white focus-visible:outline focus-visible:outline-white/40 disabled:opacity-40 sm:flex-none sm:px-4 sm:text-sm"
           >
             Add
           </button>

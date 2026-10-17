@@ -89,7 +89,7 @@ export default function VoiceStartDialog({ persona, defaultLanguage, onStart, on
                 type="button"
                 aria-pressed={code === language}
                 onClick={() => setLanguage(code)}
-                className={`min-h-11 rounded-full border px-4 text-sm transition-colors focus-visible:outline focus-visible:outline-white/40 ${
+                className={`min-h-11 rounded-full border px-4 text-base transition-colors focus-visible:outline focus-visible:outline-white/40 sm:text-sm ${
                   code === language ? "border-white/60 bg-white/15 text-foreground" : "border-white/15 text-neutral-400 hover:bg-white/10"
                 }`}
               >
@@ -101,7 +101,7 @@ export default function VoiceStartDialog({ persona, defaultLanguage, onStart, on
         <button
           type="button"
           onClick={start}
-          className="mt-1 min-h-11 rounded-full bg-neutral-100 px-4 py-1.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
+          className="mt-1 min-h-11 rounded-full bg-neutral-100 px-4 py-1.5 text-base font-medium sm:text-sm text-neutral-900 transition-colors hover:bg-white"
         >
           Start
         </button>

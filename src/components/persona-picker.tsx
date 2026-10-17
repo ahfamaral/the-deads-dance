@@ -73,7 +73,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
           type="button"
           onClick={onBack}
           disabled={busy}
-          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
+          className="flex items-center gap-1.5 min-h-11 rounded-full px-3 py-1.5 text-base text-neutral-400 sm:text-sm transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
         >
           <svg
             viewBox="0 0 24 24"
@@ -106,7 +106,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
               aria-pressed={configuring}
               onClick={toggleConfiguring}
               disabled={busy}
-              className={`flex size-8 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40 ${configuring
+              className={`relative flex size-8 shrink-0 items-center after:absolute after:-inset-1.5 justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40 ${configuring
                   ? "bg-white/10 text-foreground"
                   : "text-neutral-400 hover:bg-white/10 hover:text-foreground"
                 }`}
@@ -126,7 +126,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
               aria-label="Add persona"
               onClick={() => setAdding(true)}
               disabled={busy}
-              className={`flex h-8 w-full items-center self-stretch justify-center rounded-2xl border border-white/5 bg-white/5 text-neutral-300 transition-[background-color,border-color,color,opacity,translate] duration-300 ease-out hover:border-white/20 hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none motion-reduce:transition-none ${!configuring ? "-translate-y-1 opacity-0" : busy ? "opacity-40" : "translate-y-0 opacity-100"
+              className={`flex h-11 w-full items-center self-stretch sm:h-8 justify-center rounded-2xl border border-white/5 bg-white/5 text-neutral-300 transition-[background-color,border-color,color,opacity,translate] duration-300 ease-out hover:border-white/20 hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none motion-reduce:transition-none ${!configuring ? "-translate-y-1 opacity-0" : busy ? "opacity-40" : "translate-y-0 opacity-100"
                 }`}
             >
               <svg
@@ -208,7 +208,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                     aria-label={`Talk to ${persona.name}`}
                     onClick={() => onConfirm(persona)}
                     disabled={configuring || outOfEnergy}
-                    className={`group col-start-1 row-start-1 flex items-center gap-1.5 whitespace-nowrap rounded-full bg-neutral-100 py-1.5 pl-4 pr-3 text-sm font-medium text-neutral-900 transition-[background-color,opacity,translate] duration-300 ease-out hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 motion-reduce:transition-none ${showTalkTo ? "translate-x-0 opacity-100 disabled:pointer-events-none disabled:opacity-40" : "translate-x-3 opacity-0"
+                    className={`group col-start-1 row-start-1 flex items-center gap-1.5 min-h-11 whitespace-nowrap rounded-full bg-neutral-100 py-1.5 pl-4 pr-3 text-base font-medium sm:min-h-0 sm:text-sm text-neutral-900 transition-[background-color,opacity,translate] duration-300 ease-out hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60 motion-reduce:transition-none ${showTalkTo ? "translate-x-0 opacity-100 disabled:pointer-events-none disabled:opacity-40" : "translate-x-3 opacity-0"
                       }`}
                   >
                     Talk to

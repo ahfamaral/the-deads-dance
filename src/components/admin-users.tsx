@@ -29,12 +29,12 @@ const TABS: { status: Status; label: string }[] = [
   { status: "rejected", label: "Rejected" },
   { status: "blocked", label: "Blocked" },
 ];
-const BTN_PRIMARY = "min-h-11 flex-1 whitespace-nowrap rounded-full bg-neutral-100 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] font-semibold text-neutral-900 hover:bg-white md:flex-none md:px-4 md:text-sm md:font-semibold";
-const BTN = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-white/15 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] text-neutral-200 hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent md:flex-none md:px-4 md:text-sm";
-const BACK = "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full border border-white/15 px-4 text-sm text-neutral-200 hover:bg-white/10";
+const BTN_PRIMARY = "min-h-11 flex-1 whitespace-nowrap rounded-full bg-neutral-100 px-1.5 py-1.5 text-base font-semibold text-neutral-900 hover:bg-white md:flex-none md:px-4 md:text-sm md:font-semibold";
+const BTN = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-white/15 px-1.5 py-1.5 text-base text-neutral-200 hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent md:flex-none md:px-4 md:text-sm";
+const BACK = "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full border border-white/15 px-4 text-base sm:text-sm text-neutral-200 hover:bg-white/10";
 /** Short status lines on their own surface, readable over the animated background. */
 const EMPTY_NOTE = "rounded-xl border border-white/10 bg-neutral-900/70 px-3 py-2 text-sm text-neutral-300";
-const BTN_DANGER = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-red-500/50 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] text-red-300 hover:bg-red-500/15 md:flex-none md:px-4 md:text-sm";
+const BTN_DANGER = "min-h-11 flex-1 whitespace-nowrap rounded-full border border-red-500/50 px-1.5 py-1.5 text-base text-red-300 hover:bg-red-500/15 md:flex-none md:px-4 md:text-sm";
 
 // Same colours as EnergyBar, without the pulse or the icon.
 const MINI_FILL: Record<EnergyLevel, string> = { green: "bg-green-500", yellow: "bg-yellow-400", red: "bg-red-500", darkred: "bg-red-800", empty: "" };
@@ -271,7 +271,7 @@ export default function AdminUsers({ adminId }: { adminId: string }) {
                       {tab === "approved" && ` · spent ${formatDollars(r.spent)}`}
                     </p>
                     {tab === "approved" && <div className="my-1.5 text-sm">{energyOf(r)}</div>}
-                    <div className="flex gap-2">{actions(r)}</div>
+                    <div className="flex flex-wrap gap-2">{actions(r)}</div>
                   </li>
                 ))}
               </ul>

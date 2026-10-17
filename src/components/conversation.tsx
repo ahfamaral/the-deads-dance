@@ -68,7 +68,7 @@ export default function Conversation({
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center justify-self-start gap-1.5 rounded-full px-3 py-1.5 text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
+          className="flex items-center justify-self-start gap-1.5 min-h-11 rounded-full px-3 py-1.5 text-base text-neutral-400 sm:text-sm transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
         >
           <svg
             viewBox="0 0 24 24"
@@ -149,7 +149,7 @@ export default function Conversation({
                     <button
                       type="button"
                       onClick={onRetry}
-                      className="rounded-full px-3 py-1 text-rose-100 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-white/40"
+                      className="min-h-11 rounded-full px-3 py-1 text-base text-rose-100 sm:text-sm transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-white/40"
                     >
                       Retry
                     </button>

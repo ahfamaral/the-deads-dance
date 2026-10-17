@@ -59,19 +59,19 @@ export default function ConfirmDialog({
             {message}
           </p>
         </div>
-        {/* On phones the buttons share one row: same height, no wrapping, smaller text. */}
-        <div className="flex justify-end gap-1.5 sm:gap-2">
+        {/* On phones the buttons share one row at 16px (2026-10-17), wrapping only if they must. */}
+        <div className="flex flex-wrap justify-end gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="min-h-11 flex-1 whitespace-nowrap rounded-full px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] sm:flex-none sm:px-4 sm:text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
+            className="min-h-11 flex-1 whitespace-nowrap rounded-full px-1.5 py-1.5 text-base sm:flex-none sm:px-4 sm:text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="min-h-11 flex-1 whitespace-nowrap rounded-full bg-neutral-100 px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] sm:flex-none sm:px-4 sm:text-sm font-medium text-neutral-900 transition-colors hover:bg-white focus-visible:outline focus-visible:outline-white/40"
+            className="min-h-11 flex-1 whitespace-nowrap rounded-full bg-neutral-100 px-1.5 py-1.5 text-base sm:flex-none sm:px-4 sm:text-sm font-medium text-neutral-900 transition-colors hover:bg-white focus-visible:outline focus-visible:outline-white/40"
           >
             {confirmLabel}
           </button>

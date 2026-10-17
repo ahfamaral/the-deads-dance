@@ -62,7 +62,7 @@ export default function ChatInput({
           aria-label="Send"
           onClick={submit}
           disabled={!canSend}
-          className="flex size-9 items-center justify-center rounded-full bg-neutral-100 text-neutral-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-neutral-100"
+          className="relative flex size-9 items-center after:absolute after:-inset-1 justify-center rounded-full bg-neutral-100 text-neutral-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-neutral-100"
         >
           <svg
             viewBox="0 0 24 24"

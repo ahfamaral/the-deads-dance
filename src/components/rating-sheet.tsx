@@ -31,7 +31,7 @@ export async function trySave(
   if (stars === null || !canSend(stars, comment)) return null;
   return onSave({ stars, comment: comment.trim() });
 }
-const BUTTON = "min-h-11 flex-1 whitespace-nowrap rounded-full px-4 py-1.5 text-sm sm:flex-none";
+const BUTTON = "min-h-11 flex-1 whitespace-nowrap rounded-full px-4 py-1.5 text-base sm:flex-none sm:text-sm";
 
 /**
  * Spec §32.5: 1–5 stars and an optional comment for one conversation. A bottom sheet on a phone, a

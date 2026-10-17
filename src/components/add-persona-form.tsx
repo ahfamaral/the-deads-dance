@@ -108,7 +108,7 @@ export default function AddPersonaForm({ onAdded, onCancel, onWorkingChange, onC
                 onAdded(phase.persona);
                 onCreateVoice(phase.persona);
               }}
-              className="min-h-11 rounded-full bg-neutral-100 px-4 py-1.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-white"
+              className="min-h-11 rounded-full bg-neutral-100 px-4 py-1.5 text-base font-medium sm:text-sm text-neutral-900 transition-colors hover:bg-white"
             >
               Create voice
             </button>
@@ -165,14 +165,14 @@ export default function AddPersonaForm({ onAdded, onCancel, onWorkingChange, onC
             type="button"
             onClick={onCancel}
             disabled={working}
-            className="rounded-full px-3 py-1.5 text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground disabled:opacity-40"
+            className="min-h-11 rounded-full px-3 py-1.5 text-base text-neutral-400 sm:text-sm transition-colors hover:bg-white/10 hover:text-foreground disabled:opacity-40"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={working || title.trim() === ""}
-            className="rounded-full bg-neutral-100 px-4 py-1.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-white disabled:opacity-40"
+            className="min-h-11 rounded-full bg-neutral-100 px-4 py-1.5 text-base font-medium sm:text-sm text-neutral-900 transition-colors hover:bg-white disabled:opacity-40"
           >
             Add
           </button>

@@ -31,7 +31,7 @@ import { waitForReply } from "@/lib/wait-for-reply";
 import { useBackHandler } from "@/lib/use-back-handler";
 
 // On phones the buttons share one row: same height, same width, no wrapping, smaller text.
-const END_BAR_BUTTON = "min-h-11 flex-1 whitespace-nowrap rounded-full px-1.5 py-1.5 text-[length:clamp(10px,2.9vw,12px)] sm:flex-none sm:px-4 sm:text-sm";
+const END_BAR_BUTTON = "min-h-11 flex-1 whitespace-nowrap rounded-full px-1.5 py-1.5 text-base sm:flex-none sm:px-4 sm:text-sm";
 const END_BAR_PRIMARY = `${END_BAR_BUTTON} bg-neutral-100 font-medium text-neutral-900 transition-colors hover:bg-white`;
 const END_BAR_SECONDARY = `${END_BAR_BUTTON} border border-white/15 text-neutral-200 transition-colors hover:bg-white/10`;
 
@@ -403,7 +403,7 @@ export default function ChatSession({
           className="flex w-full max-w-3xl flex-wrap items-center justify-between gap-3 rounded-3xl border border-white/10 bg-neutral-900/80 px-5 py-3 text-sm text-neutral-300 shadow-lg shadow-black/40 pointer-coarse:bg-neutral-900/90 pointer-fine:backdrop-blur-md"
         >
           <span>{personaName} has ended the visit.</span>
-          <div className="flex w-full gap-1.5 sm:w-auto sm:gap-2">
+          <div className="flex w-full flex-wrap gap-1.5 sm:w-auto sm:flex-nowrap sm:gap-2">
             {readOnly ? (
               <button type="button" onClick={() => onBack(askRating())} className={END_BAR_PRIMARY}>
                 Back to history

@@ -247,7 +247,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
     // A lighter backdrop than the other panels, so the menu reads as secondary.
     const menuSurface =
       "w-full rounded-3xl border border-white/10 bg-neutral-900/50 px-5 shadow-lg shadow-black/30 pointer-coarse:bg-neutral-900/85 pointer-fine:backdrop-blur-md";
-    const menuButton = `${menuSurface} py-3 text-sm font-medium transition-colors hover:border-white/40 hover:bg-neutral-700/70 hover:text-foreground focus-visible:border-white/40 focus-visible:outline-none`;
+    const menuButton = `${menuSurface} py-3 text-base font-medium sm:text-sm transition-colors hover:border-white/40 hover:bg-neutral-700/70 hover:text-foreground focus-visible:border-white/40 focus-visible:outline-none`;
     return withSheet(
       <div className="flex flex-1 items-center justify-center">
         <nav aria-label="Start" className="flex w-full max-w-xs flex-col gap-3">
@@ -279,7 +279,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
           <div className={`${menuSurface} flex items-center justify-center gap-2 text-[length:clamp(10px,2.9vw,12px)] text-neutral-400`}>
             <span className="min-w-0 truncate" title={email}>{email}</span>
             <span aria-hidden="true">·</span>
-            <SignOutButton className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap px-1 text-neutral-300 underline underline-offset-2 hover:text-foreground" />
+            <SignOutButton className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap px-1 text-base text-neutral-300 sm:text-xs underline underline-offset-2 hover:text-foreground" />
           </div>
         </nav>
       </div>

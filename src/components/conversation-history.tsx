@@ -91,7 +91,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center justify-self-start gap-1.5 rounded-full px-3 py-1.5 text-sm text-neutral-400 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
+            className="flex items-center justify-self-start gap-1.5 min-h-11 rounded-full px-3 py-1.5 text-base text-neutral-400 sm:text-sm transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
           >
             <svg
               viewBox="0 0 24 24"
@@ -173,7 +173,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                         void ensureAccess(); // the dialog isn't a screen change, so it checks here
                       }}
                       aria-label={`Export conversation with ${conversation.personaName}`}
-                      className="w-full whitespace-nowrap rounded-full bg-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-900 transition-[background-color,box-shadow] duration-200 ease-out hover:bg-white hover:shadow-[0_0_16px_rgba(255,255,255,0.35)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60"
+                      className="min-h-11 w-full whitespace-nowrap rounded-full bg-neutral-200 px-3 py-1.5 text-base font-medium sm:min-h-0 sm:text-sm text-neutral-900 transition-[background-color,box-shadow] duration-200 ease-out hover:bg-white hover:shadow-[0_0_16px_rgba(255,255,255,0.35)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60"
                     >
                       Export
                     </button>
@@ -181,7 +181,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                       type="button"
                       onClick={() => void withFull(conversation, onOpen)}
                       aria-label={`Open conversation with ${conversation.personaName}`}
-                      className="w-full whitespace-nowrap rounded-full border border-white/15 px-3 py-1.5 text-sm font-medium text-neutral-200 transition-colors hover:border-white/40 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60"
+                      className="min-h-11 w-full whitespace-nowrap rounded-full border border-white/15 px-3 py-1.5 text-base font-medium sm:min-h-0 sm:text-sm text-neutral-200 transition-colors hover:border-white/40 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/60"
                     >
                       Open
                     </button>
@@ -190,7 +190,7 @@ export default function ConversationHistory({ onBack, onOpen }: ConversationHist
                       type="button"
                       onClick={() => setDeleting(conversation)}
                       aria-label={`Delete conversation with ${conversation.personaName}`}
-                      className="flex w-full items-center justify-center rounded-full border border-white/15 px-3 py-1.5 text-red-500 transition-colors hover:border-red-500/40 hover:bg-red-500/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500/60"
+                      className="flex min-h-11 w-full items-center justify-center rounded-full border border-white/15 px-3 py-1.5 text-red-500 sm:min-h-0 transition-colors hover:border-red-500/40 hover:bg-red-500/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500/60"
                     >
                       {/* size-5 matches the text's 20px line height, so this
                           button is the same height as Export and Open. */}

@@ -1,5 +1,6 @@
 /** Spec §33.4: marks a persona that can be talked to by voice; spec §33.6: a voice conversation in History (label). A drawn speaker with sound waves, like the gear. */
-export default function VoiceIcon({ label = "Voice available" }: { label?: string }) {
+/** `color`: the icon's text colour class; grey by default, green in the persona picker (2026-10-17). */
+export default function VoiceIcon({ label = "Voice available", color = "text-neutral-400" }: { label?: string; color?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -8,7 +9,7 @@ export default function VoiceIcon({ label = "Voice available" }: { label?: strin
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="ml-2 inline-block size-4 align-text-bottom text-neutral-400"
+      className={`ml-2 inline-block size-4 align-text-bottom ${color}`}
       role="img"
       aria-label={label}
     >

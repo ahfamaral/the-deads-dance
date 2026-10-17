@@ -191,7 +191,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                 >
                   <span className={`font-medium text-foreground ${persona.hidden ? "opacity-60" : ""}`}>
                     {persona.name}
-                    {showVoiceIcon && persona.voiceLanguages.length > 0 && <VoiceIcon />}
+                    {showVoiceIcon && persona.voiceLanguages.length > 0 && <VoiceIcon color="text-lime-400" />}
                     {persona.hidden && (
                       <span className="ml-2 rounded-full border border-white/15 px-2 py-0.5 align-middle text-xs font-normal text-neutral-400">Hidden</span>
                     )}

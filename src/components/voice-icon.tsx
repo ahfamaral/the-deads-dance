@@ -9,7 +9,7 @@ export default function VoiceIcon({ label = "Voice available", color = "text-neu
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`ml-2 inline-block size-4 align-text-bottom ${color}`}
+      className={`ml-2 inline-block size-4 align-[-0.15em] ${color}`}
       role="img"
       aria-label={label}
     >

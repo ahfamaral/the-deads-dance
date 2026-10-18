@@ -137,6 +137,8 @@ export default function VoiceStage({ personaName, voiceLanguageName, state, lost
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 pt-8 pb-6">
+      {/* Phones: the name sits here, in full, instead of truncated in the header (2026-10-18). */}
+      <h2 className="mb-5 max-w-full text-center text-lg font-medium text-foreground sm:hidden">{personaName}</h2>
       <VoiceOrb state={state.kind} level={level} />
       <p className="mt-3 text-xs text-neutral-500">An imagined voice · {voiceLanguageName}</p>
       <div role="status" className="mt-5 min-h-9 text-center text-sm text-neutral-300">

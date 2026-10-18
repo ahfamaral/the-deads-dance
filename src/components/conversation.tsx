@@ -87,7 +87,8 @@ export default function Conversation({
           Back
         </button>
         <div className="flex min-w-0 flex-col items-center">
-          <h2 className="min-w-0 max-w-full truncate text-sm font-medium text-foreground">{personaName}</h2>
+          {/* On phones the voice stage shows the name above the orb instead. */}
+          <h2 className={`min-w-0 max-w-full truncate text-sm font-medium text-foreground ${stage ? "max-sm:hidden" : ""}`}>{personaName}</h2>
           {ownerEmail && <p className="max-w-full truncate text-xs text-neutral-400">{ownerEmail}</p>}
         </div>
         {/* The right cell also keeps the name centred (spec §26.5). */}

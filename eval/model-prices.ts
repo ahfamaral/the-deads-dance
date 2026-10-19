@@ -23,11 +23,20 @@ export async function fetchModelPrices(fetchImpl: typeof fetch = fetch): Promise
   return new Map(data.map((m) => [m.id, { prompt: perToken(m.pricing?.prompt), completion: perToken(m.pricing?.completion) }]));
 }
 
+/**
+ * A router such as typesafe/jev-router is listed at "-1": it bills whichever model it picks, so no estimate holds.
+ * Zero counts as not fixed too: an estimate of nothing would pass every limit unchecked.
+ */
+export function isFixedPrice(price: ModelPrice | undefined): price is ModelPrice {
+  return !!price && Number.isFinite(price.prompt) && Number.isFinite(price.completion) && price.prompt > 0 && price.completion > 0;
+}
+
 /** Spec §30.6: what a baseline-sized answer costs on `model`, as a share of the same answer on the reference. */
 export function priceScale(prices: Map<string, ModelPrice>, model: string, reference: string = PRICE_REFERENCE): number {
   const cost = (id: string) => {
     const p = prices.get(id);
     if (!p) throw new Error(`${id} is not on OpenRouter's price list; check the id before spending.`);
+    if (!isFixedPrice(p)) throw new Error(`${id} has no fixed price on OpenRouter; it can only run with a cap on real spend, not on an estimate.`);
     return REFERENCE_TOKENS.input * p.prompt + REFERENCE_TOKENS.output * p.completion;
   };
   return cost(model) / cost(reference);

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { describeModels, fetchModelPrices, PRICE_REFERENCE, priceScale } from "../../eval/model-prices";
+import { describeModels, fetchModelPrices, isFixedPrice, PRICE_REFERENCE, priceScale } from "../../eval/model-prices";
 
 const list = { data: [
   { id: "deepseek/deepseek-v4-pro", pricing: { prompt: "0.00000096", completion: "0.00000191" } },
   { id: "anthropic/claude-haiku-5.5", pricing: { prompt: "0.0000001", completion: "0.0000005" } },
+  { id: "typesafe/jev-router", pricing: { prompt: "-1", completion: "-1" } },
+  { id: "someone/free-model", pricing: { prompt: "0", completion: "0" } },
 ] };
 const fakeFetch = (async () => new Response(JSON.stringify(list))) as typeof fetch;
 
@@ -23,6 +25,14 @@ describe("model prices (spec §30.6)", () => {
   });
   it("refuses a model OpenRouter doesn't list, rather than guess", async () => {
     expect(() => priceScale(new Map(), "nobody/model")).toThrow(/not on OpenRouter's price list/);
+  });
+  it("refuses a variable or zero price, which would give a negative or empty estimate", async () => {
+    const prices = await fetchModelPrices(fakeFetch);
+    expect(() => priceScale(prices, "typesafe/jev-router")).toThrow(/no fixed price/);
+    expect(() => priceScale(prices, "someone/free-model")).toThrow(/no fixed price/);
+    expect(isFixedPrice(prices.get("anthropic/claude-haiku-5.5"))).toBe(true);
+    expect(isFixedPrice({ prompt: Number.NaN, completion: 1 })).toBe(false);
+    expect(isFixedPrice(undefined)).toBe(false);
   });
   it("names each model and its scale for the dry run", () => {
     expect(describeModels([{ setupId: "m-haiku", model: "anthropic/claude-haiku-5.5", scale: 0.21 }]))

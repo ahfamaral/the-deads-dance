@@ -68,7 +68,7 @@ export function modelId(role: ModelRole): string {
 
 export function chatModel(
   role: ModelRole,
-  options: { timeout?: number; maxRetries?: number; reasoningEffort?: ReasoningEffort; callbacks?: BaseCallbackHandler[]; model?: string } = {},
+  options: { timeout?: number; maxRetries?: number; reasoningEffort?: ReasoningEffort; callbacks?: BaseCallbackHandler[]; model?: string; maxTokens?: number } = {},
 ): ChatOpenAI {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -85,7 +85,8 @@ export function chatModel(
         ? { effort: "none" }
         : undefined;
   // Spec §28.2: a reasoning budget gets its own room on top of the reply's.
-  const maxTokens = role === "agent" ? AGENT_MAX_TOKENS + (reasoning && "max_tokens" in reasoning ? reasoning.max_tokens : 0) : undefined;
+  // The classifier probe caps a variable-price router's calls with options.maxTokens.
+  const maxTokens = options.maxTokens ?? (role === "agent" ? AGENT_MAX_TOKENS + (reasoning && "max_tokens" in reasoning ? reasoning.max_tokens : 0) : undefined);
   return new ChatOpenAI({
     // Spec §30.6: the eval's model round runs other persona models with the role's own settings.
     model: options.model ?? modelId(role),

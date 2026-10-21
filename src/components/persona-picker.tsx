@@ -119,7 +119,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
         {/* Space for the add button is always reserved, so configure mode
             never shifts the list; the button only fades in and out. */}
         {canManage && (
-          <div className="mb-2 flex h-8">
+          <div className="mb-2 flex h-11 sm:h-8">
             <button
               type="button"
               inert={!configuring}

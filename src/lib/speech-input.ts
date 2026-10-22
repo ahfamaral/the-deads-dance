@@ -40,6 +40,28 @@ export function createRecognition(lang: string): RecognitionLike | null {
   return recognition;
 }
 
+/**
+ * The transcript of a continuous session's results. Desktop Chrome lists each phrase once; Android Chrome
+ * adds a result with the whole sentence so far for every new word ("I'm", "I'm fine", "I'm fine today"…)
+ * and keeps the earlier ones, so a result that starts with the previous one's words replaces it.
+ */
+function joinResults(transcripts: string[]): string {
+  const words = (text: string) => text.toLowerCase().split(/\s+/).filter(Boolean);
+  const phrases: string[] = [];
+  for (const transcript of transcripts) {
+    const text = transcript.trim();
+    if (!text) continue;
+    const previous = phrases.at(-1);
+    const next = words(text);
+    if (previous !== undefined && words(previous).every((word, i) => next[i] === word)) {
+      phrases[phrases.length - 1] = text;
+    } else {
+      phrases.push(text);
+    }
+  }
+  return phrases.join(" ");
+}
+
 type Timers = { setTimeout: (fn: () => void, ms: number) => unknown; clearTimeout: (id: unknown) => void };
 
 /**
@@ -136,7 +158,7 @@ export function createSpeechTurn(opts: {
   recognition.interimResults = true;
   recognition.onresult = (event) => {
     // Continuous mode lists every phrase of the session, so the transcript is rebuilt from all of them.
-    transcript = Array.from(event.results, (r) => r[0]?.transcript ?? "").join(" ");
+    transcript = joinResults(Array.from(event.results, (r) => r[0]?.transcript ?? ""));
     if (draining) return;
     markSpeaking();
     restartSilence();

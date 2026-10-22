@@ -268,6 +268,35 @@ describe("createSpeechTurn (spec §33.4)", () => {
     await expect(turn.done).resolves.toEqual({ text: "w1 w2 w3 w4 w5 w6 w7 w8 w9" });
   });
 
+  it("joins the phrases of a session, as desktop Chrome lists them", async () => {
+    const rec = fakeRecognition();
+    const turn = createSpeechTurn({ recognition: rec });
+    rec.say("I'm fine today");
+    rec.say("what is the sun");
+    turn.stop();
+    await expect(turn.done).resolves.toEqual({ text: "I'm fine today what is the sun" });
+  });
+
+  it("keeps one copy when Android Chrome repeats the whole sentence so far in each new result", async () => {
+    const rec = fakeRecognition();
+    const turn = createSpeechTurn({ recognition: rec });
+    // As seen on an Android phone (2026-10-22): each result adds a word, and the earlier ones stay listed.
+    const growing = [
+      "I'm", "I'm fine", "I'm fine", "I'm fine", "I'm fine today", "I'm fine today sunny",
+      "I'm fine today sunny", "I'm fine today sunny", "I'm fine today sunny", "I'm fine today sunny what",
+      "I'm fine today sunny what is", "I'm fine today sunny what is the", "I'm fine today sunny what is the sun",
+      "I'm fine today sunny what is the Sun", "I'm fine today sunny what is the Sun Do",
+      "I'm fine today sunny what is the Sun Do You", "I'm fine today sunny what is the Sun Do You Know",
+      "I'm fine today sunny what is the Sun Do You Know It",
+    ];
+    for (let n = 1; n <= growing.length; n++) {
+      const results = growing.slice(0, n).map((t) => Object.assign([{ transcript: t }], { isFinal: true }));
+      rec.onresult?.({ resultIndex: n - 1, results });
+    }
+    turn.stop();
+    await expect(turn.done).resolves.toEqual({ text: "I'm fine today sunny what is the Sun Do You Know It" });
+  });
+
   it("the browser ending the session on its own sends what was heard", async () => {
     const rec = fakeRecognition();
     const turn = createSpeechTurn({ recognition: rec });

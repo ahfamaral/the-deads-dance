@@ -57,7 +57,7 @@ describe("factCheckClaim", () => {
       status: "ok",
       verdict: "supported",
       explanation: "Passage 2 says so.",
-      passage: { chunk_id: 2, section_heading: "Parity experiment", content: "chunk 1" },
+      passage: { chunk_id: 2, section_heading: "Parity experiment", content: "chunk 1", language: "en" },
     });
   });
 

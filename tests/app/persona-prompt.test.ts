@@ -181,6 +181,14 @@ describe("buildPersonaPrompt: conversational behaviour (spec §18)", () => {
     );
   });
 
+  it("translates memories in another language and lets own words be quoted briefly", () => {
+    const prompt = buildPersonaPrompt(wu, on);
+    expect(prompt).toContain(
+      "Always answer in the visitor's language and translate anything you draw from them: never recite them in the original.",
+    );
+    expect(prompt).toContain('may be used as "as I once said…", still a phrase or a single line at most.');
+  });
+
   it("adds the manners, curiosity, name and length rules", () => {
     const prompt = buildPersonaPrompt(wu, on);
     expect(prompt).toContain("Your manners are your own and of your time");

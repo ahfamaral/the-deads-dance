@@ -6,6 +6,7 @@ import {
   historicalContextOf,
   MIXED_SOURCES_NOTE,
   passagesById,
+  passagesIn,
   problemOf,
   queriesOf,
   recalledOf,
@@ -176,5 +177,13 @@ describe("recalled accounts without a year", () => {
     expect(recalledYear(1980)).toBe("1980");
     expect(recalledYear(-405)).toBe("405 BC");
     expect(recalledYear(null)).toBeNull();
+  });
+});
+
+describe("passagesIn with a language", () => {
+  it("keeps passages stored before they carried a language, and ones that carry it", () => {
+    const old = { chunk_id: 1, section_heading: "Early life", content: "Born." };
+    const pt = { chunk_id: 2, section_heading: "Vida", content: "Nasceu.", language: "pt" };
+    expect(passagesIn({ status: "ok", passages: [old, pt] })).toEqual([old, pt]);
   });
 });

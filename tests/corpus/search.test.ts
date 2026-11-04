@@ -26,6 +26,27 @@ describe("searchChunks", () => {
     expect(hits[0].score).toBeGreaterThan(hits[1].score);
   });
 
+  it("returns the language of each chunk's source, English when it has none", async () => {
+    const id = await insertPersona({ slug: "vargas" });
+    const { rows: round } = await getPool().query(
+      `INSERT INTO ingest_rounds (persona_slug, number, status, started_by) VALUES ('vargas', 1, 'done', 'test') RETURNING id`,
+    );
+    const { rows: src } = await getPool().query(
+      `INSERT INTO persona_sources (persona_id, kind, language, site, title, url, passages, round_id)
+       VALUES ($1, 'article', 'pt', 'wikipedia', 'Getúlio Vargas', 'https://pt.wikipedia.org/wiki/G', 1, $2) RETURNING id`,
+      [id, round[0].id],
+    );
+    const query = vectorFor("language");
+    await insertChunks(id, [query, near(query, 1)]);
+    await getPool().query(`UPDATE chunks SET source_id = $1 WHERE persona_id = $2 AND ordinal = 0`, [src[0].id, id]);
+
+    const hits = await searchChunks(getPool(), { personaSlug: "vargas", embedding: query, topK: 5 });
+    expect(hits.map((h) => [h.content, h.language])).toEqual([
+      ["chunk 0", "pt"],
+      ["chunk 1", "en"],
+    ]);
+  });
+
   it("ignores personas that are not ready", async () => {
     const half = await insertPersona({ slug: "half", status: "ingesting" });
     await insertChunks(half, [vectorFor("a")]);

@@ -1,7 +1,10 @@
 import type { Pool } from "pg";
 import { toVectorLiteral } from "./db";
 
-export type SearchHit = { chunkId: number; sectionHeading: string; content: string; score: number };
+export type SearchHit = { chunkId: number; sectionHeading: string; content: string; score: number;
+  /** Spec §34.6: ISO 639-1 of the source the passage came from; 'en' when it has none. */
+  language: string;
+};
 
 /**
  * Nearest chunks for one persona by cosine similarity. The shared building block the
@@ -18,9 +21,11 @@ export async function searchChunks(
     // small persona could get fewer than topK rows. Iterative scans keep going until the
     // filter is satisfied (pgvector >= 0.8).
     await client.query("SET LOCAL hnsw.iterative_scan = relaxed_order");
-    const { rows } = await client.query<{ id: number; section_heading: string; content: string; score: number }>(
-      `SELECT c.id, c.section_heading, c.content, 1 - (c.embedding <=> $1::vector) AS score
+    const { rows } = await client.query<{ id: number; section_heading: string; content: string; score: number; language: string }>(
+      `SELECT c.id, c.section_heading, c.content, 1 - (c.embedding <=> $1::vector) AS score,
+              COALESCE(s.language, 'en') AS language
        FROM chunks c JOIN personas p ON p.id = c.persona_id
+       LEFT JOIN persona_sources s ON s.id = c.source_id
        WHERE p.slug = $2 AND p.status = 'ready'
        ORDER BY c.embedding <=> $1::vector
        LIMIT $3`,
@@ -29,7 +34,10 @@ export async function searchChunks(
     await client.query("COMMIT");
     // relaxed_order may return rows slightly out of order; re-sort exactly.
     return rows
-      .map((r) => ({ chunkId: r.id, sectionHeading: r.section_heading, content: r.content, score: Number(r.score) }))
+      .map((r) => ({ chunkId: r.id, sectionHeading: r.section_heading, content: r.content,
+        score: Number(r.score),
+        language: r.language,
+      }))
       .sort((a, b) => b.score - a.score);
   } catch (err) {
     await client.query("ROLLBACK");

@@ -3,7 +3,11 @@
  * produces these, and the app, which renders them. Types only.
  */
 
-export type Passage = { chunk_id: number; section_heading: string; content: string };
+/**
+ * language: ISO 639-1 of the source the passage came from (spec §34.6). Absent means "en":
+ * results stored before passages carried a language stay valid.
+ */
+export type Passage = { chunk_id: number; section_heading: string; content: string; language?: string };
 
 /** A typed failure: tools return this instead of throwing (spec §9). */
 export type Unavailable = { status: "unavailable"; reason: string };

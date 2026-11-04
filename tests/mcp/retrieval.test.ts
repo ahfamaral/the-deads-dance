@@ -25,7 +25,7 @@ import {
   vectorFor,
 } from "../helpers/fake-embeddings";
 
-const hit = (chunkId: number): SearchHit => ({ chunkId, sectionHeading: `S${chunkId}`, content: `c${chunkId}`, score: 0 });
+const hit = (chunkId: number): SearchHit => ({ chunkId, sectionHeading: `S${chunkId}`, content: `c${chunkId}`, score: 0, language: "en" });
 
 function deps(overrides: Partial<RetrievalDeps> = {}): RetrievalDeps {
   return { pool: getPool(), embeddings: new TableEmbeddings({}), expandQuery: async () => [], ...overrides };
@@ -116,6 +116,7 @@ describe("retrieve", () => {
       chunk_id: expect.any(Number),
       section_heading: "Parity experiment",
       content: expect.stringMatching(/^chunk /),
+      language: "en",
     });
   });
 

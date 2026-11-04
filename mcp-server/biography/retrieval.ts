@@ -127,7 +127,9 @@ export async function retrieveScored(
     result: {
       status: "ok",
       queries,
-      passages: top.map((h) => ({ chunk_id: h.chunkId, section_heading: h.sectionHeading, content: h.content })),
+      passages: top.map((h) => ({ chunk_id: h.chunkId, section_heading: h.sectionHeading, content: h.content,
+        language: h.language,
+      })),
     },
     topScore,
   };

@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import type { WikiSite } from "./wikimedia";
+import { wikiHost, type WikiSite } from "./wikimedia";
 
 type Queryable = Pick<Pool, "query">;
 
@@ -36,7 +36,7 @@ export class RoundBusyError extends Error {
   }
 }
 
-export const sourceKey = (r: SourceRef): string => `${r.kind}:${r.site}:${r.language}:${r.title}`;
+export { sourceKey } from "./plan-changes";
 
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
@@ -150,8 +150,43 @@ export async function addItem(db: Queryable, roundId: number, item: Omit<RoundIt
   return rows[0].id;
 }
 
+/** Spec §34.6: an item's label and passages once its source is chunked. */
+export async function updateItem(db: Queryable, itemId: number, item: { label: string; passages: number | null }): Promise<void> {
+  await db.query(`UPDATE ingest_round_items SET label = $2, passages = $3 WHERE id = $1`, [itemId, item.label, item.passages]);
+}
+
 export async function setItemCost(db: Queryable, itemId: number, cost: number): Promise<void> {
   await db.query(`UPDATE ingest_round_items SET cost = $2 WHERE id = $1`, [itemId, cost]);
+}
+
+/** Spec §34.2: a round recorded after the fact (the CLI ingest), already done. */
+export async function insertFinishedRound(db: Queryable, slug: string, startedBy: string): Promise<number> {
+  const { rows } = await db.query(
+    `INSERT INTO ingest_rounds (persona_slug, number, status, started_by, finished_at) VALUES ($1, ${NEXT_NUMBER}, 'done', $2, now()) RETURNING id`,
+    [slug, startedBy],
+  );
+  return rows[0].id;
+}
+
+/** A page's address on its site, e.g. https://pt.wikipedia.org/wiki/Get%C3%BAlio_Vargas. */
+export function sourceUrl(ref: Pick<SourceRef, "site" | "language" | "title">): string {
+  const path = encodeURIComponent(ref.title.replaceAll(" ", "_")).replaceAll("%2F", "/").replaceAll("%3A", ":");
+  return `https://${wikiHost(ref)}/wiki/${path}`;
+}
+
+/** Spec §34.2: stores one ingested source; its chunks point at the returned id. */
+export async function insertSource(
+  db: Queryable,
+  personaId: number,
+  roundId: number,
+  source: SourceRef & { revid: number | null; passages: number },
+): Promise<number> {
+  const { rows } = await db.query(
+    `INSERT INTO persona_sources (persona_id, kind, language, site, title, revid, url, passages, round_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+    [personaId, source.kind, source.language, source.site, source.title, source.revid, sourceUrl(source), source.passages, roundId],
+  );
+  return rows[0].id;
 }
 
 export async function finishRound(db: Queryable, roundId: number, status: "done" | "failed"): Promise<void> {

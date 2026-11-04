@@ -1,10 +1,11 @@
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { chunkArticle, CHUNK_OVERLAP, CHUNK_SIZE, DROPPED_SECTIONS, type Chunk } from "./chunking";
 import { toVectorLiteral } from "./db";
 import { assertDimensions, EMBEDDING_MODEL } from "./embeddings";
 import { sameLanguages, type PersonaLanguage } from "./languages";
 import { findPersona, type PersonaOrigin, type PersonaRow } from "./personas";
+import { addItem, insertFinishedRound, insertSource } from "./rounds";
 import { CURATED_PROFILE_STAMP, profileStamp, sameProfile, type CharacterProfile, type GenerateProfile } from "./profile";
 import type { Article } from "./wikipedia";
 
@@ -129,7 +130,7 @@ const profileJson = (profile: CharacterProfile | null) => (profile === null ? nu
  * Inserts the row as 'ingesting', or takes over a failed or stale one. The unique slug
  * makes this the lock against two concurrent ingests of the same persona.
  */
-async function claim(pool: Pool, entry: PersonaEntry): Promise<number> {
+export async function claim(pool: Pool, entry: PersonaEntry): Promise<number> {
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO personas (slug, display_name, wikipedia_title, origin, status, updated_at)
      VALUES ($1, $2, $3, $4, 'ingesting', now())
@@ -143,7 +144,26 @@ async function claim(pool: Pool, entry: PersonaEntry): Promise<number> {
   return rows[0].id;
 }
 
-/** Swaps the persona's text and chunks in one transaction, so readers see old or new, never half. */
+/** Spec §34.2: stores one source's chunks, each pointing at the source. */
+export async function insertChunks(db: PoolClient, personaId: number, sourceId: number, chunks: Chunk[], vectors: number[][]) {
+  await db.query(
+    `INSERT INTO chunks (persona_id, source_id, section_heading, ordinal, content, embedding)
+     SELECT $1, $2, h, o, c, e::vector FROM unnest($3::text[], $4::int[], $5::text[], $6::text[]) AS t(h, o, c, e)`,
+    [
+      personaId,
+      sourceId,
+      chunks.map((c) => c.sectionHeading),
+      chunks.map((c) => c.ordinal),
+      chunks.map((c) => c.content),
+      vectors.map(toVectorLiteral),
+    ],
+  );
+}
+
+/**
+ * Swaps the persona's text and chunks in one transaction, so readers see old or new, never half.
+ * Spec §34.2: the persona's sources become one English article, recorded as a finished round.
+ */
 async function save(
   pool: Pool,
   id: number,
@@ -179,18 +199,16 @@ async function save(
         languagesJson(languages),
       ],
     );
+    // Deleting the sources drops their chunks; the second delete catches any left without a source.
+    await client.query("DELETE FROM persona_sources WHERE persona_id = $1", [id]);
     await client.query("DELETE FROM chunks WHERE persona_id = $1", [id]);
-    await client.query(
-      `INSERT INTO chunks (persona_id, section_heading, ordinal, content, embedding)
-       SELECT $1, h, o, c, e::vector FROM unnest($2::text[], $3::int[], $4::text[], $5::text[]) AS t(h, o, c, e)`,
-      [
-        id,
-        chunks.map((c) => c.sectionHeading),
-        chunks.map((c) => c.ordinal),
-        chunks.map((c) => c.content),
-        vectors.map(toVectorLiteral),
-      ],
-    );
+    const roundId = await insertFinishedRound(client, entry.slug, "ingest");
+    const passages = chunks.length;
+    await addItem(client, roundId, { action: "added", label: `English article, ${passages} passages`, passages, estimated: null, cost: null });
+    const sourceId = await insertSource(client, id, roundId, {
+      kind: "article", site: "wikipedia", language: "en", title: entry.wikipediaTitle, revid: article.revid || null, passages,
+    });
+    await insertChunks(client, id, sourceId, chunks, vectors);
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK");

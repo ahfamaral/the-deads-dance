@@ -346,4 +346,28 @@ describe("ingestPersona", () => {
     expect(result.outcome).toBe("updated");
     expect(result.persona.storedLanguages).toEqual(pinned);
   });
+
+  it("leaves one English article source, recorded as a finished round, and points every chunk at it (spec §34.2)", async () => {
+    await ingestPersona(entry, deps());
+    await getPool().query("UPDATE personas SET build_stamp = 'old' WHERE slug = $1", [entry.slug]);
+    const result = await ingestPersona(entry, deps());
+
+    const { rows: sources } = await getPool().query(
+      "SELECT id, kind, language, site, title, revid, url, passages, round_id FROM persona_sources WHERE persona_id = $1",
+      [result.persona.id],
+    );
+    expect(sources).toEqual([
+      expect.objectContaining({
+        kind: "article", language: "en", site: "wikipedia", title: "Chien-Shiung Wu", revid: "1374160316",
+        url: "https://en.wikipedia.org/wiki/Chien-Shiung_Wu", passages: result.chunkCount,
+      }),
+    ]);
+    const { rows: unlinked } = await getPool().query(
+      "SELECT count(*)::int AS n FROM chunks WHERE persona_id = $1 AND source_id IS DISTINCT FROM $2",
+      [result.persona.id, sources[0].id],
+    );
+    expect(unlinked[0].n).toBe(0);
+    const { rows: rounds } = await getPool().query("SELECT status FROM ingest_rounds WHERE id = $1", [sources[0].round_id]);
+    expect(rounds[0].status).toBe("done");
+  });
 });

@@ -21,7 +21,7 @@ export default async function AddPersonaPage({ searchParams }: PageProps<"/admin
     // Spec §24.9: the database is down. Say so instead of crashing the page.
     console.error(err);
     return main(
-      <p role="alert" className="m-auto max-w-[280px] text-center text-sm text-neutral-400">
+      <p role="alert" className="m-auto max-w-[280px] text-center text-base text-neutral-400 sm:text-sm">
         Service unavailable. {describeDbError(err) ?? "Try again in a minute."}
       </p>,
     );

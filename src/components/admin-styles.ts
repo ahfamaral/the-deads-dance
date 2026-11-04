@@ -14,9 +14,9 @@ export const BTN_PRIMARY =
   "inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full bg-neutral-100 px-4 text-base font-semibold text-neutral-900 hover:bg-white disabled:opacity-40 sm:text-sm";
 export const ROW = "flex justify-between gap-3 border-t border-white/10 py-2 first:border-t-0";
 export const ALERT = "text-base text-red-300 sm:text-sm";
-export const TAG = "text-sm text-lime-400";
+export const TAG = "text-base text-lime-400 sm:text-sm";
 /** "In use now", "new": what changes against the memory today. */
-export const TAG_CHANGE = "text-sm text-amber-300";
+export const TAG_CHANGE = "text-base text-amber-300 sm:text-sm";
 
 /** Spec §34.5: every estimate shown is prefixed "about" (buttons excepted). */
 export const about = (micros: number) => `about ${formatDollars(micros)}`;

@@ -98,3 +98,8 @@ export function linkedConversation(search: string): string | null {
   const id = new URLSearchParams(search).get("open");
   return id && z.uuid().safeParse(id).success ? id : null;
 }
+
+/** Spec §34.7: `/?manage=1` (Back from a persona's profile) opens the persona picker in configure mode. */
+export function linkedManage(search: string): boolean {
+  return new URLSearchParams(search).get("manage") === "1";
+}

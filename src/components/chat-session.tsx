@@ -41,6 +41,8 @@ type ChatSessionProps = {
   personaName: string;
   /** Spec §27: the owner's email when the admin opens someone else's conversation. */
   ownerEmail?: string;
+  /** Spec §34.7: admin only; the header name links to the persona's profile page. */
+  profileHref?: string;
   initialMessages: Message[];
   /** Spec §22: reopened from history, so it can't be continued. */
   readOnly?: boolean;
@@ -75,6 +77,7 @@ export default function ChatSession({
   personaId,
   personaName,
   ownerEmail,
+  profileHref,
   initialMessages,
   readOnly = false,
   onBack,
@@ -360,6 +363,7 @@ export default function ChatSession({
       <Conversation
         personaName={personaName}
         ownerEmail={ownerEmail}
+        profileHref={profileHref}
         messages={messages}
         pending={turn?.message}
         turnError={turnError}

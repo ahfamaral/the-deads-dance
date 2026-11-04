@@ -1,7 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import AddPersonaForm from "@/components/add-persona-form";
 import PersonaPicker from "@/components/persona-picker";
 import BaseVoicePicker from "@/components/base-voice-picker";
 import VoicePanel, { closeAfter, VoiceForm } from "@/components/voice-panel";
@@ -100,28 +99,11 @@ describe("VoiceForm", () => {
   });
 });
 
-describe("add-persona report", () => {
-  it("offers to create a voice", () => {
-    const html = renderToStaticMarkup(
-      createElement(AddPersonaForm, { onAdded: noop, onCancel: noop, onWorkingChange: noop, onCreateVoice: noop, initialPhase: {
-        kind: "report",
-        persona: { id: "wu", name: "Chien-Shiung Wu" } as Persona,
-        report: { rows: [{ label: "x", tokens: 1, cost: 0, estimated: false }], total: { tokens: 1, cost: 0 } },
-      } as never }),
-    );
-    expect(html).toContain("Create a voice for Chien-Shiung Wu?");
-    expect(html).toContain("Create voice");
-    expect(html).toContain("Not now");
-    expect(html.indexOf("Not now")).toBeLessThan(html.indexOf("Create voice"));
-    expect(html).not.toContain(">Done<"); // the two answers are the only way out
-  });
-});
-
 describe("PersonaPicker voice button", () => {
   it("renders a Voice button per persona in config mode markup", () => {
     const p = { id: "wu", name: "Chien-Shiung Wu", description: "", lifespan: "", origin: "curated", hidden: false, voiceLanguages: [], voiceStatus: null } as Persona;
     const html = renderToStaticMarkup(
-      createElement(PersonaPicker, { personas: [p], canManage: true, notice: null, onConfirm: noop, onDelete: noop, onToggleHidden: noop, onEditVoice: noop, onAdd: noop, onBack: noop, meter: null, onDismissBanner: noop }),
+      createElement(PersonaPicker, { personas: [p], canManage: true, notice: null, onConfirm: noop, onDelete: noop, onToggleHidden: noop, onEditVoice: noop, onBack: noop, meter: null, onDismissBanner: noop }),
     );
     expect(html).toContain('aria-label="Voice for Chien-Shiung Wu"');
   });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import AddPersonaForm from "@/components/add-persona-form";
+import Link from "next/link";
 import GearIcon from "@/components/gear-icon";
 import VoiceIcon from "@/components/voice-icon";
 import EnergyBar from "@/components/energy-bar";
@@ -10,6 +10,7 @@ import SpendBadge from "@/components/spend-badge";
 import { dueBanner, type BannerThreshold } from "@/lib/energy";
 import { isOutOfEnergy, type Meter } from "@/lib/meter";
 import type { Persona } from "@/lib/personas";
+import { profileHref } from "@/lib/profile-links";
 import { speechSupported } from "@/lib/speech-input";
 import { useScrollFade } from "@/lib/use-scroll-fade";
 
@@ -23,8 +24,9 @@ type PersonaPickerProps = {
   onToggleHidden: (persona: Persona) => void;
   /** Spec §33.3: open the admin's Voice panel for a persona. */
   onEditVoice: (persona: Persona) => void;
-  onAdd: (persona: Persona) => void;
   onBack: () => void;
+  /** Spec §34.7: `/?manage=1` (Back from a profile) opens the picker already in configure mode. */
+  initialConfiguring?: boolean;
   /** Spec §26.5: the tester's energy, or the admin's spend today; null if it couldn't be read. */
   meter: Meter | null;
   onDismissBanner: (threshold: BannerThreshold) => void;
@@ -37,16 +39,13 @@ const subscribeNoop = () => () => {};
 /**
  * Lets the user choose who to talk to. Selecting a persona reveals a
  * "Talk to" button on its row, which confirms the choice. The gear toggles a
- * configure mode that swaps "Talk to" for a hide and a delete button and shows an
- * "add persona" button under the gear, which opens a form that adds a
- * persona from a Wikipedia title. Built-in personas show a disabled trash icon.
- * While a persona is being added, every other button in the panel is disabled.
+ * configure mode that swaps "Talk to" for a hide and a delete button, links each name to its
+ * profile page and shows an "add persona" link under the gear (spec §34.7). Built-in personas
+ * show a disabled trash icon.
  */
-export default function PersonaPicker({ personas, canManage, notice, onConfirm, onDelete, onToggleHidden, onEditVoice, onAdd, onBack, meter, onDismissBanner, voiceSupported }: PersonaPickerProps) {
+export default function PersonaPicker({ personas, canManage, notice, onConfirm, onDelete, onToggleHidden, onEditVoice, onBack, initialConfiguring = false, meter, onDismissBanner, voiceSupported }: PersonaPickerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [configuring, setConfiguring] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [configuring, setConfiguring] = useState(initialConfiguring);
   // Spec §33.4: false until mounted, so the server markup never has the voice icon.
   const speechOk = useSyncExternalStore(subscribeNoop, speechSupported, () => false);
   const showVoiceIcon = voiceSupported ?? speechOk;
@@ -57,12 +56,11 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
   function toggleConfiguring() {
     setConfiguring((value) => !value);
     setSelectedId(null);
-    setAdding(false);
   }
 
   return (
     // min-h-0 and max-h-full keep the panel within the screen; only the list
-    // scrolls, so Back, the heading, the gear and the add form stay in view.
+    // scrolls, so Back, the heading, the gear and the add button stay in view.
     <div className="flex min-h-0 flex-1 items-center justify-center">
       <section
         aria-labelledby="persona-picker-heading"
@@ -72,8 +70,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
         <button
           type="button"
           onClick={onBack}
-          disabled={busy}
-          className="flex items-center gap-1.5 min-h-11 rounded-full px-3 py-1.5 text-base text-neutral-400 sm:text-sm transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
+          className="flex items-center gap-1.5 min-h-11 rounded-full px-3 py-1.5 text-base text-neutral-400 sm:text-sm transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40"
         >
           <svg
             viewBox="0 0 24 24"
@@ -105,8 +102,7 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
               aria-label="Configure personas"
               aria-pressed={configuring}
               onClick={toggleConfiguring}
-              disabled={busy}
-              className={`relative flex size-8 shrink-0 items-center after:absolute after:-inset-1.5 justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40 ${configuring
+              className={`relative flex size-8 shrink-0 items-center after:absolute after:-inset-1.5 justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-white/40 ${configuring
                   ? "bg-white/10 text-foreground"
                   : "text-neutral-400 hover:bg-white/10 hover:text-foreground"
                 }`}
@@ -120,13 +116,11 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
             never shifts the list; the button only fades in and out. */}
         {canManage && (
           <div className="mb-2 flex h-11 sm:h-8">
-            <button
-              type="button"
+            <Link
+              href="/admin/personas/new"
               inert={!configuring}
               aria-label="Add persona"
-              onClick={() => setAdding(true)}
-              disabled={busy}
-              className={`flex h-11 w-full items-center self-stretch sm:h-8 justify-center rounded-2xl border border-white/5 bg-white/5 text-neutral-300 transition-[background-color,border-color,color,opacity,translate] duration-300 ease-out hover:border-white/20 hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 disabled:pointer-events-none motion-reduce:transition-none ${!configuring ? "-translate-y-1 opacity-0" : busy ? "opacity-40" : "translate-y-0 opacity-100"
+              className={`flex h-11 w-full items-center self-stretch sm:h-8 justify-center rounded-2xl border border-white/5 bg-white/5 text-neutral-300 transition-[background-color,border-color,color,opacity,translate] duration-300 ease-out hover:border-white/20 hover:bg-white/10 hover:text-foreground focus-visible:outline focus-visible:outline-white/40 motion-reduce:transition-none ${!configuring ? "-translate-y-1 opacity-0" : "translate-y-0 opacity-100"
                 }`}
             >
               <svg
@@ -140,19 +134,8 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
               >
                 <path d="M12 5v14M5 12h14" />
               </svg>
-            </button>
+            </Link>
           </div>
-        )}
-        {configuring && adding && (
-          <AddPersonaForm
-            onAdded={(persona) => {
-              onAdd(persona);
-              setAdding(false);
-            }}
-            onCreateVoice={onEditVoice}
-            onCancel={() => setAdding(false)}
-            onWorkingChange={setBusy}
-          />
         )}
         {notice && (
           <p role="status" className="px-1 pb-2 text-sm text-amber-400">
@@ -183,21 +166,31 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                   }`}
                 onClick={() => !configuring && setSelectedId(persona.id)}
               >
-                <button
-                  type="button"
-                  aria-pressed={selected}
-                  disabled={configuring}
-                  className="flex min-w-0 flex-1 flex-col items-start gap-0.5 self-stretch rounded-2xl px-4 py-3 text-left outline-none"
-                >
-                  <span className={`font-medium text-foreground ${persona.hidden ? "opacity-60" : ""}`}>
-                    {persona.name}
-                    {showVoiceIcon && persona.voiceLanguages.length > 0 && <VoiceIcon color="text-lime-400" />}
-                    {persona.hidden && (
-                      <span className="ml-2 rounded-full border border-white/15 px-2 py-0.5 align-middle text-xs font-normal text-neutral-400">Hidden</span>
-                    )}
-                  </span>
-                  <span className={`text-sm text-neutral-500 ${persona.hidden ? "opacity-60" : ""}`}>{persona.description}</span>
-                </button>
+                {(() => {
+                  const text = (
+                    <>
+                      <span className={`font-medium text-foreground ${persona.hidden ? "opacity-60" : ""}`}>
+                        {persona.name}
+                        {showVoiceIcon && persona.voiceLanguages.length > 0 && <VoiceIcon color="text-lime-400" />}
+                        {persona.hidden && (
+                          <span className="ml-2 rounded-full border border-white/15 px-2 py-0.5 align-middle text-xs font-normal text-neutral-400">Hidden</span>
+                        )}
+                      </span>
+                      <span className={`text-sm text-neutral-500 ${persona.hidden ? "opacity-60" : ""}`}>{persona.description}</span>
+                    </>
+                  );
+                  const rowClass = "flex min-h-11 min-w-0 flex-1 flex-col items-start gap-0.5 self-stretch rounded-2xl px-4 py-3 text-left outline-none";
+                  // Spec §34.7: in configure mode the admin's row opens the persona's profile.
+                  return configuring && canManage ? (
+                    <Link href={profileHref(persona.id, { kind: "manage" })} className={`${rowClass} hover:bg-white/5 focus-visible:outline focus-visible:outline-white/40`}>
+                      {text}
+                    </Link>
+                  ) : (
+                    <button type="button" aria-pressed={selected} disabled={configuring} className={rowClass}>
+                      {text}
+                    </button>
+                  );
+                })()}
                 {/* Fixed-width slot reserved on every row, so selecting a persona
                     never reflows its text. "Talk to" and the delete button share
                     the slot, stacked in one grid cell, and cross-fade within it. */}
@@ -236,7 +229,6 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                       aria-pressed={persona.hidden}
                       aria-label={persona.hidden ? `Show ${persona.name}` : `Hide ${persona.name}`}
                       title={persona.hidden ? "Hidden from testers. Show again" : "Hide from testers"}
-                      disabled={busy}
                       onClick={() => onToggleHidden(persona)}
                       className="flex size-11 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
                     >
@@ -263,7 +255,6 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                       type="button"
                       aria-label={`Voice for ${persona.name}`}
                       title="Design the voice"
-                      disabled={busy}
                       onClick={() => onEditVoice(persona)}
                       className="flex size-11 items-center justify-center rounded-full text-neutral-300 transition-colors hover:bg-white/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40 disabled:pointer-events-none disabled:opacity-40"
                     >
@@ -279,7 +270,6 @@ export default function PersonaPicker({ personas, canManage, notice, onConfirm, 
                     aria-disabled={!removable || undefined}
                     aria-label={removable ? `Delete ${persona.name}` : `${persona.name} is built in and can't be removed`}
                     title={removable ? undefined : "Built-in personas can't be removed"}
-                    disabled={busy}
                     onClick={() => removable && onDelete(persona)}
                     className={`flex size-11 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 ${removable
                         ? "text-red-500 hover:bg-red-500/15 focus-visible:outline-red-500/60"

@@ -65,3 +65,13 @@ describe("the voice marker (spec §33.6)", () => {
     expect(render()).not.toContain("Voice conversation");
   });
 });
+
+// Spec §34.7: the admin's header name opens the persona's profile; testers see plain text.
+describe("the header name link", () => {
+  const render = (profileHref?: string) =>
+    renderToStaticMarkup(createElement(Conversation, { personaName: "Wu", messages: [], onBack: () => {}, profileHref }));
+  it("is a link only with profileHref", () => {
+    expect(render("/admin/personas/wu?from=manage")).toContain('href="/admin/personas/wu?from=manage"');
+    expect(render()).not.toContain("<a ");
+  });
+});

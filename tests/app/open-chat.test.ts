@@ -114,3 +114,13 @@ describe("the heard reply (spec §33.5 restore)", () => {
     expect(unheardReply([], null)).toBeNull();
   });
 });
+
+describe("linkedManage (spec §34.7)", () => {
+  it("is true only for manage=1", async () => {
+    const { linkedManage } = await import("@/lib/open-chat");
+    expect(linkedManage("?manage=1")).toBe(true);
+    expect(linkedManage("?open=3f1c0a52-7d0e-4a62-9c5b-2d6f0b8e9a11")).toBe(false);
+    expect(linkedManage("?manage=0")).toBe(false);
+    expect(linkedManage("")).toBe(false);
+  });
+});

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import PersonaMessage from "@/components/persona-message";
 import { voiceMarker } from "@/lib/conversation-types";
@@ -8,6 +9,8 @@ type ConversationProps = {
   personaName: string;
   /** Spec §27: whose conversation this is, when the admin opens someone else's. */
   ownerEmail?: string;
+  /** Spec §34.7: admin only; makes the header name a link to the persona's profile page. */
+  profileHref?: string;
   messages: Message[];
   onBack: () => void;
   /** The persona reply that is still streaming. */
@@ -39,6 +42,7 @@ type ConversationProps = {
 export default function Conversation({
   personaName,
   ownerEmail,
+  profileHref,
   messages,
   onBack,
   pending,
@@ -88,7 +92,15 @@ export default function Conversation({
         </button>
         <div className="flex min-w-0 flex-col items-center">
           {/* On phones the voice stage shows the name above the orb instead. */}
-          <h2 className={`min-w-0 max-w-full truncate text-sm font-medium text-foreground ${stage ? "max-sm:hidden" : ""}`}>{personaName}</h2>
+          <h2 className={`min-w-0 max-w-full truncate text-sm font-medium text-foreground ${stage ? "max-sm:hidden" : ""}`}>
+            {profileHref ? (
+              <Link href={profileHref} className="inline-flex min-h-11 items-center underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-white/40">
+                {personaName}
+              </Link>
+            ) : (
+              personaName
+            )}
+          </h2>
           {ownerEmail && <p className="max-w-full truncate text-xs text-neutral-400">{ownerEmail}</p>}
         </div>
         {/* The right cell also keeps the name centred (spec §26.5). */}

@@ -8,17 +8,17 @@ const persona = (id: string, name: string, hidden: boolean, voiceLanguages: stri
   id, name, description: "", lifespan: "", origin: "curated", hidden, voiceLanguages, voiceStatus: null,
 });
 const noop = () => {};
-const render = (personas: Persona[], canManage = true, voiceSupported?: boolean) =>
+const render = (personas: Persona[], canManage = true, voiceSupported?: boolean, initialConfiguring = false) =>
   renderToStaticMarkup(
     createElement(PersonaPicker, {
       personas,
       voiceSupported,
+      initialConfiguring,
       canManage,
       notice: null,
       onConfirm: noop,
       onDelete: noop,
       onToggleHidden: noop, onEditVoice: noop,
-      onAdd: noop,
       onBack: noop,
       meter: null,
       onDismissBanner: noop,
@@ -63,5 +63,23 @@ describe("PersonaPicker voice icon", () => {
     const wu = [persona("wu", "Chien-Shiung Wu", false, ["en"])];
     expect(render(wu, true, false)).not.toContain("Voice available");
     expect(render(wu)).not.toContain("Voice available");
+  });
+});
+
+// Spec §34.7: configure mode links to the profile pages.
+describe("PersonaPicker entry points (spec §34.7)", () => {
+  const wu = [persona("chien-shiung-wu", "Chien-Shiung Wu", false)];
+  it("links names to profiles and + to the new-persona page in configure mode", () => {
+    const html = render(wu, true, false, true);
+    expect(html).toContain('href="/admin/personas/chien-shiung-wu?from=manage"');
+    expect(html).toContain('href="/admin/personas/new"');
+    expect(html).toContain('aria-pressed="true"');
+  });
+  it("has neither link in normal mode, nor for a tester", () => {
+    for (const html of [render(wu), render(wu, false, false, true)]) {
+      expect(html).not.toContain("/admin/personas/chien-shiung-wu");
+    }
+    expect(render(wu, false, false, true)).not.toContain("/admin/personas/new");
+    expect(render(wu, true, false, false)).not.toContain('href="/admin/personas/chien-shiung-wu');
   });
 });

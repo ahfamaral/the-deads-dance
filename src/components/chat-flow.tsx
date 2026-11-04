@@ -13,7 +13,7 @@ import type { ChatStreamEvent, Message, Spend } from "@/lib/chat-types";
 import type { StoredConversation } from "@/lib/conversation-types";
 import { fetchConversation, sendFeedback } from "@/lib/conversations-api";
 import type { Feedback } from "@/lib/feedback";
-import { canRestoreLive, linkedConversation, readOpenChat, writeOpenChat } from "@/lib/open-chat";
+import { canRestoreLive, linkedConversation, linkedManage, readOpenChat, writeOpenChat } from "@/lib/open-chat";
 import type { BannerThreshold } from "@/lib/energy";
 import { applyMeterEvent, markBannerRead, parseMeter, type Meter } from "@/lib/meter";
 import { ensureAccess } from "@/lib/ensure-access";
@@ -23,6 +23,7 @@ import { speechSupported } from "@/lib/speech-input";
 import { requestHidden } from "@/lib/persona-hide-api";
 import { useBackHandler } from "@/lib/use-back-handler";
 import type { Persona } from "@/lib/personas";
+import { profileHref } from "@/lib/profile-links";
 import type { AccessBody } from "@/lib/server/access-info";
 
 type ChatStep = {
@@ -65,6 +66,8 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
   // Held here rather than in the picker so changes survive a trip to the chat and back.
   const [personas, setPersonas] = useState<Persona[]>(initialPersonas);
   // Spec §33.3: the persona whose Voice panel is open (admin).
+  // Spec §34.7: set by `/?manage=1`, so the picker opens in configure mode once.
+  const [manageLanding, setManageLanding] = useState(false);
   const [voicePanelFor, setVoicePanelFor] = useState<Persona | null>(null);
   const [pickerNotice, setPickerNotice] = useState<string | null>(
     personasUnavailable ? "Personas unavailable: database not reachable." : null,
@@ -128,11 +131,18 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
   // Spec §25.5: the open chat survives a reload of its own tab. sessionStorage is only readable
   // after hydration, so this is an effect; it runs once.
   useEffect(() => {
+    // Spec §34.7: Back from a profile lands on the picker in configure mode. replaceState, not a push.
+    if (isAdmin && linkedManage(window.location.search)) {
+      window.history.replaceState(null, "", "/");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the URL is only readable after hydration
+      setManageLanding(true);
+      setStep({ name: "select" });
+      return;
+    }
     // Spec §32.7: /?open=<id> from the admin's Feedback list opens that conversation read-only.
     const linked = linkedConversation(window.location.search);
     if (linked) {
       window.history.replaceState(null, "", "/");
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- flips to the loading screen before the async fetch
       setStep({ name: "restoring" });
       void fetchConversation(linked).then((result) => {
         if (result.kind === "found") setStep(recordStep(result.conversation));
@@ -327,11 +337,14 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
         canManage={isAdmin}
         notice={pickerNotice}
         onConfirm={begin}
-        onBack={() => setStep({ name: "start" })}
+        onBack={() => {
+          setManageLanding(false);
+          setStep({ name: "start" });
+        }}
+        initialConfiguring={manageLanding}
         onDelete={removePersona}
         onToggleHidden={(persona) => void toggleHidden(persona)}
         onEditVoice={setVoicePanelFor}
-        onAdd={(persona) => setPersonas((current) => [...current, persona])}
         meter={meter}
         onDismissBanner={dismissBanner}
       />
@@ -346,6 +359,7 @@ export default function ChatFlow({ initialPersonas, personasUnavailable, email, 
       personaId={step.personaId}
       personaName={step.personaName}
       ownerEmail={step.ownerEmail}
+      profileHref={isAdmin ? profileHref(step.personaId, { kind: "open", conversationId: step.conversationId }) : undefined}
       initialMessages={step.messages}
       readOnly={step.backTo === "history"}
       onBack={(askRating) => {

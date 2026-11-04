@@ -281,6 +281,9 @@ CREATE TABLE IF NOT EXISTS ingest_rounds (
 -- At most one running round per persona: the reingest lock.
 CREATE UNIQUE INDEX IF NOT EXISTS ingest_rounds_one_running ON ingest_rounds (persona_slug) WHERE status = 'running';
 
+-- At most one draft per persona, so a double click on "compare" can't make two.
+CREATE UNIQUE INDEX IF NOT EXISTS ingest_rounds_one_draft ON ingest_rounds (persona_slug) WHERE status = 'draft';
+
 -- Spec §34.2: what a round did, item by item, for the cost history. Costs are micro-dollars.
 CREATE TABLE IF NOT EXISTS ingest_round_items (
   id            serial PRIMARY KEY,
@@ -309,6 +312,7 @@ CREATE TABLE IF NOT EXISTS persona_sources (
 
 -- Spec §34.2: where each passage came from. Existing rows are English Wikipedia main-article passages.
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS source_id int REFERENCES persona_sources (id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS chunks_source_id ON chunks (source_id);
 ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS ingest_item_id int REFERENCES ingest_round_items (id) ON DELETE SET NULL;
 
 -- Spec §34.4: the profile page's highlights; editable by the admin.

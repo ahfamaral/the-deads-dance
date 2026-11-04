@@ -106,6 +106,21 @@ describe("rounds (spec §34.2)", () => {
     await startRound(pool(), "other", "admin");
   });
 
+  it("concurrent starts give one running round and one RoundBusyError", async () => {
+    const results = await Promise.allSettled([startRound(pool(), "wu", "a"), startRound(pool(), "wu", "b")]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toBeInstanceOf(RoundBusyError);
+    expect((await listRounds(pool(), "wu")).filter((r) => r.status === "running")).toHaveLength(1);
+  });
+
+  it("concurrent draftRound calls share one draft", async () => {
+    const ids = await Promise.all([draftRound(pool(), "wu", "a"), draftRound(pool(), "wu", "a"), draftRound(pool(), "wu", "a")]);
+    expect(new Set(ids).size).toBe(1);
+    expect(await listRounds(pool(), "wu")).toHaveLength(1);
+  });
+
   it("marks a running round older than 10 minutes failed and starts a new one", async () => {
     const first = await startRound(pool(), "wu", "admin");
     await pool().query(`UPDATE ingest_rounds SET started_at = now() - interval '11 minutes' WHERE id = $1`, [first]);

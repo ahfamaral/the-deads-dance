@@ -84,15 +84,22 @@ function toRound(r: Record<string, unknown>): Round {
 
 const NEXT_NUMBER = `(SELECT coalesce(max(number), 0) + 1 FROM ingest_rounds WHERE persona_slug = $1)`;
 
-/** Spec §34.2: the persona's draft round (a comparison not yet ingested), created if none. */
+/**
+ * Spec §34.2: the persona's draft round (a comparison not yet ingested), created if none. Race-safe:
+ * a partial unique index allows one draft, and a lost race (on the draft or the round number) re-reads.
+ */
 export async function draftRound(db: Queryable, slug: string, adminId: string): Promise<number> {
-  const found = await db.query(`SELECT id FROM ingest_rounds WHERE persona_slug = $1 AND status = 'draft'`, [slug]);
-  if (found.rows[0]) return found.rows[0].id;
-  const { rows } = await db.query(
-    `INSERT INTO ingest_rounds (persona_slug, number, status, started_by) VALUES ($1, ${NEXT_NUMBER}, 'draft', $2) RETURNING id`,
-    [slug, adminId],
-  );
-  return rows[0].id;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const found = await db.query(`SELECT id FROM ingest_rounds WHERE persona_slug = $1 AND status = 'draft'`, [slug]);
+    if (found.rows[0]) return found.rows[0].id;
+    const { rows } = await db.query(
+      `INSERT INTO ingest_rounds (persona_slug, number, status, started_by) VALUES ($1, ${NEXT_NUMBER}, 'draft', $2)
+       ON CONFLICT DO NOTHING RETURNING id`,
+      [slug, adminId],
+    );
+    if (rows[0]) return rows[0].id;
+  }
+  throw new Error("Could not create a draft round.");
 }
 
 /** Spec §34.3: keeps the scores on the round and the compare cost as a `compared` item. */
@@ -129,7 +136,8 @@ export async function startRound(db: Queryable, slug: string, adminId: string): 
     );
     return rows[0].id;
   } catch (err) {
-    if ((err as { constraint?: string }).constraint === "ingest_rounds_one_running") throw new RoundBusyError();
+    // Two concurrent starts can collide on the round number before the running index; either way, one lost.
+    if ((err as { code?: string; table?: string }).code === "23505" && (err as { table?: string }).table === "ingest_rounds") throw new RoundBusyError();
     throw err;
   }
 }

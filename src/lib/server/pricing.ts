@@ -1,13 +1,11 @@
 import { z } from "zod";
 import type { ModelCallRecord } from "@corpus/cost-ledger";
 import { EMBEDDING_MICROS_PER_TOKEN, EMBEDDING_MODEL, OPENROUTER_BASE_URL } from "@corpus/embeddings";
+import type { Price } from "@corpus/estimate";
 import { TTS_MODEL } from "./tts";
 
 /** A call ready to store: always a cost, and where it came from (spec §26.3). */
 export type ResolvedCall = Omit<ModelCallRecord, "cost"> & { cost: number; costSource: "reported" | "estimated" };
-
-/** Micro-dollars per token. */
-type Price = { prompt: number; completion: number };
 
 /** Prices the list doesn't carry: OpenRouter's default /models omits embeddings and the TTS model (spec §33.5: $0.50 / $9.00 per 1M tokens). */
 const FIXED_PRICES = new Map<string, Price>([
@@ -50,7 +48,12 @@ export function pricingWith(fetchImpl: typeof fetch = fetch, now: () => number =
     return cache.prices;
   }
 
-  return async function resolveCosts(calls: readonly ModelCallRecord[]): Promise<ResolvedCall[]> {
+  /** Spec §34.5: a model's price for estimates, or null when neither the fixed prices nor the list know it. */
+  async function priceOf(model: string): Promise<Price | null> {
+    return FIXED_PRICES.get(model) ?? (await prices()).get(model) ?? null;
+  }
+
+  async function resolveCosts(calls: readonly ModelCallRecord[]): Promise<ResolvedCall[]> {
     const needList = calls.some((c) => c.cost === null && !FIXED_PRICES.has(c.model));
     const table = needList ? await prices() : new Map<string, Price>();
     return calls.map((c): ResolvedCall => {
@@ -63,7 +66,11 @@ export function pricingWith(fetchImpl: typeof fetch = fetch, now: () => number =
       const cost = price ? Math.round(c.inputTokens * price.prompt + c.outputTokens * price.completion) : 0;
       return { ...c, cost, costSource: "estimated" };
     });
-  };
+  }
+
+  return { resolveCosts, priceOf };
 }
 
-export const resolveCosts = pricingWith();
+const shared = pricingWith();
+export const resolveCosts = shared.resolveCosts;
+export const priceOf = shared.priceOf;

@@ -69,7 +69,7 @@ describe("backfill of existing personas (spec §34.2)", () => {
     expect(rounds).toHaveLength(1);
     expect(rounds[0]).toMatchObject({ number: 1, status: "done", comparison: null });
     expect(rounds[0].items).toEqual([
-      { id: expect.any(Number), action: "added", label: "English article, 3 passages", passages: 3, estimated: null, cost: 350 },
+      { id: expect.any(Number), action: "added", label: "English article, 3 passages", passages: 3, estimated: null, cost: 350, costEstimated: false },
     ]);
     const { rows: p } = await pool().query("SELECT languages_source FROM personas WHERE id = $1", [id]);
     expect(p[0].languages_source).toBe("wikidata");
@@ -139,8 +139,23 @@ describe("rounds (spec §34.2)", () => {
     expect(started).toBe(draft);
     const [round] = await listRounds(pool(), "wu");
     expect(round).toMatchObject({ id: draft, number: 1, status: "running", comparison: [SCORE] });
-    expect(round.items).toEqual([{ id: expect.any(Number), action: "compared", label: "Compared editions", passages: null, estimated: 1_000, cost: 400 }]);
+    expect(round.items).toEqual([
+      { id: expect.any(Number), action: "compared", label: "Compared editions", passages: null, estimated: 1_000, cost: 400, costEstimated: false },
+    ]);
     expect((await runningRound(pool(), "wu"))?.id).toBe(draft);
+  });
+
+  it("flags an item whose cost holds an estimated call (spec §34.2, final review Minor 1)", async () => {
+    const user = await insertUser("admin@example.com");
+    const r1 = await startRound(pool(), "wu", "admin");
+    const embedded = await addItem(pool(), r1, { action: "added", label: "English article, 3 passages", passages: 3, estimated: 10, cost: 30 });
+    const scored = await addItem(pool(), r1, { action: "compared", label: "Compared editions", passages: null, estimated: 10, cost: 20 });
+    const call = { model: "m", inputTokens: 1, outputTokens: 0, generationId: null, latencyMs: 1 };
+    await recordCalls(pool(), { userId: user, calls: [{ ...call, role: "embedding", cost: 30, costSource: "estimated" }], charge: false, ingestItemId: embedded });
+    await recordCalls(pool(), { userId: user, calls: [{ ...call, role: "ingest", cost: 20, costSource: "reported" }], charge: false, ingestItemId: scored });
+
+    const [round] = await listRounds(pool(), "wu");
+    expect(round.items.map((i) => [i.label, i.costEstimated])).toEqual([["English article, 3 passages", true], ["Compared editions", false]]);
   });
 
   it("lists items in insertion order and rounds newest first; sets an item's cost", async () => {

@@ -291,7 +291,7 @@ describe("POST /api/admin/personas/compare (spec §34.3)", () => {
 
     const [draft] = await listRounds(pool(), "wu");
     expect(draft).toMatchObject({ number: 1, status: "draft", comparison: body.scores });
-    expect(draft.items).toEqual([{ id: expect.any(Number), action: "compared", label: "Compared editions", passages: null, estimated: expect.any(Number), cost: 500 }]);
+    expect(draft.items).toEqual([{ id: expect.any(Number), action: "compared", label: "Compared editions", passages: null, estimated: expect.any(Number), cost: 500, costEstimated: false }]);
     const { rows } = await pool().query(`SELECT user_id, persona_slug, ingest_item_id FROM model_calls`);
     expect(rows).toEqual([
       { user_id: adminId, persona_slug: "wu", ingest_item_id: draft.items[0].id },
@@ -316,6 +316,54 @@ describe("POST /api/admin/personas/compare (spec §34.3)", () => {
   it("answers 404 for an unknown slug, before any model call", async () => {
     expect((await compare({ slug: "nobody" })).status).toBe(404);
     expect(scored).toBe(0);
+  });
+
+  it("still records the paid scoring calls when saving the comparison fails (final review, Important 2)", async () => {
+    const real = pool();
+    // Saving the scores fails; everything else goes to the real pool.
+    fakes.admin = {
+      ...(fakes.admin as object),
+      pool: new Proxy(real, {
+        get(target, prop) {
+          if (prop === "query") {
+            return (sql: unknown, ...rest: unknown[]) => {
+              if (typeof sql === "string" && sql.includes("SET comparison")) return Promise.reject(new Error("connection lost"));
+              return (target.query as (...a: unknown[]) => unknown).call(target, sql, ...rest);
+            };
+          }
+          const value = Reflect.get(target, prop);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }),
+    };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await compare({ slug: "wu" });
+
+    expect(res.status).toBe(503);
+    expect(scored).toBe(2);
+    const { rows } = await pool().query(`SELECT user_id, persona_slug, cost::int AS cost, ingest_item_id FROM model_calls ORDER BY id`);
+    expect(rows).toEqual([
+      { user_id: adminId, persona_slug: "wu", cost: 250, ingest_item_id: null },
+      { user_id: adminId, persona_slug: "wu", cost: 250, ingest_item_id: null },
+    ]);
+    errors.mockRestore();
+  });
+
+  it("refuses a body that isn't JSON with 415, before any model call", async () => {
+    const res = await compareRoute.POST(
+      new Request("http://localhost/api/admin/personas/compare", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", cookie },
+        body: JSON.stringify({ slug: "wu" }),
+      }),
+    );
+    expect(res.status).toBe(415);
+    expect(scored).toBe(0);
+  });
+
+  it("allows the function limit a comparison of four editions needs", () => {
+    expect(compareRoute.maxDuration).toBe(300);
   });
 });
 

@@ -6,6 +6,7 @@ import {
   listMentions,
   listQuotes,
   listWritings,
+  mentionNames,
   nameVariants,
   paragraphsNaming,
 } from "../../corpus/extras";
@@ -94,6 +95,20 @@ describe("nameVariants and linkScore", () => {
     const text = "Paris é bela. Paris.\n== Vida ==\nParis e Roma. Roma.";
     expect(linkScore(text, "Paris")).toBe(3 + 3);
     expect(linkScore(text, "Roma")).toBe(2);
+  });
+});
+
+describe("mentionNames (spec §34.5)", () => {
+  const links: Sitelink[] = [
+    { site: "wikipedia", language: "en", title: "Alberto Santos-Dumont", badges: [] },
+    { site: "wikiquote", language: "pt", title: "Alberto Santos Dumont", badges: [] },
+    { site: "wikipedia", language: "pt", title: "Santos Dumont", badges: [] },
+  ];
+
+  it("adds that language's Wikipedia title to the persona's names, once", () => {
+    expect(mentionNames(["Alberto Santos-Dumont"], links, "pt")).toEqual(["Alberto Santos-Dumont", "Santos Dumont"]);
+    expect(mentionNames(["Alberto Santos-Dumont"], links, "en")).toEqual(["Alberto Santos-Dumont"]);
+    expect(mentionNames(["Alberto Santos-Dumont"], links, "fr")).toEqual(["Alberto Santos-Dumont"]);
   });
 });
 

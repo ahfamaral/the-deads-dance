@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import IngestionHistory from "@/components/ingestion-history";
 import PersonaProfile from "@/components/persona-profile";
 import type { PersonaProfileDto, RoundDto } from "@/lib/persona-profile";
 
@@ -11,7 +12,7 @@ vi.mock("next/link", async () => {
 });
 
 const ID = "8f14e45f-ceea-467f-a0e6-2b8a2a6b1c11";
-const item = (over: Partial<RoundDto["items"][number]> = {}) => ({ id: 1, action: "added" as const, label: "Portuguese article", passages: 212, estimated: 4000, cost: 4000, ...over });
+const item = (over: Partial<RoundDto["items"][number]> = {}) => ({ id: 1, action: "added" as const, label: "Portuguese article, 212 passages", passages: 212, estimated: 4000, cost: 4000, costEstimated: false, ...over });
 const round = (over: Partial<RoundDto> = {}): RoundDto => ({
   id: 2, number: 2, status: "done", note: null, startedAt: "2026-10-22T09:00:00.000Z", finishedAt: "2026-10-22T09:02:00.000Z", cost: 16000, items: [item()], ...over,
 });
@@ -68,6 +69,32 @@ describe("PersonaProfile (spec §34.4)", () => {
     expect(html).toContain("$0.016");
     expect(html).toContain("$0.004");
     expect(html).toContain("cost not recorded");
+  });
+
+  it("marks an estimated cost with about, on the item, its round and the total (final review, Minor 1)", () => {
+    const estimated = round({ items: [item({ costEstimated: true }), item({ id: 3, action: "compared", label: "Compared editions", passages: null, cost: 500 })] });
+    const html = renderToStaticMarkup(createElement(IngestionHistory, { rounds: [estimated, round({ id: 1, number: 1 })], spent: 20_500 }));
+    expect(html).toContain("about $0.004");
+    expect(html).toContain("about $0.016");
+    expect(html).toContain("Spent on this memory so far: about $0.021");
+    expect(html).not.toContain("about $0.0005");
+    const exact = renderToStaticMarkup(createElement(IngestionHistory, { rounds: [round()], spent: 16_000 }));
+    expect(exact).not.toContain("about");
+  });
+
+  it("shows the passage count once: on its own line only when the label lacks it (final review, Minor 2)", () => {
+    const items = [
+      item(),
+      item({ id: 3, label: "Real quotes, 22 (replaced English)", passages: 22 }),
+      item({ id: 4, label: "Mentions: Fluminense Football Club", passages: 1 }),
+      item({ id: 5, label: "Mentions: Página apagada had nothing to add", passages: 0 }),
+    ];
+    const html = renderToStaticMarkup(createElement(IngestionHistory, { rounds: [round({ items })], spent: 0 }));
+    expect(html.split("212 passages")).toHaveLength(2);
+    expect(html).not.toContain("22 passages");
+    expect(html).toContain("Mentions: Fluminense Football Club<span");
+    expect(html).toContain(">1 passage</span>");
+    expect(html).not.toContain("0 passages");
   });
 
   it("shows the draft note and the running note", () => {

@@ -63,6 +63,16 @@ export function nameVariants(names: string[]): string[] {
   return [...variants];
 }
 
+/**
+ * Spec §34.5: the names a mention in this language is found by: the persona's names plus that
+ * language's Wikipedia title ("Santos Dumont" on pt). The candidate list and the round share it,
+ * so a previewed paragraph is the one ingested.
+ */
+export function mentionNames(names: string[], sitelinks: Sitelink[], language: string): string[] {
+  const edition = sitelinks.find((l) => l.site === "wikipedia" && l.language === language);
+  return [...new Set([...names, ...(edition ? [edition.title] : [])])];
+}
+
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

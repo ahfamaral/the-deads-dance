@@ -314,6 +314,8 @@ CREATE TABLE IF NOT EXISTS persona_sources (
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS source_id int REFERENCES persona_sources (id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS chunks_source_id ON chunks (source_id);
 ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS ingest_item_id int REFERENCES ingest_round_items (id) ON DELETE SET NULL;
+-- The profile page asks, per item, whether any of its calls' costs is an estimate.
+CREATE INDEX IF NOT EXISTS model_calls_ingest_item_id ON model_calls (ingest_item_id) WHERE ingest_item_id IS NOT NULL;
 
 -- Spec §34.4: the profile page's highlights; editable by the admin.
 ALTER TABLE personas ADD COLUMN IF NOT EXISTS highlights text;

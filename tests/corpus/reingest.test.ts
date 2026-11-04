@@ -10,7 +10,7 @@ import {
   MAX_ROUND_CHARS, planChanges, runRound, type RoundDeps, type RoundProgress, type RoundTarget, type SourcePlan,
 } from "../../corpus/reingest";
 import { listRounds, listSources, startRound, type SourceRef, type StoredSource } from "../../corpus/rounds";
-import { WikipediaError, type Article, type WikiRef, type WikimediaClient } from "../../corpus/wikimedia";
+import { WikipediaError, type Article, type Sitelink, type WikiRef, type WikimediaClient } from "../../corpus/wikimedia";
 import { article, paragraph } from "../fixtures/articles";
 import { FakeEmbeddings } from "../helpers/fake-embeddings";
 import { resetDb } from "../helpers/db";
@@ -75,6 +75,14 @@ const QUOTES: SourceRef = { kind: "quotes", site: "wikiquote", language: "en", t
 const MENTION: SourceRef = { kind: "mention", site: "wikipedia", language: "pt", title: "Universidade de Columbia" };
 const LINKED: SourceRef = { kind: "linked", site: "wikipedia", language: "pt", title: "Projeto Manhattan" };
 
+/** A pt page that names Wu only by her pt Wikipedia title. */
+const PT_ONLY_MENTION: SourceRef = { kind: "mention", site: "wikipedia", language: "pt", title: "Paridade" };
+const PT_ONLY_TEXT = ["A paridade é uma simetria.", "", "Wu Chien-Shiung mostrou em 1956 que a paridade não se conserva."].join("\n");
+const SITELINKS: Sitelink[] = [
+  { site: "wikipedia", language: "en", title: EN.title, badges: [] },
+  { site: "wikipedia", language: "pt", title: PT.title, badges: [] },
+];
+
 const pageKey = (ref: WikiRef, title: string) => `${ref.site}:${ref.language}:${title}`;
 const PAGES: Record<string, Article> = {
   [pageKey(EN, EN.title)]: article(),
@@ -82,9 +90,10 @@ const PAGES: Record<string, Article> = {
   [pageKey(QUOTES, QUOTES.title)]: { title: QUOTES.title, revid: 66, qid: null, text: QUOTES_TEXT },
   [pageKey(MENTION, MENTION.title)]: { title: MENTION.title, revid: 77, qid: null, text: MENTION_TEXT },
   [pageKey(LINKED, LINKED.title)]: { title: LINKED.title, revid: 88, qid: null, text: `O Projeto Manhattan. ${paragraph("Projeto", 20)}` },
+  [pageKey(PT_ONLY_MENTION, PT_ONLY_MENTION.title)]: { title: PT_ONLY_MENTION.title, revid: 99, qid: null, text: PT_ONLY_TEXT },
 };
 
-/** Only `extract` is used by a round; `fail(n)` makes the n-th fetch throw. */
+/** A round uses `extract`, and `sitelinks` for mention names; `fail(n)` makes the n-th fetch throw. */
 function fakeClient(pages: Record<string, Article> = PAGES, fail?: { call: number; error: Error }) {
   const extract = vi.fn(async (ref: WikiRef, title: string): Promise<Article> => {
     if (fail && extract.mock.calls.length === fail.call) throw fail.error;
@@ -95,10 +104,11 @@ function fakeClient(pages: Record<string, Article> = PAGES, fail?: { call: numbe
   const unused = async () => {
     throw new Error("not used by a round");
   };
+  const sitelinks = vi.fn(async (_qid: string) => SITELINKS);
   const client: WikimediaClient = {
-    extract, getJson: unused, sitelinks: unused, links: unused, backlinks: unused, search: unused, pageLengths: unused,
+    extract, getJson: unused, sitelinks, links: unused, backlinks: unused, search: unused, pageLengths: unused,
   };
-  return { client, extract };
+  return { client, extract, sitelinks };
 }
 
 function roundDeps(client: WikimediaClient, options: { embeddings?: EmbeddingsInterface; languages?: PersonaLanguage[] } = {}) {
@@ -319,6 +329,78 @@ describe("runRound (spec §34.6)", () => {
     expect(chunks.filter((c) => c.source_id === sources[1].id).map((c) => [c.section_heading, c.content])).toEqual([
       ["Universidade de Columbia", "Em 1956, Chien-Shiung Wu fez em Columbia a experiência que mostrou a violação da paridade."],
     ]);
+  });
+
+  it("finds a mention by that language's Wikipedia title, as the candidate list does (final review, Important 1)", async () => {
+    const wu = await seedWu();
+    const { client, sitelinks } = fakeClient();
+    const d = roundDeps(client);
+
+    await runRound(existing(wu), plan({ extras: [extra(PT_ONLY_MENTION), extra(MENTION)] }), "admin-1", d.deps);
+
+    expect(sitelinks).toHaveBeenCalledTimes(1);
+    expect(sitelinks).toHaveBeenCalledWith("Q450317");
+    const [round] = await listRounds(pool(), wu.slug);
+    expect(round.items.map((i) => i.label)).toContain("Mentions: Paridade");
+    const { sources, chunks } = await memory(wu.id);
+    const stored = sources.find((s) => s.title === "Paridade")!;
+    expect(stored.passages).toBe(1);
+    expect(chunks.filter((c) => c.source_id === stored.id).map((c) => c.content)).toEqual([
+      "Wu Chien-Shiung mostrou em 1956 que a paridade não se conserva.",
+    ]);
+  });
+
+  it("looks up no sitelinks when the round adds no mention", async () => {
+    const wu = await seedWu();
+    const { client, sitelinks } = fakeClient();
+
+    await runRound(existing(wu), plan({ extras: [extra(QUOTES)] }), "admin-1", roundDeps(client).deps);
+
+    expect(sitelinks).not.toHaveBeenCalled();
+  });
+
+  it("fails before any paid call when the sitelinks lookup is unreachable", async () => {
+    const wu = await seedWu();
+    const before = await memory(wu.id);
+    const { client, sitelinks } = fakeClient();
+    sitelinks.mockRejectedValueOnce(new WikipediaError("unreachable", "www.wikidata.org is rate-limiting; try again in a few minutes."));
+    const d = roundDeps(client);
+
+    await expect(runRound(existing(wu), plan({ article: PT, extras: [extra(MENTION)] }), "admin-1", d.deps)).rejects.toMatchObject({
+      code: "unreachable",
+    });
+    expect(d.fake.calls).toBe(0);
+    expect(d.onItemCalls).not.toHaveBeenCalled();
+    expect(await memory(wu.id)).toEqual(before);
+  });
+
+  it("keeps a committed round done when reading the result after the swap fails (final review, Minor 6)", async () => {
+    const wu = await seedWu();
+    const real = pool();
+    // The count after the swap fails; everything else goes to the real pool.
+    const flaky = new Proxy(real, {
+      get(target, prop) {
+        if (prop === "query") {
+          return (sql: unknown, ...rest: unknown[]) => {
+            if (typeof sql === "string" && sql.includes("count(*)::int AS n FROM chunks")) return Promise.reject(new Error("connection lost"));
+            return (target.query as (...a: unknown[]) => unknown).call(target, sql, ...rest);
+          };
+        }
+        const value = Reflect.get(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const { client } = fakeClient();
+    const d = roundDeps(client);
+
+    await expect(runRound(existing(wu), plan({ article: PT }), "admin-1", { ...d.deps, pool: flaky })).rejects.toThrow("connection lost");
+
+    const [round] = await listRounds(pool(), wu.slug);
+    expect(round.status).toBe("done");
+    expect(round.finishedAt).not.toBeNull();
+    const replaced = round.items.find((i) => i.action === "replaced")!;
+    expect(replaced.cost).toBe(d.costs.get(replaced.id));
+    expect((await personaColumns(wu.id)).wikipedia_title).toBe(PT.title);
   });
 
   it("removes an unticked extra with its passages", async () => {

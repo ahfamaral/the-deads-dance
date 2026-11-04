@@ -5,7 +5,7 @@ import { describeDbError, getPool } from "@corpus/db";
 import { editionScorer, listEditions, type ScoreFn } from "@corpus/editions";
 import { EMBEDDING_MODEL, EmbeddingDimensionError, embeddingModel } from "@corpus/embeddings";
 import { comparisonEstimate, embeddingEstimate, redraftEstimate, type Price } from "@corpus/estimate";
-import { listLinked, listMentions, listQuotes, listWritings, type Candidate } from "@corpus/extras";
+import { listLinked, listMentions, listQuotes, listWritings, mentionNames, type Candidate } from "@corpus/extras";
 import { highlightsDrafter } from "@corpus/highlights";
 import { IngestError, type PersonaEntry } from "@corpus/ingest";
 import { FALLBACK_LANGUAGES, type PersonaLanguage } from "@corpus/languages";
@@ -255,7 +255,7 @@ export async function listCandidates(
   const priced = (c: Candidate) => ({ ...c, estimated: embeddingEstimate(c.chars) });
 
   if (kind === "mention") {
-    const names = [...new Set([...target.names, ...(edition ? [edition.title] : [])])];
+    const names = mentionNames(target.names, sitelinks, language);
     const ref = { site: "wikipedia", language } as const;
     const { items, total } = await listMentions(client, ref, edition?.title ?? target.names[0], names, offset, CANDIDATE_PAGE);
     return { items: items.map(priced), total };

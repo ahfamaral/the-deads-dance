@@ -16,7 +16,16 @@ export type EditionScore = { language: string; title: string; words: number; bad
 export type RoundStatus = "draft" | "running" | "done" | "failed";
 export type ItemAction = "compared" | "added" | "replaced" | "removed" | "kept" | "redrafted";
 /** Costs and estimates are micro-dollars; null where not recorded. */
-export type RoundItem = { id: number; action: ItemAction; label: string; passages: number | null; estimated: number | null; cost: number | null };
+export type RoundItem = {
+  id: number;
+  action: ItemAction;
+  label: string;
+  passages: number | null;
+  estimated: number | null;
+  cost: number | null;
+  /** Spec §34.2: one of its calls' costs is an estimate (embeddings report none), so the cost is shown as one. */
+  costEstimated: boolean;
+};
 export type Round = {
   id: number;
   number: number;
@@ -57,7 +66,9 @@ export async function listRounds(db: Queryable, slug: string): Promise<Round[]> 
   const { rows } = await db.query(
     `SELECT r.id, r.number, r.status, r.started_at, r.finished_at, r.comparison,
        coalesce((SELECT jsonb_agg(jsonb_build_object('id', i.id, 'action', i.action, 'label', i.label,
-                  'passages', i.passages, 'estimated', i.estimated, 'cost', i.cost) ORDER BY i.id)
+                  'passages', i.passages, 'estimated', i.estimated, 'cost', i.cost,
+                  'cost_estimated', EXISTS (SELECT 1 FROM model_calls m WHERE m.ingest_item_id = i.id AND m.cost_source = 'estimated'))
+                  ORDER BY i.id)
                  FROM ingest_round_items i WHERE i.round_id = r.id), '[]'::jsonb) AS items
      FROM ingest_rounds r WHERE r.persona_slug = $1 ORDER BY r.number DESC`,
     [slug],
@@ -73,7 +84,7 @@ export async function runningRound(db: Queryable, slug: string): Promise<Round |
 function toRound(r: Record<string, unknown>): Round {
   const items = (r.items as Record<string, unknown>[]).map((i) => ({
     id: i.id as number, action: i.action as ItemAction, label: i.label as string,
-    passages: num(i.passages), estimated: num(i.estimated), cost: num(i.cost),
+    passages: num(i.passages), estimated: num(i.estimated), cost: num(i.cost), costEstimated: i.cost_estimated === true,
   }));
   return {
     id: r.id as number, number: r.number as number, status: r.status as RoundStatus,
@@ -142,7 +153,7 @@ export async function startRound(db: Queryable, slug: string, adminId: string): 
   }
 }
 
-export async function addItem(db: Queryable, roundId: number, item: Omit<RoundItem, "id">): Promise<number> {
+export async function addItem(db: Queryable, roundId: number, item: Omit<RoundItem, "id" | "costEstimated">): Promise<number> {
   const { rows } = await db.query(
     `INSERT INTO ingest_round_items (round_id, action, label, passages, estimated, cost) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
     [roundId, item.action, item.label, item.passages, item.estimated, item.cost],

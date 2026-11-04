@@ -9,7 +9,7 @@ import { MAX_ARTICLE_CHARS } from "./add-persona";
 import { chunkSource, type Chunk } from "./chunking";
 import { CostLedger, type ModelCallRecord } from "./cost-ledger";
 import { assertDimensions } from "./embeddings";
-import { extractQuotes, paragraphsNaming } from "./extras";
+import { extractQuotes, mentionNames, paragraphsNaming } from "./extras";
 import type { DraftHighlights } from "./highlights";
 import { BUILD_STAMP, claim, insertChunks, type PersonaEntry } from "./ingest";
 import { languageName, type PersonaLanguage } from "./languages";
@@ -20,7 +20,7 @@ import {
   addItem, finishRound, insertSource, listSources, RoundBusyError, setItemCost, startRound, updateItem,
   type SourceRef, type StoredSource,
 } from "./rounds";
-import { WikipediaError, type WikimediaClient } from "./wikimedia";
+import { WikipediaError, type Sitelink, type WikimediaClient } from "./wikimedia";
 
 export { planChanges, type PlannedChange, type SourcePlan } from "./plan-changes";
 
@@ -191,6 +191,8 @@ export async function runRound(
   /** Added or replaced items not yet paid for: on failure they cost nothing. */
   const unpaid = new Set<number>();
   let claimedId: number | null = null;
+  /** Set at COMMIT: from then on the round is done, never failed. */
+  let committed = false;
   try {
     const current: StoredSource[] = target.kind === "existing" ? await listSources(pool, target.persona.id) : [];
     const storedByKey = new Map(current.map((s) => [sourceKey(s), s]));
@@ -225,8 +227,12 @@ export async function runRound(
       ),
     ];
     if (incoming.length) progress("Fetching texts", "started");
+    // Mentions are found by each language's Wikipedia title too, as the candidate list found them: one lookup per round.
+    const qid = target.kind === "existing" ? target.persona.wikidataQid : target.qid;
+    const sitelinks: Sitelink[] = qid && incoming.some((i) => i.change.ref.kind === "mention") ? await deps.client.sitelinks(qid) : [];
     for (const item of incoming) {
-      const fetched = await fetchText(deps.client, item.change.ref, names);
+      const { ref } = item.change;
+      const fetched = await fetchText(deps.client, ref, ref.kind === "mention" ? mentionNames(names, sitelinks, ref.language) : names);
       if (!fetched) continue;
       if (fetched.text.length > MAX_ARTICLE_CHARS) {
         throw new RoundError("too_large", `"${item.change.ref.title}" is too long to ingest (over ${MAX_ARTICLE_CHARS.toLocaleString("en")} characters).`);
@@ -329,20 +335,23 @@ export async function runRound(
       }
       await db.query(`UPDATE personas SET ${sets.join(", ")} WHERE id = $1`, values);
       await db.query("COMMIT");
+      committed = true;
     } catch (err) {
       await db.query("ROLLBACK");
       throw err;
     } finally {
       db.release();
     }
+    // The memory has swapped: the round is done, whatever reading the result below does.
+    await finishRound(pool, roundId, "done");
     for (const change of changes) if (change.action === "removed") progress(itemLabel(change, storedByKey.get(sourceKey(change.ref))!.passages), "finished");
 
     const persona = await findPersona(pool, slug);
     if (!persona) throw new RoundError("persona_gone", "The persona was deleted as the round finished.");
     const { rows } = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM chunks WHERE persona_id = $1", [persona.id]);
-    await finishRound(pool, roundId, "done");
     return { roundId, persona, cost: spent, passages: rows[0].n };
   } catch (err) {
+    if (committed) throw err;
     await finishRound(pool, roundId, "failed");
     if (unpaid.size) await pool.query("UPDATE ingest_round_items SET cost = 0 WHERE id = ANY($1::int[])", [[...unpaid]]);
     if (claimedId !== null) {

@@ -97,11 +97,27 @@ describe("POST /api/conversations/:id/translate (spec §34.6)", () => {
     expect(await balance(rui.userId)).toBe(1_000_000);
   });
 
-  it("lets the admin translate a tester's passage, charged to the admin", async () => {
+  it("refuses a tester with no energy before any model call, but serves a cached translation", async () => {
+    await post(ana.cookie, conv, { chunkId: 7, to: "en" });
+    await giveEnergy(ana.userId, 0);
+    expect((await post(ana.cookie, conv, { chunkId: 7, to: "en" })).status).toBe(200);
+    expect(model).toHaveBeenCalledTimes(1);
+    await getPool().query("TRUNCATE passage_translations");
+    const res = await post(ana.cookie, conv, { chunkId: 7, to: "en" });
+    expect(res.status).toBe(402);
+    expect((await res.json()).code).toBe("out_of_energy");
+    expect(model).toHaveBeenCalledTimes(1);
+    expect(await rows()).toHaveLength(1);
+  });
+
+  it("lets the admin translate a tester's passage, logged but never charged", async () => {
     const boss = await signInAs("boss@example.com", { status: "approved", role: "admin" });
+    await giveEnergy(boss.userId, 0);
+    const before = await balance(boss.userId);
     const res = await post(boss.cookie, conv, { chunkId: 7, to: "en" });
     expect(res.status).toBe(200);
     expect(await rows()).toEqual([{ role: "helper", user_id: boss.userId, conversation_id: conv }]);
+    expect(await balance(boss.userId)).toBe(before);
   });
 
   it("returns an English passage as is when it is already in the asked language, without a model call", async () => {

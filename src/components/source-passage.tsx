@@ -37,11 +37,11 @@ function browserLanguage(): string | null {
 }
 
 /** Spec §34.6: asks the server to translate when the passage's language isn't the visitor's. Nothing is requested when they match. */
-export default function SourcePassage({ passage, conversationId, visitorLanguage }: { passage: Passage; conversationId: string | undefined; visitorLanguage: string | undefined }) {
+export function usePassageTranslation(passage: Passage | undefined, conversationId: string | undefined, visitorLanguage: string | undefined): Translation {
   const browser = useSyncExternalStore(() => () => {}, browserLanguage, () => null);
   const to = visitorLanguage && visitorLanguage !== "und" ? visitorLanguage : browser;
-  const needed = Boolean(conversationId) && needsTranslation(passage.language, to);
-  const key = `${conversationId}:${passage.chunk_id}:${to}`;
+  const needed = Boolean(conversationId) && passage !== undefined && needsTranslation(passage.language, to);
+  const key = `${conversationId}:${passage?.chunk_id}:${to}`;
   const [state, setState] = useState<{ key: string; translation: Translation }>({ key: "", translation: { status: "idle" } });
 
   useEffect(() => {
@@ -50,7 +50,7 @@ export default function SourcePassage({ passage, conversationId, visitorLanguage
     fetch(`/api/conversations/${conversationId}/translate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chunkId: passage.chunk_id, to }),
+      body: JSON.stringify({ chunkId: passage?.chunk_id, to }),
       signal: controller.signal,
     })
       .then(async (res) => {
@@ -63,7 +63,7 @@ export default function SourcePassage({ passage, conversationId, visitorLanguage
         if (!controller.signal.aborted) setState({ key, translation: { status: "failed" } });
       });
     return () => controller.abort();
-  }, [needed, key, conversationId, passage.chunk_id, to]);
+  }, [needed, key, conversationId, passage?.chunk_id, to]);
 
   const cached = done.get(key);
   const translation: Translation = !needed
@@ -73,5 +73,5 @@ export default function SourcePassage({ passage, conversationId, visitorLanguage
       : state.key === key
         ? state.translation
         : { status: "loading" };
-  return <SourcePassageView passage={passage} translation={translation} />;
+  return translation;
 }

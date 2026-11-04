@@ -1,5 +1,5 @@
 import { useState } from "react";
-import SourcePassage from "@/components/source-passage";
+import { SourcePassageView, usePassageTranslation } from "@/components/source-passage";
 import ToolTrace from "@/components/tool-trace";
 import type { Message } from "@/lib/chat-types";
 import { ENDED_NOTE, STOPPED_NOTE } from "@/lib/message-notes";
@@ -26,6 +26,7 @@ export default function PersonaMessage({ personaName, message, streaming = false
   const toolCalls = message.toolCalls ?? [];
   const sources = message.sources ?? [];
   const openPassage = openChunk === null ? undefined : passagesById(message).get(openChunk);
+  const translation = usePassageTranslation(openPassage, conversationId, visitorLanguage);
   const text = useRevealedText(message.text, streaming);
   const line = streaming ? thinkingLine(personaName, message) : null;
 
@@ -65,14 +66,14 @@ export default function PersonaMessage({ personaName, message, streaming = false
                         : "border-white/10 text-neutral-400 hover:border-white/30 hover:text-neutral-200"
                     }`}
                   >
-                    {source.sectionHeading}
+                    {open && translation.status === "done" ? translation.heading : source.sectionHeading}
                   </button>
                 </li>
               );
             })}
           </ul>
           {usesGeneralKnowledge(message) && <p className="text-xs text-amber-300/80">{MIXED_SOURCES_NOTE}</p>}
-          {openPassage && <SourcePassage passage={openPassage} conversationId={conversationId} visitorLanguage={visitorLanguage} />}
+          {openPassage && <SourcePassageView passage={openPassage} translation={translation} />}
         </div>
       )}
     </li>

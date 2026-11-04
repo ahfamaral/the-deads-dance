@@ -49,14 +49,14 @@ export function passageTranslator(options: { callbacks?: BaseCallbackHandler[] }
 
 /**
  * Spec §34.6: a passage in the visitor's language, from `passage_translations` (key: sha256 of the
- * original text and the target language) or, once, from the model. A failed model call stores nothing.
+ * original heading and text, and the target language) or, once, from the model. A failed model call stores nothing.
  */
 export async function translatePassage(
   db: Queryable,
   passage: TranslateInput,
   translate: TranslateFn,
 ): Promise<{ heading: string; content: string; cached: boolean }> {
-  const hash = createHash("sha256").update(passage.content).digest("hex");
+  const hash = createHash("sha256").update(`${passage.heading}\u0000${passage.content}`).digest("hex");
   const found = await db.query(`SELECT heading, content FROM passage_translations WHERE content_hash = $1 AND language = $2`, [hash, passage.to]);
   if (found.rows[0]) return { heading: found.rows[0].heading, content: found.rows[0].content, cached: true };
   const made = await translate(passage);

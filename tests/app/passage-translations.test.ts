@@ -13,10 +13,17 @@ describe("translatePassage (spec §34.6)", () => {
   it("calls the model once, then serves the same content and language from the cache", async () => {
     const translate = fake();
     const first = await translatePassage(getPool(), passage, translate);
-    const second = await translatePassage(getPool(), { ...passage, heading: "Other heading" }, translate);
+    const second = await translatePassage(getPool(), { ...passage }, translate);
     expect(first).toEqual({ heading: "Early life", content: "He was born in Rio.", cached: false });
     expect(second).toEqual({ heading: "Early life", content: "He was born in Rio.", cached: true });
     expect(translate).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not share a translation between two headings over the same content", async () => {
+    const translate = fake();
+    await translatePassage(getPool(), passage, translate);
+    await translatePassage(getPool(), { ...passage, heading: "Outro título" }, translate);
+    expect(translate).toHaveBeenCalledTimes(2);
   });
 
   it("translates again for another language", async () => {

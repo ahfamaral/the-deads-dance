@@ -8,6 +8,9 @@ import { passagesIn } from "@/lib/tool-display";
 
 const gone = () =>
   Response.json({ error: "This passage is no longer available.", code: "unknown_passage" }, { status: 404 });
+const outOfEnergy = () =>
+  Response.json({ error: "You're out of energy. Ask the admin for more.", code: "out_of_energy" }, { status: 402 });
+class OutOfEnergy extends Error {}
 const isId = (id: string) => z.uuid().safeParse(id).success;
 
 const Body = z.strictObject({ chunkId: z.number().int(), to: z.string().regex(/^[a-z]{2}$/) });
@@ -27,6 +30,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/conversatio
     const body = Body.safeParse(await request.json().catch(() => null));
     if (!body.success) return Response.json({ error: "Say which passage and language.", code: "invalid_request" }, { status: 400 });
     const deps = translateDeps();
+    // Spec §26.4: the admin has no limit; a tester at 0 gets cached translations but no new model call.
+    const charge = user.role !== "admin";
 
     const { rows } = await deps.pool.query(
       `SELECT c.persona_slug, m.tool_calls
@@ -46,21 +51,26 @@ export async function POST(request: Request, ctx: RouteContext<"/api/conversatio
     if (from === body.data.to) return Response.json(original);
 
     const ledger = new CostLedger();
+    const translate = deps.translator([ledger.handler("helper")]);
     try {
       const done = await translatePassage(
         deps.pool,
         { heading: passage.section_heading, content: passage.content, to: body.data.to },
-        deps.translator([ledger.handler("helper")]),
+        (input) => {
+          if (charge && user.energy.balance <= 0) throw new OutOfEnergy();
+          return translate(input);
+        },
       );
       return Response.json({ heading: done.heading, content: done.content, from });
     } catch (err) {
+      if (err instanceof OutOfEnergy) return outOfEnergy();
       console.error(err);
       return Response.json({ error: "Couldn't translate this passage.", code: "translate_failed" }, { status: 502 });
     } finally {
       if (ledger.calls.length > 0) {
         try {
           const calls = await deps.resolveCosts(ledger.calls);
-          await recordCalls(deps.pool, { userId: user.id, calls, charge: true, personaSlug: rows[0]?.persona_slug, conversationId: id });
+          await recordCalls(deps.pool, { userId: user.id, calls, charge, personaSlug: rows[0]?.persona_slug, conversationId: id });
         } catch (err) {
           console.error(err);
         }

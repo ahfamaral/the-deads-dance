@@ -14,7 +14,7 @@ const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { mont
 const avg = (n: number) => n.toFixed(1);
 const OPEN = "inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full border border-white/15 px-4 text-base sm:text-sm text-neutral-200 hover:bg-white/10";
 
-function Stars({ stars }: { stars: number }) {
+export function Stars({ stars }: { stars: number }) {
   return (
     <>
       <span className="sr-only">{stars} of 5 stars</span>

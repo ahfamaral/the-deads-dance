@@ -139,6 +139,22 @@ describe("pageLengths", () => {
     expect(sizes).toEqual([50, 50, 20]);
     expect(result.get("T0")).toBe(10);
   });
+
+  it("keys the map by the requested titles, through normalisation and redirects", async () => {
+    const { client } = setup({
+      query: {
+        normalized: [{ from: "santos dumont", to: "Santos dumont" }],
+        redirects: [{ from: "Santos dumont", to: "Alberto Santos-Dumont" }, { from: "14-bis", to: "14-bis (avião)" }],
+        pages: [
+          { title: "Alberto Santos-Dumont", length: 900 },
+          { title: "14-bis (avião)", length: 300 },
+          { title: "Nada", missing: true },
+        ],
+      },
+    });
+    const result = await client.pageLengths(pt, ["santos dumont", "14-bis", "Nada"]);
+    expect(Object.fromEntries(result)).toEqual({ "santos dumont": 900, "14-bis": 300 });
+  });
 });
 
 describe("throttling and rate limits", () => {

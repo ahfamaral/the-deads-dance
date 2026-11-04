@@ -67,6 +67,8 @@ type QueryBody = {
     pages?: WikiPage[];
     backlinks?: { title: string }[];
     search?: { title: string }[];
+    normalized?: { from: string; to: string }[];
+    redirects?: { from: string; to: string }[];
   };
 };
 
@@ -230,13 +232,22 @@ export function createWikimediaClient(
     return (data.query?.search ?? []).map((s) => s.title).slice(0, limit);
   }
 
+  /** Keyed by the titles asked for, even when the API normalised or redirected them. */
   async function pageLengths(ref: WikiRef, titles: string[]): Promise<Map<string, number>> {
     const lengths = new Map<string, number>();
     for (let i = 0; i < titles.length; i += TITLES_PER_REQUEST) {
       const batch = titles.slice(i, i + TITLES_PER_REQUEST);
       const data = await query(apiUrl(ref, { redirects: "1", prop: "info", titles: batch.join("|") }));
+      const byFinalTitle = new Map<string, number>();
       for (const page of data.query?.pages ?? []) {
-        if (!page.missing && !page.invalid && typeof page.length === "number") lengths.set(page.title, page.length);
+        if (!page.missing && !page.invalid && typeof page.length === "number") byFinalTitle.set(page.title, page.length);
+      }
+      const normalized = new Map((data.query?.normalized ?? []).map((n) => [n.from, n.to]));
+      const redirected = new Map((data.query?.redirects ?? []).map((r) => [r.from, r.to]));
+      for (const asked of batch) {
+        const normal = normalized.get(asked) ?? asked;
+        const length = byFinalTitle.get(redirected.get(normal) ?? normal);
+        if (length !== undefined) lengths.set(asked, length);
       }
     }
     return lengths;

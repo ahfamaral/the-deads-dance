@@ -12,6 +12,7 @@ import {
   parseStoredProfile,
   PROFILE_FIELD_MAX,
   PROFILE_INPUT_CHARS,
+  PROFILE_PROMPT,
   profileStamp,
   sameProfile,
   sanitizeProfile,
@@ -107,6 +108,10 @@ describe("profileStamp", () => {
     process.env.HELPER_MODEL = "openai/model-b";
     expect(profileStamp()).not.toBe(a);
     expect(JSON.parse(profileStamp())).toEqual({ generatorVersion: 2, model: "openai/model-b" });
+  });
+  it("keeps the stamp unchanged by prompt edits (spec §34.6)", () => {
+    process.env.HELPER_MODEL = "openai/model-a";
+    expect(profileStamp()).toMatchInlineSnapshot(`"{"generatorVersion":2,"model":"openai/model-a"}"`);
   });
 });
 
@@ -240,5 +245,11 @@ describe("generateProfileWith", () => {
     const article = `${ARTICLE}\n\n== References ==\nThis reference sentence praises her patience at great length.`;
     const { model } = capturingModel({ ...DRAFT, temperament: cite("Patient", "This reference sentence praises her patience at great length.") });
     expect((await generateProfileWith(model)(article)).temperament).toBe("unknown");
+  });
+});
+
+describe("PROFILE_PROMPT language", () => {
+  it("asks for English traits whatever the source language", () => {
+    expect(PROFILE_PROMPT).toContain("in English");
   });
 });

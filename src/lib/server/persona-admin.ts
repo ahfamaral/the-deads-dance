@@ -2,9 +2,9 @@ import type { Pool } from "pg";
 import { AddPersonaError, prepareUserPersona, type AddPersonaErrorCode, type PrepareDeps } from "@corpus/add-persona";
 import { meteredEmbeddings, type CostLedger } from "@corpus/cost-ledger";
 import { describeDbError, getPool } from "@corpus/db";
-import { editionScorer, type ScoreFn } from "@corpus/editions";
+import { editionScorer, listEditions, type ScoreFn } from "@corpus/editions";
 import { EMBEDDING_MODEL, EmbeddingDimensionError, embeddingModel } from "@corpus/embeddings";
-import { comparisonEstimate, embeddingEstimate, type Price } from "@corpus/estimate";
+import { comparisonEstimate, embeddingEstimate, redraftEstimate, type Price } from "@corpus/estimate";
 import { listLinked, listMentions, listQuotes, listWritings, type Candidate } from "@corpus/extras";
 import { highlightsDrafter } from "@corpus/highlights";
 import { IngestError, type PersonaEntry } from "@corpus/ingest";
@@ -18,7 +18,7 @@ import { wikimedia, WikipediaError, type Article, type WikimediaClient } from "@
 import { fetchPersonFacts, fetchPersonLanguages } from "@corpus/wikipedia";
 import {
   CANDIDATE_PAGE, HIGHLIGHTS_EDIT_MAX,
-  type CandidatesResult, type LanguageSource, type PersonaProfileDto, type ProfileLanguage, type RoundDto, type RoundEvent,
+  type CandidatesResult, type FindResult, type LanguageSource, type PersonaProfileDto, type ProfileLanguage, type RoundDto, type RoundEvent,
 } from "@/lib/persona-profile";
 import { NO_VOICE, toPersona } from "@/lib/personas";
 import { unavailable } from "@/lib/server/access";
@@ -195,9 +195,42 @@ export async function newPersonaLanguages(qid: string, deps: AdminDeps): Promise
   return languages.map((l) => ({ ...l, source: "Wikidata" }));
 }
 
+/** An unknown helper price shows nothing rather than failing a free step (as the comparison's estimate). */
+const helperPriceOrZero = async (deps: AdminDeps): Promise<Price> => (await deps.helperPrice()) ?? { prompt: 0, completion: 0 };
+
 /** Spec §34.3: what comparing these editions would cost. An unknown helper price shows nothing rather than failing a free step. */
 export async function comparisonEstimateFor(deps: AdminDeps, editionChars: number[]): Promise<number> {
-  return comparisonEstimate((await deps.helperPrice()) ?? { prompt: 0, completion: 0 }, editionChars);
+  return comparisonEstimate(await helperPriceOrZero(deps), editionChars);
+}
+
+/**
+ * Spec §34.3, §34.5: the free lookup's answer: who, their languages, and their Wikipedia editions,
+ * each with about what embedding it and redrafting from it cost, plus what comparing them costs.
+ */
+export async function findResultFor(target: AdminTarget & { qid: string }, deps: AdminDeps): Promise<FindResult> {
+  let who: Pick<FindResult, "name" | "description" | "lifespan" | "languages">;
+  if (target.kind === "existing") {
+    const { persona } = target;
+    const { rows } = await deps.pool.query<{ languages_source: string | null }>(`SELECT languages_source FROM personas WHERE id = $1`, [persona.id]);
+    const languages = profileLanguages(persona, rows[0]?.languages_source ?? null);
+    who = { name: persona.displayName, description: persona.description, lifespan: persona.lifespan, languages };
+  } else {
+    const { entry, article } = target;
+    const languages = await newPersonaLanguages(target.qid, deps);
+    who = { name: entry.displayName ?? article.title, description: entry.description ?? "", lifespan: entry.lifespan ?? "", languages };
+  }
+  // The same codes the comparison uses, so its scores match these editions.
+  const codes = target.kind === "existing" ? await targetLanguageCodes(target, deps) : who.languages.map((l) => l.code);
+  const editions = await listEditions(deps.client, target.qid, codes);
+  const price = await helperPriceOrZero(deps);
+  return {
+    slug: target.slug,
+    ...who,
+    editions: editions.map(({ language, title, words, badge, chars }) => ({
+      language, title, words, badge, estimated: embeddingEstimate(chars), redraftEstimated: redraftEstimate(price, chars),
+    })),
+    compareEstimated: comparisonEstimate(price, editions.map((e) => e.chars)),
+  };
 }
 
 /** The language codes whose editions are compared. */

@@ -1,22 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { BODY, BTN, BTN_PRIMARY, CARD, H2, MUTED, ROW } from "@/components/admin-styles";
+import ChangeSourcesFlow from "@/components/change-sources-flow";
 import IngestionHistory from "@/components/ingestion-history";
 import PersonaRatings from "@/components/persona-ratings";
 import VoicePanel from "@/components/voice-panel";
+import { formatDollars } from "@/lib/money";
 import { HIGHLIGHTS_EDIT_MAX, type LanguageSource, type PersonaProfileDto, type SourceDto } from "@/lib/persona-profile";
 
 /** Spec §34.4: how often a running round's page reloads while it runs. */
 export const RUNNING_POLL_MS = 5_000;
-
-const CARD = "rounded-2xl border border-white/10 bg-white/5 p-4";
-const H2 = "mb-2 text-lg font-semibold";
-const BODY = "text-base text-neutral-200 sm:text-sm";
-const MUTED = "text-base text-neutral-400 sm:text-sm";
-const BTN = "inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full border border-white/15 px-4 text-base text-neutral-200 hover:bg-white/10 disabled:opacity-40 sm:text-sm";
-const BTN_PRIMARY = "inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-full bg-neutral-100 px-4 text-base font-semibold text-neutral-900 hover:bg-white disabled:opacity-40 sm:text-sm";
-const ROW = "flex justify-between gap-3 border-t border-white/10 py-2 first:border-t-0";
 
 const TRAITS = [
   ["temperament", "Temperament"],
@@ -153,19 +148,24 @@ type Props = {
   banner: string | null;
   /** After adding a persona: offer to create a voice. */
   offerVoice: boolean;
-  /**
-   * Task 11's seam: Change sources opens the choose, confirm and progress steps. `redraft` is
-   * the Redraft button, which opens it with the redraft tick box on. Nothing opens yet.
-   */
-  onChangeSources?: (opts: { redraft: boolean }) => void;
 };
 
-/** Spec §34.4: the admin's profile of one persona, one column, top to bottom. */
-export default function PersonaProfile({ slug, initial, backHref, banner, offerVoice, onChangeSources }: Props) {
+/**
+ * Spec §34.4: the admin's profile of one persona, one column, top to bottom. Change sources (and
+ * Redraft, with the redraft tick box on) opens the steps of spec §34.7 in its place.
+ */
+export default function PersonaProfile({ slug, initial, backHref, banner, offerVoice }: Props) {
   const [dto, setDto] = useState(initial);
   const [voiceOffer, setVoiceOffer] = useState(offerVoice);
   const [voiceOpen, setVoiceOpen] = useState(false);
-  const openSources = (redraft: boolean) => onChangeSources?.({ redraft });
+  const [shownBanner, setShownBanner] = useState(banner);
+  const [changing, setChanging] = useState<{ redraft: boolean } | null>(null);
+  // Back from the steps returns to where the profile was scrolled.
+  const profileScroll = useRef<number | null>(null);
+  const openSources = (redraft: boolean) => {
+    profileScroll.current = window.scrollY;
+    setChanging({ redraft });
+  };
 
   const reload = useCallback(async () => {
     const res = await fetch(`/api/admin/personas/${encodeURIComponent(slug)}`, { cache: "no-store" }).catch(() => null);
@@ -178,6 +178,32 @@ export default function PersonaProfile({ slug, initial, backHref, banner, offerV
     const timer = setInterval(() => void reload(), RUNNING_POLL_MS);
     return () => clearInterval(timer);
   }, [dto.running, reload]);
+
+  useEffect(() => {
+    if (changing || profileScroll.current === null) return;
+    window.scrollTo({ top: profileScroll.current });
+    profileScroll.current = null;
+  }, [changing]);
+
+  const closeSources = useCallback(() => {
+    setChanging(null);
+    void reload();
+  }, [reload]);
+
+  if (changing) {
+    return (
+      <ChangeSourcesFlow
+        dto={dto}
+        initialRedraft={changing.redraft}
+        onExit={closeSources}
+        onDone={(cost) => {
+          setShownBanner(`Reingested, cost ${formatDollars(cost)}`);
+          void reload();
+        }}
+        onFailed={() => void reload()}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -192,9 +218,9 @@ export default function PersonaProfile({ slug, initial, backHref, banner, offerV
         <p className={MUTED}>{dto.lifespan}</p>
       </header>
 
-      {banner && (
+      {shownBanner && (
         <p role="status" className="rounded-xl border border-lime-400/40 bg-lime-400/10 px-3 py-2 text-base text-lime-300 sm:text-sm">
-          {banner}
+          {shownBanner}
         </p>
       )}
       {dto.running && (

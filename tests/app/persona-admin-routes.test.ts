@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { CostLedger, meteredEmbeddings } from "@corpus/cost-ledger";
 import { closePool, getPool } from "@corpus/db";
 import { EMBEDDING_MODEL } from "@corpus/embeddings";
-import { embeddingEstimate } from "@corpus/estimate";
+import { embeddingEstimate, redraftEstimate } from "@corpus/estimate";
 import { listRounds, startRound } from "@corpus/rounds";
 import { WikipediaError, type Article, type Sitelink, type WikiRef, type WikimediaClient } from "@corpus/wikimedia";
 import { readNdjson } from "@/lib/ndjson";
@@ -238,6 +238,46 @@ describe("POST /api/admin/personas/find (spec §34.3)", () => {
 
   it("rejects a body without a title with 400", async () => {
     expect((await find({})).status).toBe(400);
+  });
+
+  it("prices each edition: its embedding and a redraft from its text", async () => {
+    const body = (await (await find({ title: "Chien-Shiung Wu" })).json()) as FindResult;
+    const pt = body.editions.find((e) => e.language === "pt")!;
+    expect(pt.estimated).toBe(embeddingEstimate(PT_TEXT.length));
+    expect(pt.redraftEstimated).toBe(redraftEstimate({ prompt: 0.1, completion: 0.4 }, PT_TEXT.length));
+    expect(pt.redraftEstimated).toBeGreaterThan(0);
+  });
+
+  it("lists an existing persona's editions by slug: no 409, no paid call, no add checks", async () => {
+    const res = await find({ slug: "wu" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as FindResult;
+    expect(body).toMatchObject({ slug: "wu", name: "Chien-Shiung Wu", languages: [{ code: "pt", name: "Portuguese", native: false, source: "Wikidata" }] });
+    expect(body.editions.map((e) => e.language)).toEqual(["en", "pt"]);
+    expect(body.editions.every((e) => e.estimated > 0 && e.redraftEstimated > 0)).toBe(true);
+    expect(body.compareEstimated).toBeGreaterThan(0);
+    expect(scored).toBe(0);
+    expect((fakes.admin as { prepare: { fetchArticle: ReturnType<typeof vi.fn> } }).prepare.fetchArticle).not.toHaveBeenCalled();
+  });
+
+  it("accepts a curated persona by slug", async () => {
+    await insertPersona({ slug: "curie", displayName: "Marie Curie", origin: "curated", wikidataQid: "Q450317" });
+    expect((await find({ slug: "curie" })).status).toBe(200);
+  });
+
+  it("answers 404 for an unknown slug and 422 for a persona without Wikidata", async () => {
+    expect((await find({ slug: "nobody" })).status).toBe(404);
+    await insertPersona({ slug: "plain", displayName: "Plain", origin: "curated" });
+    const res = await find({ slug: "plain" });
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe("no_wikidata");
+  });
+
+  it("prices a redraft at 0 when the helper's price is unknown, as the comparison", async () => {
+    (fakes.admin as { helperPrice: unknown }).helperPrice = async () => null;
+    const body = (await (await find({ slug: "wu" })).json()) as FindResult;
+    expect(body.editions.map((e) => e.redraftEstimated)).toEqual([0, 0]);
+    expect(body.compareEstimated).toBe(0);
   });
 });
 

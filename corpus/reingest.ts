@@ -17,7 +17,7 @@ import { planChanges, sourceKey, type PlannedChange, type SourcePlan } from "./p
 import { findPersona, type PersonaRow } from "./personas";
 import { CURATED_PROFILE_STAMP, profileStamp, type CharacterProfile, type GenerateProfile } from "./profile";
 import {
-  addItem, finishRound, insertSource, listSources, RoundBusyError, setItemCost, startRound, updateItem,
+  addItem, finishRound, insertSource, listSources, RoundBusyError, roundHasEstimatedCost, setItemCost, startRound, updateItem,
   type SourceRef, type StoredSource,
 } from "./rounds";
 import { WikipediaError, type Sitelink, type WikimediaClient } from "./wikimedia";
@@ -54,8 +54,8 @@ export type RoundDeps = {
 
 /** `spent` is the round's cost so far, in micro-dollars. */
 export type RoundProgress = { label: string; status: "started" | "finished" | "skipped"; spent: number };
-/** `passages` is how many the persona's memory holds after the round. */
-export type RoundResult = { roundId: number; persona: PersonaRow; cost: number; passages: number };
+/** `passages` is how many the persona's memory holds after the round; `costEstimated`: one of its calls' costs is an estimate. */
+export type RoundResult = { roundId: number; persona: PersonaRow; cost: number; costEstimated: boolean; passages: number };
 
 /** An added or replaced source on its way in. */
 type Incoming = {
@@ -349,7 +349,7 @@ export async function runRound(
     const persona = await findPersona(pool, slug);
     if (!persona) throw new RoundError("persona_gone", "The persona was deleted as the round finished.");
     const { rows } = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM chunks WHERE persona_id = $1", [persona.id]);
-    return { roundId, persona, cost: spent, passages: rows[0].n };
+    return { roundId, persona, cost: spent, costEstimated: await roundHasEstimatedCost(pool, roundId), passages: rows[0].n };
   } catch (err) {
     if (committed) throw err;
     await finishRound(pool, roundId, "failed");

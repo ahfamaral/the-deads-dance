@@ -5,7 +5,7 @@ import { WikipediaError } from "../../corpus/wikipedia";
 const json = (payload: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(payload), init);
 const setup = (...bodies: (unknown | Response)[]) => {
   const queue = [...bodies];
-  const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => {
+  const fetchImpl = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => {
     const next = queue.length > 1 ? queue.shift() : queue[0];
     return next instanceof Response ? next.clone() : json(next);
   });
@@ -56,6 +56,16 @@ describe("extract", () => {
       exsectionformat: "wiki",
       titles: "Santos Dumont",
     });
+  });
+
+  it("keeps a typed title in the query, so it can't change the host (spec §34.5, follow-up 1)", async () => {
+    for (const title of ["https://evil.example/w/api.php", "//evil.example", "@evil.example", "../../evil.example#x"]) {
+      const { client, fetchImpl } = setup(page);
+      await client.extract(pt, title);
+      const url = urlOf(fetchImpl);
+      expect(url.origin + url.pathname).toBe("https://pt.wikipedia.org/w/api.php");
+      expect(url.searchParams.get("titles")).toBe(title);
+    }
   });
 
   it("reports a missing page as not_found", async () => {

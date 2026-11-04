@@ -6,7 +6,7 @@ import { embeddingEstimate, redraftEstimate } from "@corpus/estimate";
 import { listRounds, startRound } from "@corpus/rounds";
 import { WikipediaError, type Article, type Sitelink, type WikiRef, type WikimediaClient } from "@corpus/wikimedia";
 import { readNdjson } from "@/lib/ndjson";
-import type { CandidatesResult, CompareResult, FindResult, PersonaProfileDto, RoundEvent } from "@/lib/persona-profile";
+import type { CandidatesResult, CompareResult, FindResult, PageMentionResult, PersonaProfileDto, RoundEvent } from "@/lib/persona-profile";
 import type { SourcePlan } from "@corpus/plan-changes";
 import { article, paragraph } from "../fixtures/articles";
 import { FakeEmbeddings } from "../helpers/fake-embeddings";
@@ -41,6 +41,10 @@ const QUOTES_TEXT = [
 ].join("\n");
 const MENTION_TEXT = "Columbia is a university.\nIn 1956 Chien-Shiung Wu showed parity violation at Columbia.";
 
+const PARIDADE: Article = {
+  title: "Paridade", revid: 99, qid: null, text: "A paridade é uma simetria.\n\nWu Chien-Shiung mostrou em 1956 que a paridade não se conserva.",
+};
+
 const pageKey = (ref: WikiRef, title: string) => `${ref.site}:${ref.language}:${title}`;
 const PAGES: Record<string, Article> = {
   "wikipedia:en:Chien-Shiung Wu": article(),
@@ -48,6 +52,10 @@ const PAGES: Record<string, Article> = {
   "wikiquote:en:Chien-Shiung Wu": { title: "Chien-Shiung Wu", revid: 66, qid: null, text: QUOTES_TEXT },
   "wikipedia:en:Columbia University": { title: "Columbia University", revid: 77, qid: null, text: MENTION_TEXT },
   "wikipedia:en:Huge": { title: "Huge", revid: 88, qid: null, text: "x ".repeat(150_001) },
+  // Names Wu only by her pt Wikipedia title; "paridade" redirects here.
+  "wikipedia:pt:Paridade": PARIDADE,
+  "wikipedia:pt:paridade": PARIDADE,
+  "wikipedia:pt:Física": { title: "Física", revid: 100, qid: null, text: "A física estuda a natureza.\n\n== História ==\nGalileu e Newton." },
 };
 const SITELINKS: Sitelink[] = [
   { site: "wikipedia", language: "en", title: "Chien-Shiung Wu", badges: [] },
@@ -57,6 +65,7 @@ const SITELINKS: Sitelink[] = [
 
 function fakeClient() {
   const extract = vi.fn(async (ref: WikiRef, title: string): Promise<Article> => {
+    if (title === "Wu") throw new WikipediaError("disambiguation", `"Wu" is a disambiguation page — try a more specific title.`);
     const page = PAGES[pageKey(ref, title)];
     if (!page) throw new WikipediaError("not_found", `No page "${title}".`);
     return page;
@@ -396,6 +405,71 @@ describe("GET /api/admin/personas/candidates (spec §34.5)", () => {
   });
 });
 
+describe("GET /api/admin/personas/candidates?kind=mention&page= (spec §34.5, follow-up 1)", () => {
+  const byTitle = (page: string, who = cookie, target = "slug=wu") =>
+    candidates(`kind=mention&${target}&language=pt&${new URLSearchParams({ page })}`, who);
+
+  it("returns the page as one candidate with the paragraphs naming the persona by its pt title, priced, without searching", async () => {
+    const res = await byTitle("  Paridade ");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as PageMentionResult;
+    const preview = "Wu Chien-Shiung mostrou em 1956 que a paridade não se conserva.";
+    expect(body).toEqual({
+      items: [{ kind: "mention", site: "wikipedia", language: "pt", title: "Paridade", chars: preview.length, preview, estimated: embeddingEstimate(preview.length) }],
+      total: 1,
+    });
+    expect(wiki.extract).toHaveBeenCalledWith({ site: "wikipedia", language: "pt" }, "Paridade");
+    expect(wiki.client.search).not.toHaveBeenCalled();
+    expect(wiki.client.backlinks).not.toHaveBeenCalled();
+  });
+
+  it("keeps the page's own title when the typed one redirects", async () => {
+    const body = (await (await byTitle("paridade")).json()) as PageMentionResult;
+    expect(body.items.map((c) => c.title)).toEqual(["Paridade"]);
+  });
+
+  it("finds a page for a new persona by title too", async () => {
+    const body = (await (await byTitle("Paridade", cookie, "title=Chien-Shiung%20Wu")).json()) as PageMentionResult;
+    expect(body.total).toBe(1);
+  });
+
+  it("says so, free, when no such page exists", async () => {
+    const res = await byTitle("Fluminense Football Club");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      items: [], total: 0, reason: "not_found", message: "No page called Fluminense Football Club in Portuguese Wikipedia.",
+    });
+    expect(embedder.calls).toBe(0);
+  });
+
+  it("says so when the page never names the persona", async () => {
+    expect(await (await byTitle("Física")).json()).toEqual({
+      items: [], total: 0, reason: "not_mentioned", message: "Física doesn't mention Chien-Shiung Wu.",
+    });
+  });
+
+  it("says so for a disambiguation page", async () => {
+    expect(await (await byTitle("Wu")).json()).toEqual({
+      items: [], total: 0, reason: "disambiguation", message: "Wu is a disambiguation page. Try a more specific title.",
+    });
+  });
+
+  it("rejects a title over 255 characters, an empty one, one with | and a page for another kind with 400, before any fetch", async () => {
+    for (const page of ["x".repeat(256), "   ", "Paridade|Física"]) expect((await byTitle(page)).status).toBe(400);
+    expect((await candidates("kind=linked&slug=wu&language=pt&page=Paridade")).status).toBe(400);
+    expect(wiki.extract).not.toHaveBeenCalled();
+    expect(wiki.client.sitelinks).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 to a tester and a signed-out caller, and fetches nothing", async () => {
+    const tester = await signInAs("t@example.com", { status: "approved" });
+    expect((await byTitle("Paridade", tester.cookie)).status).toBe(404);
+    expect((await byTitle("Paridade", "")).status).toBe(404);
+    expect(wiki.extract).not.toHaveBeenCalled();
+    expect(wiki.client.sitelinks).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/admin/personas/rounds (spec §34.6)", () => {
   // Review Focus 1.
   it("refuses with 409 round_running as JSON while a round runs, before any fetch", async () => {
@@ -416,7 +490,8 @@ describe("POST /api/admin/personas/rounds (spec §34.6)", () => {
     expect(all[0]).toEqual({ type: "progress", label: "Fetching texts", status: "started", spent: 0 });
     expect(all.filter((e) => e.type === "progress").map((e) => e.type === "progress" && e.status)).toContain("finished");
     const done = all.at(-1)!;
-    expect(done).toEqual({ type: "done", slug: "wu", cost: expect.any(Number) });
+    // Embeddings report no cost, so the round's is an estimate: the banner says "about".
+    expect(done).toEqual({ type: "done", slug: "wu", cost: expect.any(Number), costEstimated: true });
     const [round] = await listRounds(pool(), "wu");
     expect(round.status).toBe("done");
     expect(done.type === "done" && done.cost).toBe(round.items.reduce((n, i) => n + (i.cost ?? 0), 0));
@@ -455,7 +530,7 @@ describe("POST /api/admin/personas/rounds (spec §34.6)", () => {
   it("adds a new persona by title", async () => {
     const res = await rounds({ title: "Chien-Shiung Wu", plan: EN_PLAN });
     expect(res.status).toBe(200);
-    expect((await events(res)).at(-1)).toEqual({ type: "done", slug: "chien-shiung-wu", cost: expect.any(Number) });
+    expect((await events(res)).at(-1)).toEqual({ type: "done", slug: "chien-shiung-wu", cost: expect.any(Number), costEstimated: true });
     const { rows } = await pool().query(`SELECT status, origin, highlights FROM personas WHERE slug = 'chien-shiung-wu'`);
     expect(rows[0]).toEqual({ status: "ready", origin: "user", highlights: "Born in Liuhe." });
   });

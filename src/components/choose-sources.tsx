@@ -5,6 +5,7 @@ import { languageName } from "@corpus/languages";
 import { sourceKey, type SourcePlan } from "@corpus/plan-changes";
 import type { EditionScore, SourceRef } from "@corpus/rounds";
 import { about, ALERT, BODY, BTN, BTN_PRIMARY, CARD, H2, MUTED, TAG, TAG_CHANGE } from "@/components/admin-styles";
+import MentionByTitle from "@/components/mention-by-title";
 import { formatDollars } from "@/lib/money";
 import {
   CANDIDATE_PAGE, describeChanges, MAX_PLAN_EXTRAS,
@@ -126,7 +127,8 @@ type Props = {
   languages: string[];
   /** The memory today (reingest); empty for a new persona. */
   current: SourceDto[];
-  candidatesUrl: (kind: ExtraKind, language: string, offset: number) => string;
+  /** One page of candidates; with `page`, that one page by title (mentions only). */
+  candidatesUrl: (kind: ExtraKind, language: string, offset: number, page?: string) => string;
   compareEstimated: number;
   comparing: boolean;
   compareError: string | null;
@@ -232,6 +234,19 @@ export default function ChooseSources(props: Props) {
       else next.set(key, { kind: c.kind, site: c.site, language: c.language, title: c.title, estimated: isStored(c) ? 0 : c.estimated });
       return next;
     });
+  /** A page added by title: first in its language's list, ticked (unless the plan is full). */
+  const addByTitle = (c: CandidateDto) => {
+    const id = `${c.kind}:${c.language}`;
+    const key = sourceKey(c);
+    setLists((l) => {
+      const prev = l[id] ?? EMPTY_LIST;
+      return { ...l, [id]: { ...prev, items: [c, ...prev.items.filter((p) => sourceKey(p) !== key)] } };
+    });
+    setSelected((s) => {
+      if (s.has(key) || s.size >= MAX_PLAN_EXTRAS) return s;
+      return new Map(s).set(key, { kind: c.kind, site: c.site, language: c.language, title: c.title, estimated: isStored(c) ? 0 : c.estimated });
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -361,6 +376,9 @@ export default function ChooseSources(props: Props) {
                           <button type="button" onClick={() => void load(kind, language, list!.next)} className={`${BTN} mt-1`}>
                             Show {more} more
                           </button>
+                        )}
+                        {kind === "mention" && (
+                          <MentionByTitle language={language} url={(page) => candidatesUrl(kind, language, 0, page)} onFound={addByTitle} />
                         )}
                       </div>
                     );

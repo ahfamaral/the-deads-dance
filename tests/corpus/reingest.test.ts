@@ -104,7 +104,7 @@ function fakeClient(pages: Record<string, Article> = PAGES, fail?: { call: numbe
   const unused = async () => {
     throw new Error("not used by a round");
   };
-  const sitelinks = vi.fn(async (_qid: string) => SITELINKS);
+  const sitelinks = vi.fn<(qid: string) => Promise<Sitelink[]>>(async () => SITELINKS);
   const client: WikimediaClient = {
     extract, getJson: unused, sitelinks, links: unused, backlinks: unused, search: unused, pageLengths: unused,
   };
@@ -122,9 +122,9 @@ function roundDeps(client: WikimediaClient, options: { embeddings?: EmbeddingsIn
     costs.set(itemId, cost);
     return cost;
   });
-  const generateProfile = vi.fn(async (_text: string) => PROFILE);
-  const draftHighlights = vi.fn(async (_text: string) => "Born in Liuhe; studied in Nanjing and Berkeley.");
-  const fetchLanguages = vi.fn(async (_qid: string) => options.languages ?? LANGS);
+  const generateProfile = vi.fn<(text: string) => Promise<CharacterProfile>>(async () => PROFILE);
+  const draftHighlights = vi.fn<(text: string) => Promise<string>>(async () => "Born in Liuhe; studied in Nanjing and Berkeley.");
+  const fetchLanguages = vi.fn<(qid: string) => Promise<PersonaLanguage[]>>(async () => options.languages ?? LANGS);
   const deps: RoundDeps = {
     pool: pool(),
     client,
@@ -235,6 +235,8 @@ describe("runRound (spec §34.6)", () => {
     expect(d.onItemCalls).toHaveBeenCalledTimes(2);
     expect(d.onItemCalls.mock.calls[0][1]).toEqual([expect.objectContaining({ role: "embedding", model: "test-embedding" })]);
     expect(result.cost).toBe(round.items.reduce((sum, i) => sum + (i.cost ?? 0), 0));
+    // The fake records no model calls, so no cost is an estimate.
+    expect(result.costEstimated).toBe(false);
     expect(result.passages).toBe(chunks.length);
     expect(result.persona.wikipediaTitle).toBe(PT.title);
 
@@ -348,6 +350,22 @@ describe("runRound (spec §34.6)", () => {
     expect(chunks.filter((c) => c.source_id === stored.id).map((c) => c.content)).toEqual([
       "Wu Chien-Shiung mostrou em 1956 que a paridade não se conserva.",
     ]);
+  });
+
+  it("ingests a mention added by title, a page no backlink or search returned (follow-up 1)", async () => {
+    const wu = await seedWu();
+    const byTitle: SourceRef = { kind: "mention", site: "wikipedia", language: "pt", title: "Fluminense Football Club" };
+    const flu = ["O Fluminense é um clube do Rio.", "", "== Histórico ==", "Wu Chien-Shiung visitou as Laranjeiras.", "Outro parágrafo."].join("\n");
+    const { client, extract } = fakeClient({ ...PAGES, [pageKey(byTitle, byTitle.title)]: { title: byTitle.title, revid: 101, qid: null, text: flu } });
+
+    await runRound(existing(wu), plan({ extras: [extra(byTitle)] }), "admin-1", roundDeps(client).deps);
+
+    // The fake's backlinks and search throw: the round fetched the page by its title only.
+    expect(extract).toHaveBeenCalledWith({ site: "wikipedia", language: "pt" }, "Fluminense Football Club");
+    const { sources, chunks } = await memory(wu.id);
+    const stored = sources.find((s) => s.title === byTitle.title)!;
+    expect(stored).toMatchObject({ kind: "mention", language: "pt", revid: 101, passages: 1 });
+    expect(chunks.filter((c) => c.source_id === stored.id).map((c) => c.content)).toEqual(["Wu Chien-Shiung visitou as Laranjeiras."]);
   });
 
   it("looks up no sitelinks when the round adds no mention", async () => {

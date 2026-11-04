@@ -1,7 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import ChooseSources, { ExtraItem, languageGroups } from "@/components/choose-sources";
+import { fetchPageMention } from "@/components/mention-by-title";
 import ReingestConfirm from "@/components/reingest-confirm";
 import RoundProgress, { progressLines } from "@/components/round-progress";
 import type { SourcePlan } from "@corpus/plan-changes";
@@ -141,6 +142,49 @@ describe("ChooseSources (spec §34.5)", () => {
   it("has no dot-joined meta strings outside the buttons", () => {
     const html = render({ mode: "new" }).replace(/Add persona · \$[\d.]+/, "");
     expect(html).not.toContain("·");
+  });
+});
+
+describe("Add a page by title (spec §34.5, follow-up 1)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const fields = (html: string) => html.match(/<input[^>]*id="mention-page-[^"]*"[^>]*>/g) ?? [];
+
+  it("offers a field and an Add button under each language of the mentions, phone-sized", () => {
+    const page = render({ mode: "reingest", current: [stored(PT), stored(MENTION)] });
+    const html = page.slice(page.indexOf("Where others mention them"));
+    expect(html.match(/>Add a page by title</g)).toHaveLength(2);
+    expect(fields(html).map((f) => f.match(/id="([^"]+)"/)![1])).toEqual(["mention-page-pt", "mention-page-en"]);
+    for (const field of fields(html)) {
+      expect(field).toContain('maxLength="255"');
+      expect(field).toContain("min-h-11");
+      expect(field).toMatch(/\btext-base\b/);
+    }
+    expect(html).toMatch(/<label for="mention-page-pt" class="text-base[^"]*">Add a page by title<span class="sr-only"> \(Portuguese\)<\/span><\/label>/);
+    expect(html).toMatch(/<button type="submit" disabled="" class="[^"]*min-h-11[^"]*">Add<\/button>/);
+  });
+
+  it("isn't offered for the other extras", () => {
+    const html = render({ mode: "reingest", current: [stored(EN), stored(QUOTES), stored(LINKED)] });
+    expect(html).not.toContain("Add a page by title");
+  });
+
+  const answer = (status: number, body: unknown) => vi.stubGlobal("fetch", vi.fn(async () => Response.json(body, { status })));
+
+  it("returns the found page as a candidate", async () => {
+    const candidate = { ...MENTION, kind: "mention" as const, chars: 60, preview: "Santos Dumont…", estimated: 7 };
+    answer(200, { items: [candidate], total: 1 });
+    expect(await fetchPageMention("/x")).toEqual({ candidate });
+  });
+
+  it("returns the server's sentence when the page is missing, doesn't name the persona, or the title is refused", async () => {
+    answer(200, { items: [], total: 0, reason: "not_found", message: "No page called Flu in Portuguese Wikipedia." });
+    expect(await fetchPageMention("/x")).toEqual({ error: "No page called Flu in Portuguese Wikipedia." });
+    answer(200, { items: [], total: 0, reason: "not_mentioned", message: "Física doesn't mention Alberto Santos-Dumont." });
+    expect(await fetchPageMention("/x")).toEqual({ error: "Física doesn't mention Alberto Santos-Dumont." });
+    answer(400, { error: "Give a page title of up to 255 characters, without |.", code: "invalid_request" });
+    expect(await fetchPageMention("/x")).toEqual({ error: "Give a page title of up to 255 characters, without |." });
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("offline"))));
+    expect(await fetchPageMention("/x")).toEqual({ error: "Couldn't reach the server." });
   });
 });
 

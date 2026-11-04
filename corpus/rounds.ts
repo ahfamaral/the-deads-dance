@@ -76,6 +76,16 @@ export async function listRounds(db: Queryable, slug: string): Promise<Round[]> 
   return rows.map(toRound);
 }
 
+/** Spec §34.2: one of the round's calls has an estimated cost (embeddings report none), so its cost is shown as about. */
+export async function roundHasEstimatedCost(db: Queryable, roundId: number): Promise<boolean> {
+  const { rows } = await db.query<{ estimated: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM model_calls m JOIN ingest_round_items i ON i.id = m.ingest_item_id
+                    WHERE i.round_id = $1 AND m.cost_source = 'estimated') AS estimated`,
+    [roundId],
+  );
+  return rows[0].estimated;
+}
+
 /** Spec §34.2: the persona's running round, if any. */
 export async function runningRound(db: Queryable, slug: string): Promise<Round | null> {
   return (await listRounds(db, slug)).find((r) => r.status === "running") ?? null;

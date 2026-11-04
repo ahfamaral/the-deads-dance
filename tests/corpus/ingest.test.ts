@@ -38,7 +38,7 @@ const LANGS: PersonaLanguage[] = [
   { code: "zh", name: "Chinese", native: true },
   { code: "en", name: "English", native: false },
 ];
-const languagesFake = (langs = LANGS) => vi.fn(async (_qid: string) => langs);
+const languagesFake = (langs = LANGS) => vi.fn<(qid: string) => Promise<PersonaLanguage[]>>(async () => langs);
 
 function deps(embeddings = new FakeEmbeddings(), generateProfile = profileFake(), fetchLanguages = languagesFake()) {
   return { pool: getPool(), embeddings, fetchArticle: vi.fn(async () => article()), generateProfile, fetchLanguages };

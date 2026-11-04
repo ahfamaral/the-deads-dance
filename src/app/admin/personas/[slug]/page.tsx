@@ -4,12 +4,10 @@ import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { describeDbError, getPool } from "@corpus/db";
 import PersonaProfile from "@/components/persona-profile";
-import { formatDollars } from "@/lib/money";
+import { profileBanner, queryMicros } from "@/lib/persona-profile";
 import { profileBackHref } from "@/lib/profile-links";
 import { currentUser } from "@/lib/server/access";
 import { loadPersonaProfile } from "@/lib/server/persona-admin";
-
-const micros = (v: string | string[] | undefined): number | null => (typeof v === "string" && /^\d{1,12}$/.test(v) ? Number(v) : null);
 
 /** Spec §34.4: a persona's profile; admin only, and a 404 for everyone else, as /admin. */
 export default async function PersonaProfilePage({ params, searchParams }: PageProps<"/admin/personas/[slug]">) {
@@ -32,10 +30,7 @@ export default async function PersonaProfilePage({ params, searchParams }: PageP
   }
   if (!user || user.role !== "admin" || !dto) notFound();
 
-  const added = micros(query.added);
-  const reingested = micros(query.reingested);
-  const banner =
-    added !== null ? `${dto.name} added, cost ${formatDollars(added)}` : reingested !== null ? `Reingested, cost ${formatDollars(reingested)}` : null;
+  const banner = profileBanner(dto, query);
   const from = typeof query.from === "string" ? `from=${encodeURIComponent(query.from)}` : "";
-  return main(<PersonaProfile slug={slug} initial={dto} backHref={profileBackHref(from)} banner={banner} offerVoice={added !== null} />);
+  return main(<PersonaProfile slug={slug} initial={dto} backHref={profileBackHref(from)} banner={banner} offerVoice={queryMicros(query.added) !== null} />);
 }

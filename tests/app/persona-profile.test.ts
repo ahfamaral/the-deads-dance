@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import IngestionHistory from "@/components/ingestion-history";
 import PersonaProfile from "@/components/persona-profile";
-import type { PersonaProfileDto, RoundDto } from "@/lib/persona-profile";
+import { addedBanner, profileBanner, reingestedBanner, type PersonaProfileDto, type RoundDto } from "@/lib/persona-profile";
 
 vi.mock("next/link", async () => {
   const { createElement } = await import("react");
@@ -117,6 +117,23 @@ describe("PersonaProfile (spec §34.4)", () => {
     expect(html).toContain("Create voice");
     expect(html).toContain("Not now");
     expect(render(dto())).not.toContain("Create voice");
+  });
+
+  it("says about in the banners when the round's cost includes an estimated call (follow-up 2)", () => {
+    expect(addedBanner("Alberto Santos-Dumont", 16_000, true)).toBe("Alberto Santos-Dumont added, cost about $0.016");
+    expect(addedBanner("Alberto Santos-Dumont", 16_000, false)).toBe("Alberto Santos-Dumont added, cost $0.016");
+    expect(reingestedBanner(11_000, true)).toBe("Reingested, cost about $0.011");
+    expect(reingestedBanner(11_000, false)).toBe("Reingested, cost $0.011");
+  });
+
+  it("words the page's banner from its query, estimated when the latest finished round is (follow-up 2)", () => {
+    const estimated = dto({ rounds: [round({ status: "draft", items: [] }), round({ id: 1, items: [item({ costEstimated: true })] })] });
+    expect(profileBanner(estimated, { added: "16000" })).toBe("Alberto Santos-Dumont added, cost about $0.016");
+    expect(profileBanner(estimated, { reingested: "11000" })).toBe("Reingested, cost about $0.011");
+    expect(profileBanner(dto(), { added: "16000" })).toBe("Alberto Santos-Dumont added, cost $0.016");
+    expect(profileBanner(dto(), { reingested: "11000" })).toBe("Reingested, cost $0.011");
+    expect(profileBanner(dto(), { added: "lots" })).toBeNull();
+    expect(profileBanner(dto(), {})).toBeNull();
   });
 
   it("has Edit and Redraft for highlights, and says so when there are none", () => {

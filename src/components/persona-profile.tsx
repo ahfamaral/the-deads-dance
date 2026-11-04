@@ -7,8 +7,7 @@ import ChangeSourcesFlow from "@/components/change-sources-flow";
 import IngestionHistory from "@/components/ingestion-history";
 import PersonaRatings from "@/components/persona-ratings";
 import VoicePanel from "@/components/voice-panel";
-import { formatDollars } from "@/lib/money";
-import { HIGHLIGHTS_EDIT_MAX, type LanguageSource, type PersonaProfileDto, type SourceDto } from "@/lib/persona-profile";
+import { HIGHLIGHTS_EDIT_MAX, reingestedBanner, type LanguageSource, type PersonaProfileDto, type SourceDto } from "@/lib/persona-profile";
 
 /** Spec §34.4: how often a running round's page reloads while it runs. */
 export const RUNNING_POLL_MS = 5_000;
@@ -196,8 +195,8 @@ export default function PersonaProfile({ slug, initial, backHref, banner, offerV
         dto={dto}
         initialRedraft={changing.redraft}
         onExit={closeSources}
-        onDone={(cost) => {
-          setShownBanner(`Reingested, cost ${formatDollars(cost)}`);
+        onDone={(cost, estimated) => {
+          setShownBanner(reingestedBanner(cost, estimated));
           void reload();
         }}
         onFailed={() => void reload()}

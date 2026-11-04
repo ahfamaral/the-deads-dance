@@ -5,6 +5,7 @@ import { planChanges, type PlannedChange, type SourcePlan } from "@corpus/plan-c
 import type { CharacterProfile } from "@corpus/profile";
 import type { EditionScore, RoundItem, RoundStatus, SourceKind, StoredSource } from "@corpus/rounds";
 import type { FeedbackReport } from "@/lib/feedback";
+import { formatDollars } from "@/lib/money";
 
 /**
  * Spec §34.3–§34.5: what the admin persona pages receive and send. Browser-safe: type-only
@@ -66,6 +67,17 @@ export type ExtraKind = Exclude<SourceKind, "article">;
 export type CandidateDto = Candidate & { estimated: number };
 export type CandidatesResult = { items: CandidateDto[]; total: number };
 
+/** Why a page named by title can't be a mention: no such page, a disambiguation page, or no paragraph names the persona. */
+export type PageMentionReason = "not_found" | "disambiguation" | "not_mentioned";
+/**
+ * Spec §34.5 (follow-up, 2026-11-04): the answer to `GET /api/admin/personas/candidates?kind=mention&page={title}`,
+ * free: the page as the one candidate, or no candidate with the reason and the sentence the admin sees
+ * ("No page called {title} in {Language} Wikipedia.", "{title} doesn't mention {name}.").
+ */
+export type PageMentionResult =
+  | { items: [CandidateDto]; total: 1 }
+  | { items: []; total: 0; reason: PageMentionReason; message: string };
+
 /**
  * Spec §34.5: one edition as the free lookup lists it, priced: `estimated` is about what embedding
  * it costs, `redraftEstimated` about what drafting the highlights and character from it costs
@@ -86,11 +98,33 @@ export type FindResult = {
 
 export type CompareResult = { scores: EditionScore[]; cost: number };
 
-/** One line of the POST /api/admin/personas/rounds stream. `spent` and `cost` are micro-dollars. */
+/** One line of the POST /api/admin/personas/rounds stream. `spent` and `cost` are micro-dollars; `costEstimated`: one call's cost is an estimate. */
 export type RoundEvent =
   | { type: "progress"; label: string; status: "started" | "finished" | "skipped"; spent: number }
-  | { type: "done"; slug: string; cost: number }
+  | { type: "done"; slug: string; cost: number; costEstimated: boolean }
   | { type: "error"; message: string; code?: string };
+
+/** Spec §34.2: a round's cost is an estimate when one of its calls' is (embeddings report none). */
+export const roundCostEstimated = (round: RoundDto) => round.items.some((i) => i.costEstimated);
+
+const cost = (micros: number, estimated: boolean) => `${estimated ? "about " : ""}${formatDollars(micros)}`;
+/** Spec §34.4: the banner after adding a persona, "about" when the round's cost is an estimate. */
+export const addedBanner = (name: string, micros: number, estimated: boolean) => `${name} added, cost ${cost(micros, estimated)}`;
+/** Spec §34.4: the banner after a reingest, "about" when the round's cost is an estimate. */
+export const reingestedBanner = (micros: number, estimated: boolean) => `Reingested, cost ${cost(micros, estimated)}`;
+
+/** A query parameter holding micro-dollars, else null. */
+export const queryMicros = (v: string | string[] | undefined): number | null => (typeof v === "string" && /^\d{1,12}$/.test(v) ? Number(v) : null);
+
+/** The profile page's banner from its query (`added` or `reingested`, micro-dollars), estimated as the latest finished round is. */
+export function profileBanner(dto: PersonaProfileDto, query: Record<string, string | string[] | undefined>): string | null {
+  const latest = dto.rounds.find((r) => r.status === "done");
+  const estimated = latest ? roundCostEstimated(latest) : false;
+  const added = queryMicros(query.added);
+  if (added !== null) return addedBanner(dto.name, added, estimated);
+  const reingested = queryMicros(query.reingested);
+  return reingested !== null ? reingestedBanner(reingested, estimated) : null;
+}
 
 const Title = z.string().trim().min(1).max(255);
 /** Wikimedia language codes: "en", "pt", "simple", "zh_min_nan", "be-tarask". */
@@ -132,6 +166,9 @@ export const RoundBody = z.union([
 
 export const HighlightsBody = z.strictObject({ highlights: z.string().trim().min(1).max(HIGHLIGHTS_EDIT_MAX) });
 
+/** A Wikipedia page title as the admin types it: trimmed, at most 255 characters, no `|` (the API's title separator). */
+export const PageTitle = Title.refine((t) => !t.includes("|"), { message: "A page title can't contain |." });
+
 export const CandidatesQuery = z
   .object({
     kind: z.enum(["writing", "quotes", "linked", "mention"]),
@@ -139,8 +176,11 @@ export const CandidatesQuery = z
     title: RawTitle.optional(),
     language: Language,
     offset: z.coerce.number().int().min(0).max(10_000).default(0),
+    /** Spec §34.5 (follow-up): one page by title instead of the list; mentions only. */
+    page: PageTitle.optional(),
   })
-  .refine((q) => (q.slug === undefined) !== (q.title === undefined), { message: "Give a slug or a title." });
+  .refine((q) => (q.slug === undefined) !== (q.title === undefined), { message: "Give a slug or a title." })
+  .refine((q) => q.page === undefined || q.kind === "mention", { message: "Only mentions are looked up by page title." });
 
 /** Spec §34.5: one line of the reingest confirm; `estimated` is micro-dollars (0 for a removal). */
 export type ChangeLine = { label: string; estimated: number };

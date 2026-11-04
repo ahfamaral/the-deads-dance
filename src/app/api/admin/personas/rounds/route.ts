@@ -103,8 +103,10 @@ export async function POST(request: Request) {
       controller = c;
       for (const event of pending.splice(0)) send(event);
       void outcome.then((settled) => {
-        if (settled.ok) send({ type: "done", slug: settled.result.persona.slug, cost: settled.result.cost });
-        else {
+        if (settled.ok) {
+          const { persona, cost, costEstimated } = settled.result;
+          send({ type: "done", slug: persona.slug, cost, costEstimated });
+        } else {
           console.error(settled.err);
           send(roundErrorEvent(settled.err));
         }

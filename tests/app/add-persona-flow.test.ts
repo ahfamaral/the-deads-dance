@@ -69,7 +69,7 @@ describe("streamRound (spec §34.6)", () => {
   it("passes the streamed events on", async () => {
     const events: RoundEvent[] = [
       { type: "progress", label: "Fetching texts", status: "finished", spent: 0 },
-      { type: "done", slug: "wu", cost: 4_000 },
+      { type: "done", slug: "wu", cost: 4_000, costEstimated: true },
     ];
     const fetchFn = vi.fn(async () => ndjson(events));
     const seen: RoundEvent[] = [];

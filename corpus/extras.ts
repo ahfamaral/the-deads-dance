@@ -197,10 +197,16 @@ export async function listMentions(
       if (err instanceof WikipediaError && err.code !== "unreachable") continue;
       throw err;
     }
-    const paragraphs = paragraphsNaming(text, names);
-    if (paragraphs.length === 0) continue;
-    const preview = paragraphs.join("\n\n");
-    items.push({ kind: "mention", site: ref.site, language: ref.language, title, chars: preview.length, preview });
+    const candidate = mentionCandidate(ref, title, text, names);
+    if (candidate) items.push(candidate);
   }
   return { items, total: ordered.length };
+}
+
+/** A page as a mention candidate: its paragraphs naming the persona as the preview, or null when none does. */
+export function mentionCandidate(ref: WikiRef, title: string, text: string, names: string[]): Candidate | null {
+  const paragraphs = paragraphsNaming(text, names);
+  if (paragraphs.length === 0) return null;
+  const preview = paragraphs.join("\n\n");
+  return { kind: "mention", site: ref.site, language: ref.language, title, chars: preview.length, preview };
 }

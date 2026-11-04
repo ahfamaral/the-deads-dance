@@ -5,10 +5,10 @@ import { describeDbError, getPool } from "@corpus/db";
 import { editionScorer, listEditions, type ScoreFn } from "@corpus/editions";
 import { EMBEDDING_MODEL, EmbeddingDimensionError, embeddingModel } from "@corpus/embeddings";
 import { comparisonEstimate, embeddingEstimate, redraftEstimate, type Price } from "@corpus/estimate";
-import { listLinked, listMentions, listQuotes, listWritings, mentionNames, type Candidate } from "@corpus/extras";
+import { listLinked, listMentions, listQuotes, listWritings, mentionCandidate, mentionNames, type Candidate } from "@corpus/extras";
 import { highlightsDrafter } from "@corpus/highlights";
 import { IngestError, type PersonaEntry } from "@corpus/ingest";
-import { FALLBACK_LANGUAGES, type PersonaLanguage } from "@corpus/languages";
+import { FALLBACK_LANGUAGES, languageName, type PersonaLanguage } from "@corpus/languages";
 import { modelId } from "@corpus/models";
 import { findPersona, type PersonaRow } from "@corpus/personas";
 import { profileGenerator } from "@corpus/profile";
@@ -18,7 +18,7 @@ import { wikimedia, WikipediaError, type Article, type WikimediaClient } from "@
 import { fetchPersonFacts, fetchPersonLanguages } from "@corpus/wikipedia";
 import {
   CANDIDATE_PAGE, HIGHLIGHTS_EDIT_MAX,
-  type CandidatesResult, type FindResult, type LanguageSource, type PersonaProfileDto, type ProfileLanguage, type RoundDto, type RoundEvent,
+  type CandidatesResult, type FindResult, type LanguageSource, type PageMentionResult, type PersonaProfileDto, type ProfileLanguage, type RoundDto, type RoundEvent,
 } from "@/lib/persona-profile";
 import { NO_VOICE, toPersona } from "@/lib/personas";
 import { unavailable } from "@/lib/server/access";
@@ -270,7 +270,34 @@ export async function listCandidates(
   return { items: all.slice(offset, offset + CANDIDATE_PAGE).map(priced), total: all.length };
 }
 
-/** As today's add route (POST /api/personas). */
+/**
+ * Spec §34.5 (follow-up, 2026-11-04): one page the admin names, as a mention candidate, free. It is
+ * fetched from that language's Wikipedia (the host is built from the language only) and kept for its
+ * paragraphs naming the persona, found by the same names as the list, so the round ingests the preview.
+ */
+export async function pageMention(
+  client: WikimediaClient,
+  target: AdminTarget & { qid: string },
+  language: string,
+  title: string,
+): Promise<PageMentionResult> {
+  const ref = { site: "wikipedia", language } as const;
+  let page: Article;
+  try {
+    page = await client.extract(ref, title);
+  } catch (err) {
+    if (!(err instanceof WikipediaError) || err.code === "unreachable") throw err;
+    return err.code === "not_found"
+      ? { items: [], total: 0, reason: "not_found", message: `No page called ${title} in ${languageName(language)} Wikipedia.` }
+      : { items: [], total: 0, reason: "disambiguation", message: `${title} is a disambiguation page. Try a more specific title.` };
+  }
+  const sitelinks = (await client.sitelinks(target.qid)).filter((l) => l.language === language);
+  const candidate = mentionCandidate(ref, page.title, page.text, mentionNames(target.names, sitelinks, language));
+  if (!candidate) return { items: [], total: 0, reason: "not_mentioned", message: `${page.title} doesn't mention ${target.names[0]}.` };
+  return { items: [{ ...candidate, estimated: embeddingEstimate(candidate.chars) }], total: 1 };
+}
+
+/** The add flow's refusals (prepareUserPersona) and Wikimedia's, as HTTP statuses. */
 const ADD_STATUS: Record<AddPersonaErrorCode, number> = {
   invalid_title: 400,
   not_found: 404,

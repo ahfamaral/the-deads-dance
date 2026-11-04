@@ -1,5 +1,5 @@
 import { formatDollars } from "@/lib/money";
-import type { RoundDto } from "@/lib/persona-profile";
+import { roundCostEstimated as anyEstimated, type RoundDto } from "@/lib/persona-profile";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -14,7 +14,6 @@ const cost = (micros: number | null, estimated = false) =>
   micros === null ? "cost not recorded" : `${estimated ? "about " : ""}${formatDollars(micros)}`;
 const PRICE = "shrink-0 whitespace-nowrap text-right tabular-nums";
 
-const anyEstimated = (r: RoundDto) => r.items.some((i) => i.costEstimated);
 /** The labels already carry most counts ("Portuguese article, 212 passages", "Real quotes, 22"). */
 const labelHasCount = (label: string, passages: number) => new RegExp(`, ${passages}(?: passages?)?(?: \\(|$)`).test(label);
 const plural = (n: number) => `${n} passage${n === 1 ? "" : "s"}`;

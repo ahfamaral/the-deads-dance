@@ -23,8 +23,8 @@ type Props = {
   initialRedraft: boolean;
   /** Back to the profile (choose's and progress's Back; a round in progress carries on). */
   onExit: () => void;
-  /** The round finished, wherever the admin is by then. */
-  onDone: (cost: number) => void;
+  /** The round finished, wherever the admin is by then: its cost in micro-dollars, `estimated` when one of its calls' costs is an estimate. */
+  onDone: (cost: number, estimated: boolean) => void;
   /** The round failed or was refused. */
   onFailed: () => void;
 };
@@ -108,15 +108,15 @@ export default function ChangeSourcesFlow({ dto, initialRedraft, onExit, onDone,
     void streamRound({ slug, plan: confirmed }, (e) => {
       setEvents((all) => [...all, e]);
       if (e.type === "done") {
-        onDone(e.cost);
+        onDone(e.cost, e.costEstimated);
         if (mounted.current && stepRef.current === "progress") onExit();
       } else if (e.type === "error") onFailed();
     });
   };
 
   const candidatesUrl = useCallback(
-    (kind: ExtraKind, language: string, offset: number) =>
-      `/api/admin/personas/candidates?${new URLSearchParams({ kind, slug, language, offset: String(offset) })}`,
+    (kind: ExtraKind, language: string, offset: number, page?: string) =>
+      `/api/admin/personas/candidates?${new URLSearchParams({ kind, slug, language, offset: String(offset), ...(page ? { page } : {}) })}`,
     [slug],
   );
 

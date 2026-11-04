@@ -182,8 +182,8 @@ export default function AddPersonaFlow({ initialTitle }: { initialTitle: string 
   };
 
   const candidatesUrl = useCallback(
-    (kind: ExtraKind, language: string, offset: number) =>
-      `/api/admin/personas/candidates?${new URLSearchParams({ kind, title: found?.title ?? "", language, offset: String(offset) })}`,
+    (kind: ExtraKind, language: string, offset: number, page?: string) =>
+      `/api/admin/personas/candidates?${new URLSearchParams({ kind, title: found?.title ?? "", language, offset: String(offset), ...(page ? { page } : {}) })}`,
     [found?.title],
   );
 

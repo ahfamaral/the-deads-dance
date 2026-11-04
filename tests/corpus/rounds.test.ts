@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closePool, getPool } from "../../corpus/db";
 import { applySchema } from "../../corpus/schema";
 import {
-  addItem, draftRound, finishRound, listRounds, listSources, RoundBusyError, runningRound, saveComparison,
+  addItem, draftRound, finishRound, listRounds, listSources, RoundBusyError, roundHasEstimatedCost, runningRound, saveComparison,
   setItemCost, sourceKey, startRound, type EditionScore,
 } from "../../corpus/rounds";
 import { insertChunks, insertPersona, resetDb } from "../helpers/db";
@@ -156,6 +156,12 @@ describe("rounds (spec §34.2)", () => {
 
     const [round] = await listRounds(pool(), "wu");
     expect(round.items.map((i) => [i.label, i.costEstimated])).toEqual([["English article, 3 passages", true], ["Compared editions", false]]);
+    expect(await roundHasEstimatedCost(pool(), r1)).toBe(true);
+    await finishRound(pool(), r1, "done");
+    const r2 = await startRound(pool(), "wu", "admin");
+    const exact = await addItem(pool(), r2, { action: "compared", label: "Compared editions", passages: null, estimated: 10, cost: 20 });
+    await recordCalls(pool(), { userId: user, calls: [{ ...call, role: "ingest", cost: 20, costSource: "reported" }], charge: false, ingestItemId: exact });
+    expect(await roundHasEstimatedCost(pool(), r2)).toBe(false);
   });
 
   it("lists items in insertion order and rounds newest first; sets an item's cost", async () => {

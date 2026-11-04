@@ -56,6 +56,7 @@ db-seed: db-setup ## Load the seed personas + chunks (REPLACES existing personas
 	@test -f $(SEED) || { echo "No seed file at $(SEED). Ask for it, or set SEED=path."; exit 1; }
 	@echo "Loading $(SEED): this replaces every persona and chunk in the database."
 	docker-compose exec -T db psql -U persona -d persona -q -v ON_ERROR_STOP=1 < $(SEED) > /dev/null
+	$(NPM) run db:setup
 	@docker-compose exec -T db psql -U persona -d persona -tAc "SELECT count(*) || ' personas, ' || (SELECT count(*) FROM chunks) || ' chunks loaded.' FROM personas"
 
 ingest: node_modules ## Disabled for now (npm run ingest explains how to bring it back)

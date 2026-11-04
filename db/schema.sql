@@ -264,3 +264,101 @@ ALTER TABLE persona_voices ADD COLUMN IF NOT EXISTS sex text CHECK (sex IN ('mal
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'text'
   CHECK (mode IN ('text','voice'));
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS voice_language text; -- ISO 639-1, voice only
+
+-- Spec §34.2: one row per ingestion (add, reingest, or redraft only) or a comparison kept as a draft.
+-- persona_slug, like model_calls, so history survives a delete + re-add. started_by is an admin user id.
+CREATE TABLE IF NOT EXISTS ingest_rounds (
+  id            serial PRIMARY KEY,
+  persona_slug  text NOT NULL,
+  number        int NOT NULL,
+  status        text NOT NULL CHECK (status IN ('draft','running','done','failed')),
+  started_by    text NOT NULL,
+  started_at    timestamptz NOT NULL DEFAULT now(),
+  finished_at   timestamptz,
+  comparison    jsonb,                      -- the edition scores (§34.3), so "Change sources" needn't pay again
+  UNIQUE (persona_slug, number)
+);
+-- At most one running round per persona: the reingest lock.
+CREATE UNIQUE INDEX IF NOT EXISTS ingest_rounds_one_running ON ingest_rounds (persona_slug) WHERE status = 'running';
+
+-- Spec §34.2: what a round did, item by item, for the cost history. Costs are micro-dollars.
+CREATE TABLE IF NOT EXISTS ingest_round_items (
+  id            serial PRIMARY KEY,
+  round_id      int NOT NULL REFERENCES ingest_rounds (id) ON DELETE CASCADE,
+  action        text NOT NULL CHECK (action IN ('compared','added','replaced','removed','kept','redrafted')),
+  label         text NOT NULL,
+  passages      int,
+  estimated     bigint,                     -- shown before the round
+  cost          bigint                      -- recorded: the sum of its model_calls
+);
+
+-- Spec §34.2: a persona's current sources, one row per ingested item.
+CREATE TABLE IF NOT EXISTS persona_sources (
+  id            serial PRIMARY KEY,
+  persona_id    int NOT NULL REFERENCES personas (id) ON DELETE CASCADE,
+  kind          text NOT NULL CHECK (kind IN ('article','writing','quotes','linked','mention')),
+  language      text NOT NULL,              -- ISO 639-1 of the text, e.g. 'pt'
+  site          text NOT NULL,              -- 'wikipedia' | 'wikisource' | 'wikiquote'
+  title         text NOT NULL,              -- page title on that site
+  revid         bigint,                     -- the revision ingested
+  url           text NOT NULL,
+  passages      int NOT NULL,
+  round_id      int NOT NULL REFERENCES ingest_rounds (id),
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- Spec §34.2: where each passage came from. Existing rows are English Wikipedia main-article passages.
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS source_id int REFERENCES persona_sources (id) ON DELETE CASCADE;
+ALTER TABLE model_calls ADD COLUMN IF NOT EXISTS ingest_item_id int REFERENCES ingest_round_items (id) ON DELETE SET NULL;
+
+-- Spec §34.4: the profile page's highlights; editable by the admin.
+ALTER TABLE personas ADD COLUMN IF NOT EXISTS highlights text;
+-- Spec §34.5: where the languages came from, for the profile page.
+ALTER TABLE personas ADD COLUMN IF NOT EXISTS languages_source text CHECK (languages_source IN ('wikidata','curated','fallback'));
+
+-- Spec §34.6: translated passages for source chips, reused across conversations.
+CREATE TABLE IF NOT EXISTS passage_translations (
+  content_hash  text NOT NULL,              -- sha256 of the original passage text
+  language      text NOT NULL,
+  heading       text NOT NULL,
+  content       text NOT NULL,
+  PRIMARY KEY (content_hash, language)
+);
+
+-- Spec §34.2: existing personas get one English article source, their chunks point at it, and a
+-- round 1 made from what's known: the recorded ingest/embedding cost, or null ("cost not recorded").
+-- Only personas with unlinked chunks and no sources; once done, applying again changes nothing.
+DO $$
+DECLARE
+  p record;
+  r_id int;
+  src_id int;
+  item_id int;
+  n_chunks int;
+  spent bigint;
+BEGIN
+  FOR p IN
+    SELECT * FROM personas pe
+    WHERE EXISTS (SELECT 1 FROM chunks c WHERE c.persona_id = pe.id AND c.source_id IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM persona_sources s WHERE s.persona_id = pe.id)
+  LOOP
+    SELECT count(*) INTO n_chunks FROM chunks WHERE persona_id = p.id;
+    SELECT sum(cost) INTO spent FROM model_calls WHERE persona_slug = p.slug AND role IN ('ingest', 'embedding');
+    INSERT INTO ingest_rounds (persona_slug, number, status, started_by, started_at, finished_at)
+      VALUES (p.slug, (SELECT coalesce(max(number), 0) + 1 FROM ingest_rounds WHERE persona_slug = p.slug),
+              'done', 'migration', coalesce(p.ingested_at, p.updated_at), coalesce(p.ingested_at, p.updated_at))
+      RETURNING id INTO r_id;
+    INSERT INTO persona_sources (persona_id, kind, language, site, title, revid, url, passages, round_id)
+      VALUES (p.id, 'article', 'en', 'wikipedia', p.wikipedia_title, p.wikipedia_revid,
+              'https://en.wikipedia.org/wiki/' || replace(p.wikipedia_title, ' ', '_'), n_chunks, r_id)
+      RETURNING id INTO src_id;
+    UPDATE chunks SET source_id = src_id WHERE persona_id = p.id;
+    INSERT INTO ingest_round_items (round_id, action, label, passages, cost)
+      VALUES (r_id, 'added', 'English article, ' || n_chunks || ' passages', n_chunks, spent)
+      RETURNING id INTO item_id;
+    UPDATE model_calls SET ingest_item_id = item_id
+      WHERE persona_slug = p.slug AND role IN ('ingest', 'embedding') AND ingest_item_id IS NULL;
+  END LOOP;
+END $$;
+UPDATE personas SET languages_source = CASE origin WHEN 'curated' THEN 'curated' ELSE 'wikidata' END
+ WHERE languages_source IS NULL AND languages IS NOT NULL;

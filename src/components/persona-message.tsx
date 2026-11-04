@@ -1,4 +1,5 @@
 import { useState } from "react";
+import SourcePassage from "@/components/source-passage";
 import ToolTrace from "@/components/tool-trace";
 import type { Message } from "@/lib/chat-types";
 import { ENDED_NOTE, STOPPED_NOTE } from "@/lib/message-notes";
@@ -14,9 +15,13 @@ type PersonaMessageProps = {
   streaming?: boolean;
   /** Spec §26.6: the admin sees what the reply cost. */
   showCost?: boolean;
+  /** Spec §34.6: the conversation, for translating a source chip. */
+  conversationId?: string;
+  /** Spec §34.6: the language of the visitor message this reply follows ("und" or absent: the browser's). */
+  visitorLanguage?: string;
 };
 
-export default function PersonaMessage({ personaName, message, streaming = false, showCost = false }: PersonaMessageProps) {
+export default function PersonaMessage({ personaName, message, streaming = false, showCost = false, conversationId, visitorLanguage }: PersonaMessageProps) {
   const [openChunk, setOpenChunk] = useState<number | null>(null);
   const toolCalls = message.toolCalls ?? [];
   const sources = message.sources ?? [];
@@ -67,11 +72,7 @@ export default function PersonaMessage({ personaName, message, streaming = false
             })}
           </ul>
           {usesGeneralKnowledge(message) && <p className="text-xs text-amber-300/80">{MIXED_SOURCES_NOTE}</p>}
-          {openPassage && (
-            <blockquote className="border-l border-white/15 pl-3 text-xs text-neutral-400">
-              <p className="whitespace-pre-wrap">{openPassage.content}</p>
-            </blockquote>
-          )}
+          {openPassage && <SourcePassage passage={openPassage} conversationId={conversationId} visitorLanguage={visitorLanguage} />}
         </div>
       )}
     </li>

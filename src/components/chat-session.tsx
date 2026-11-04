@@ -361,6 +361,7 @@ export default function ChatSession({
   return (
     <>
       <Conversation
+        conversationId={conversationId}
         personaName={personaName}
         ownerEmail={ownerEmail}
         profileHref={profileHref}

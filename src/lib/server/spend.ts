@@ -11,14 +11,14 @@ const spend = (cost: unknown, tokens: unknown): Spend => ({ cost: Number(cost ??
  */
 export async function recordCalls(
   pool: Queryable,
-  r: { userId: string; calls: ResolvedCall[]; charge: boolean; personaSlug?: string | null; ingestItemId?: number | null },
+  r: { userId: string; calls: ResolvedCall[]; charge: boolean; personaSlug?: string | null; ingestItemId?: number | null; conversationId?: string | null },
 ): Promise<void> {
   if (r.calls.length === 0) return;
   const total = r.calls.reduce((n, c) => n + c.cost, 0);
   await pool.query(
     `WITH logged AS (
-       INSERT INTO model_calls (user_id, persona_slug, role, model, input_tokens, output_tokens, cost, cost_source, generation_id, latency_ms, ingest_item_id)
-       SELECT $1, $2, c.role, c.model, c.input_tokens, c.output_tokens, c.cost, c.cost_source, c.generation_id, c.latency_ms, $6::int
+       INSERT INTO model_calls (user_id, persona_slug, role, model, input_tokens, output_tokens, cost, cost_source, generation_id, latency_ms, ingest_item_id, conversation_id)
+       SELECT $1, $2, c.role, c.model, c.input_tokens, c.output_tokens, c.cost, c.cost_source, c.generation_id, c.latency_ms, $6::int, $7::uuid
        FROM jsonb_to_recordset($3::jsonb) AS c(role text, model text, input_tokens int, output_tokens int, cost bigint, cost_source text, generation_id text, latency_ms int)
      )
      UPDATE "user" SET "energyBalance" = "energyBalance" - $4::bigint WHERE id = $1 AND $5::boolean`,
@@ -29,6 +29,7 @@ export async function recordCalls(
       total,
       r.charge,
       r.ingestItemId ?? null,
+      r.conversationId ?? null,
     ],
   );
 }

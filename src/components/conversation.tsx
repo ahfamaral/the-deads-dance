@@ -6,6 +6,8 @@ import type { LanguageMode, Message } from "@/lib/chat-types";
 import { languageModeNotes } from "@/lib/language-mode";
 
 type ConversationProps = {
+  /** Spec §34.6: lets a source chip ask for a translation. */
+  conversationId?: string;
   personaName: string;
   /** Spec §27: whose conversation this is, when the admin opens someone else's. */
   ownerEmail?: string;
@@ -40,6 +42,7 @@ type ConversationProps = {
 
 /** Transcript of the exchange between the user and the persona, including the reply that is still streaming. */
 export default function Conversation({
+  conversationId,
   personaName,
   ownerEmail,
   profileHref,
@@ -137,7 +140,7 @@ export default function Conversation({
             </p>
           ) : (
             <ol className="flex flex-col gap-5">
-              {messages.map((message) =>
+              {messages.map((message, index) =>
                 message.role === "user" ? (
                   <Fragment key={message.id}>
                     {notes.has(message.id) && (
@@ -150,7 +153,14 @@ export default function Conversation({
                     </li>
                   </Fragment>
                 ) : (
-                  <PersonaMessage key={message.id} personaName={personaName} message={message} showCost={showCost} />
+                  <PersonaMessage
+                    key={message.id}
+                    personaName={personaName}
+                    message={message}
+                    showCost={showCost}
+                    conversationId={conversationId}
+                    visitorLanguage={messages[index - 1]?.role === "user" ? (messages[index - 1].act?.language ?? undefined) : undefined}
+                  />
                 ),
               )}
               {pending && <PersonaMessage personaName={personaName} message={pending} streaming showCost={showCost} />}

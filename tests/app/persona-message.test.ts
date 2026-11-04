@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import PersonaMessage from "@/components/persona-message";
 import type { Message } from "@/lib/chat-types";
+import { needsTranslation, SourcePassageView } from "@/components/source-passage";
 import { ENDED_NOTE, STOPPED_NOTE } from "@/lib/message-notes";
 
 const html = (message: Message) => renderToStaticMarkup(createElement(PersonaMessage, { personaName: "Wu", message }));
@@ -31,5 +32,36 @@ describe("PersonaMessage", () => {
 
   it("never shows a cost line without showCost", () => {
     expect(html(reply({ cost: 9_000, tokens: 1_800 }))).not.toContain("tok");
+  });
+
+  describe("a source chip's passage (spec §34.6)", () => {
+    const passage = { chunk_id: 7, section_heading: "Infância", content: "Nasceu no Rio.", language: "pt" };
+    const view = (translation: Parameters<typeof SourcePassageView>[0]["translation"]) =>
+      renderToStaticMarkup(createElement(SourcePassageView, { passage, translation }));
+
+    it("asks for a translation only when the languages differ, English being the default", () => {
+      expect(needsTranslation("pt", "en")).toBe(true);
+      expect(needsTranslation(undefined, "pt")).toBe(true);
+      expect(needsTranslation("pt", "pt")).toBe(false);
+      expect(needsTranslation(undefined, "en")).toBe(false);
+      expect(needsTranslation("pt", null)).toBe(false);
+    });
+
+    it("shows the translation marked with the source language", () => {
+      const out = view({ status: "done", heading: "Childhood", content: "Born in Rio." });
+      expect(out).toContain("Born in Rio.");
+      expect(out).toContain("Translated from Portuguese");
+      expect(out).not.toContain("Nasceu no Rio.");
+    });
+
+    it("shows the original dimmed while loading, and plain when idle or failed", () => {
+      expect(view({ status: "loading" })).toContain("opacity-50");
+      for (const status of ["idle", "failed"] as const) {
+        const out = view({ status });
+        expect(out).toContain("Nasceu no Rio.");
+        expect(out).not.toContain("opacity-50");
+        expect(out).not.toContain("Translated from");
+      }
+    });
   });
 });

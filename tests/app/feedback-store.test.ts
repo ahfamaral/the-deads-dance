@@ -91,4 +91,18 @@ describe("listFeedback (spec §32.3, §32.7)", () => {
       ],
     });
   });
+
+  // Spec §34.4: the profile page shows only this persona's ratings.
+  it("filters by the conversation's persona slug when given", async () => {
+    await save({ stars: 5, comment: "Great" });
+    const bo = await insertUser("bo@example.com");
+    const einstein = await seedConversation({ userId: bo, personaSlug: "einstein", personaName: "Albert Einstein", messages: [{ role: "user", text: "Hallo", act: ACT }] });
+    await saveFeedback(pool(), { conversationId: einstein, userId: bo, stars: 2, comment: "Vague", model: "m", commitSha: "dev" });
+
+    const report = await listFeedback(pool(), "einstein");
+    expect(report.items.map((i) => [i.conversationId, i.personaName, i.stars])).toEqual([[einstein, "Albert Einstein", 2]]);
+    expect(report.summary).toEqual({ count: 1, average: 2, perPersona: [{ personaName: "Albert Einstein", count: 1, average: 2 }] });
+    expect((await listFeedback(pool(), "nobody")).items).toEqual([]);
+    expect((await listFeedback(pool())).items).toHaveLength(2);
+  });
 });

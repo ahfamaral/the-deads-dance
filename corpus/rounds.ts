@@ -102,15 +102,15 @@ export async function draftRound(db: Queryable, slug: string, adminId: string): 
   throw new Error("Could not create a draft round.");
 }
 
-/** Spec §34.3: keeps the scores on the round and the compare cost as a `compared` item. */
+/** Spec §34.3: keeps the scores on the round and the compare cost as a `compared` item; returns the item's id. */
 export async function saveComparison(
   db: Queryable,
   roundId: number,
   scores: EditionScore[],
   item: { label: string; estimated: number; cost: number },
-): Promise<void> {
+): Promise<number> {
   await db.query(`UPDATE ingest_rounds SET comparison = $2::jsonb WHERE id = $1`, [roundId, JSON.stringify(scores)]);
-  await addItem(db, roundId, { action: "compared", label: item.label, passages: null, estimated: item.estimated, cost: item.cost });
+  return addItem(db, roundId, { action: "compared", label: item.label, passages: null, estimated: item.estimated, cost: item.cost });
 }
 
 /**

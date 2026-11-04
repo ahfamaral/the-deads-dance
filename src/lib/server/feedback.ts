@@ -37,14 +37,19 @@ export async function saveFeedback(
   return { ok: true, feedback: { stars: saved.rows[0].stars, comment: saved.rows[0].comment } };
 }
 
-/** Spec §32.7: every rating, newest first, with the tester's email and the persona, and the summary. */
-export async function listFeedback(pool: Queryable): Promise<FeedbackReport> {
+/**
+ * Spec §32.7: every rating, newest first, with the tester's email and the persona, and the summary.
+ * Spec §34.4: with `personaSlug`, only that persona's ratings (the profile page).
+ */
+export async function listFeedback(pool: Queryable, personaSlug?: string): Promise<FeedbackReport> {
   const { rows } = await pool.query(
     `SELECT f.conversation_id, f.stars, f.comment, u.email, c.persona_name, f.created_at, f.updated_at > f.created_at AS edited
      FROM conversation_feedback f
      JOIN conversations c ON c.id = f.conversation_id
      JOIN "user" u ON u.id = f.user_id
+     WHERE $1::text IS NULL OR c.persona_slug = $1
      ORDER BY f.created_at DESC, f.conversation_id`,
+    [personaSlug ?? null],
   );
   const items: FeedbackItem[] = rows.map((r) => ({
     conversationId: r.conversation_id,

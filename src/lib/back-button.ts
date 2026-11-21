@@ -30,6 +30,9 @@ export function createBackButton(env: BackEnv) {
   function syncNow() {
     queued = false;
     if (removing) return; // the popstate of that removal syncs again
+    // A link to another page pushes a plain entry with no popstate, so ask the history, not memory:
+    // going back from there would undo the link (the add button jumped back to the start page).
+    trapped = env.isTrap();
     const needed = screens.length > 0 || env.hasOpenDialog();
     if (needed && !trapped) {
       env.push();

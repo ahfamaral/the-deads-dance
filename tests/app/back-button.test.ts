@@ -32,6 +32,11 @@ function fakeEnv() {
     entries: () => entries.slice(0, index + 1).map((e) => (e.trap ? "trap" : "page")),
     listen: (fn: () => void) => (onPop = fn),
     openDialog: (onClose: () => void) => dialogs.push(onClose),
+    /** A link to another page of the app: the router pushes a plain entry, no popstate. */
+    navigate: () => {
+      entries.splice(index + 1, Infinity, { trap: false });
+      index += 1;
+    },
     /** The user presses back: the browser leaves the app when there's no entry of ours to pop. */
     press: () => {
       if (index === 0) return "left the app";
@@ -153,6 +158,29 @@ describe("createBackButton", () => {
     back.register(() => {});
     await settle();
     expect(f.entries()).toEqual(["page", "trap"]);
+  });
+
+  it("a link from a screen with a Back to a page without one stays on that page (picker → Add persona)", async () => {
+    const { back, entries, env, navigate } = setup();
+    const goBack = vi.spyOn(env, "back");
+    const picker = back.register(() => {});
+    await settle();
+    navigate(); // the add button: a new entry on top of the trap
+    picker.remove(); // the picker unmounts with the old page
+    await settle();
+    expect(goBack).not.toHaveBeenCalled();
+    expect(entries()).toEqual(["page", "trap", "page"]);
+  });
+
+  it("a link to a page whose screen has a Back puts a trap on that page", async () => {
+    const { back, entries, navigate } = setup();
+    const picker = back.register(() => {});
+    await settle();
+    navigate();
+    picker.remove();
+    back.register(() => {}); // the new page's screen, in the same render
+    await settle();
+    expect(entries()).toEqual(["page", "trap", "page", "trap"]);
   });
 
   it("a back that lands outside a trap (another page of the app) runs nothing", async () => {

@@ -1,9 +1,12 @@
 # Do the deads dance
 
 A chatbot where you talk with a historical person, who answers in the first person
-from a RAG over their Wikipedia biography. Five science and engineering pioneers
-come built in: Einstein, Carver, Katherine Johnson, Chien-Shiung Wu and
-Santos-Dumont. You can add anyone else who has an English Wikipedia article.
+from a RAG over their biography. Five science and engineering pioneers come built
+in: Einstein, Carver, Katherine Johnson, Chien-Shiung Wu and Santos-Dumont. The
+admin can add anyone else who has a Wikipedia article.
+
+Live: https://deadsdance.freitasdoamaral.com (sign-up is open; an admin approves
+each account before it can chat).
 
 ## What it does
 
@@ -31,15 +34,31 @@ Santos-Dumont. You can add anyone else who has an English Wikipedia article.
 - **Short, quick answers:** two to four sentences by default. Longer only when
   the visitor asks for more. A typical turn takes about 10 s.
 - **UI:** streamed replies with an in-character thinking line, a collapsible
-  tool trace (query variants, verdicts, passages), source chips, and
-  conversation history in the browser. Export as JSON or Markdown. Personas can
-  be added and removed at runtime (gear icon on the persona selection screen);
+  tool trace (query variants, verdicts, passages) and source chips, which
+  translate into the visitor's language on open. Conversations are saved to the
+  visitor's account and can be exported as JSON or Markdown. After a
+  conversation, visitors can rate it (1–5 stars) and leave a comment. Works on
+  phones as well as desktops.
+- **Voice:** visitors can speak instead of typing (the browser's speech
+  recognition), and the persona can answer aloud in an imagined voice
+  (`google/gemini-3.8-flash-tts` via OpenRouter).
+- **Richer memory:** for each persona the admin picks the most complete
+  Wikipedia edition among the languages the persona spoke (editions are scored
+  against 30 visitor questions), plus priced extras: their own writings, real
+  quotes, linked articles, and passages on other pages that mention them. Each
+  ingestion round is recorded with its per-item costs on the persona's admin
+  profile page.
+- **Accounts and spend:** sign-in by emailed code, admin approval, and a
+  per-visitor budget shown as "energy". The admin panel approves, rejects and
+  blocks users, grants energy, shows spend and reads feedback. The admin can
+  add, hide and remove personas (gear icon on the persona selection screen);
   built-in personas can't be removed.
 
-The app spawns the MCP server itself over stdio, so reviewers don't need to
-run it separately. `npm run mcp` runs it standalone instead, e.g. to point
-the MCP Inspector at it. If the MCP server can't start, the app still runs
-and shows a "Biography tools unavailable" banner instead of failing.
+The MCP server runs inside the app over an in-memory transport (same protocol,
+tools and results as stdio, with no child process, so it runs on serverless).
+`npm run mcp` starts it standalone over stdio, e.g. to point the MCP Inspector
+at it. If the MCP server can't start, the app still runs and shows a
+"Biography tools unavailable" banner instead of failing.
 
 Three models are used, all via OpenRouter:
 - the agent model: persona replies and tool calls;
@@ -50,7 +69,9 @@ Three models are used, all via OpenRouter:
 The optional `AGENT_MODEL` / `HELPER_MODEL` / `RECALL_MODEL` env vars override
 the defaults, which are `anthropic/claude-haiku-5.5` for the agent,
 `deepseek/deepseek-v4.1-flash` for the helper and `openai/gpt-6-luna` for recall. `AGENT_REASONING_EFFORT` sets the agent's reasoning
-effort (default `low`).
+effort (default `low`). The defaults were chosen with the evaluation harness in
+`eval/` (`npm run eval`), which scores candidate models and prompts on
+grounding, conduct and cost.
 
 ## Getting started
 
@@ -64,19 +85,20 @@ make db-seed                # optional: load seed personas + chunks instead of i
 make                        # dev server on http://localhost:3000
 ```
 
+The seed dumps (`db/seed_personas_chunks_*.sql`) are large and not in this
+repository.
+
 Embeddings go through OpenRouter too (LangChain `OpenAIEmbeddings`,
 `openai/text-embedding-3-small`), so `OPENROUTER_API_KEY` is the only API key.
 
-`npm run ingest` is disabled for now (since 2026-10-07): the helper model is part
-of each generated profile's stamp, so an ingest after the switch to DeepSeek
-would regenerate every generated persona's profile. Load personas with
-`make db-seed`. When it's back, `npm run ingest -- <slug>` ingests one persona and
-`npm run ingest -- --refresh` fetches the latest Wikipedia revisions.
+Personas are added and reingested from the admin pages (Add persona, and
+Change sources on a persona's profile). The older `npm run ingest` command is
+disabled for now: its re-embed path doesn't know about the richer sources yet.
 
 If port 5433 is already taken, change the host port in
 `docker-compose.yml` and in `DATABASE_URL`.
 
-## Accounts (staging)
+## Accounts
 
 Sign-in is by emailed code (one-time password). Only approved users can chat; sign up creates a pending account.
 
@@ -96,7 +118,7 @@ Staging runs on Vercel (Hobby) with a Neon (Free) Postgres. Pushing the `staging
 
 The MCP server runs inside the app (in-memory transport), so nothing else needs to be hosted. `npm run mcp` still starts it over stdio for MCP Inspector.
 
-Staging env: everything in "Accounts (staging)" above, plus `OPENROUTER_API_KEY` (a staging-only key with its own credit limit), `EMAIL_FROM='Do the deads dance <no-reply@mail.freitasdoamaral.com>'` and `AUTH_IP_HEADER=x-real-ip` (Vercel sets it). First-time setup, including loading the seed into Neon, is a checklist in the design spec (§31.5). Neon's Free plan restores to any point in the last 6 hours; there are no other backups.
+Staging env: everything in "Accounts" above, plus `OPENROUTER_API_KEY` (a staging-only key with its own credit limit), `EMAIL_FROM='Do the deads dance <no-reply@mail.freitasdoamaral.com>'` and `AUTH_IP_HEADER=x-real-ip` (Vercel sets it). Neon's Free plan restores to any point in the last 6 hours; there are no other backups.
 
 ## Make targets
 
@@ -111,6 +133,7 @@ Staging env: everything in "Accounts (staging)" above, plus `OPENROUTER_API_KEY`
 | `make check` | lint + typecheck + build |
 | `make db-up` | Start Postgres + pgvector in Docker |
 | `make db-setup` | Apply the schema (idempotent) |
+| `make db-seed` | Load the seed personas and chunks (replaces existing personas) |
 | `make ingest` | Disabled for now (see above) |
 | `make test` | Test suite (needs `make db-up`); `npm run test:live` spawns the real MCP server and runs real agent turns (grounding, conduct, behaviour, recall, world context) and the golden retrieval set against the dev database, calling OpenRouter and Wikidata (a few cents) |
 | `make clean` | Remove `.next` and `out` |
@@ -121,4 +144,9 @@ The underlying npm scripts (`dev`, `build`, `start`, `lint`) still work directly
 
 ## Stack
 
-Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · ESLint · Postgres + pgvector · LangChain v1 · MCP (stdio) · OpenRouter · Vitest
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · ESLint · Postgres + pgvector · LangChain v1 · MCP · Better Auth · OpenRouter · Vitest · Vercel + Neon
+
+## Licence
+
+No licence is granted: all rights reserved. The code is public to read, but
+not to copy, modify or redistribute without permission.

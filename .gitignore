@@ -62,3 +62,6 @@ next-steps*
 
 # Phase 5 evaluation reports (local only, never committed)
 /evaluation-reports/
+
+# presentation deck (local only)
+presentation/

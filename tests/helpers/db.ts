@@ -1,7 +1,8 @@
 import { getPool, toVectorLiteral } from "../../corpus/db";
 
 export async function resetDb(): Promise<void> {
-  await getPool().query("TRUNCATE personas RESTART IDENTITY CASCADE");
+  // Rounds are keyed by slug, not a foreign key, so the cascade doesn't reach them.
+  await getPool().query("TRUNCATE personas, ingest_rounds RESTART IDENTITY CASCADE");
 }
 
 /** Clears accounts, sessions, codes and rate-limit counters (spec §24). */
